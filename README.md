@@ -1,123 +1,165 @@
-# NEON LINK — Executive Briefing for Hardware Engineering
+# NEON LINK
 
-**Date**: 2026-08-03  
-**Audience**: Hardware Engineer (onboarding)  
-**Project**: Bidirectional Ableton Link + BLE MIDI Eurorack Module  
-**Working Name**: NEON LINK (final name TBD)  
-**Prepared by**: Project lead (Grok / team)
+**Bidirectional Ableton Link + BLE MIDI Eurorack Module**
 
----
+> A rock-solid Link peer, multi-channel clock generator, and wireless MIDI-to-CV bridge — with Ethernet, a real local UI, and unapologetic 90s neon energy. Built to be dramatically more capable than the $250 competition at a fraction of the cost.
 
-## 1. Why This Exists
-
-Ableton Link is the modern standard for tempo and phase synchronization across devices. The only commercial Eurorack product that properly supports it is the Circuit Happy ML:2m — a $250, 2HP, WiFi-only, one-way clock generator with two outputs and no local display.
-
-We are building a significantly more capable alternative at a fraction of the cost.
-
-**Core promise**  
-A rock-solid, bidirectional Ableton Link peer that also functions as a wireless MIDI-to-CV bridge and multi-channel clock generator, with Ethernet reliability, a real local UI, and a distinctive 90s aesthetic — all in 8–10HP and under $75 in component cost.
+**Status**: Hardware design & first prototype phase  
+**Form Factor**: 8–10HP Eurorack (10HP preferred)  
+**Component Cost Target**: < $75  
+**Working Name**: NEON LINK
 
 ---
 
-## 2. Competitive Snapshot (ML:2m)
+## Why This Exists
 
-| Feature                        | ML:2m                          | NEON LINK (target)                          |
-|--------------------------------|--------------------------------|---------------------------------------------|
-| Width                          | 2HP                            | 8–10HP                                      |
-| Price                          | $250                           | Components < $75 → aggressive retail        |
-| Directionality                 | One-way (Link → modular)       | True bidirectional                          |
-| Networking                     | WiFi only                      | WiFi + RJ45 Ethernet                        |
-| Clock outputs                  | 2                              | 4 independent                               |
-| Additional outputs             | Optional MIDI clock            | Reset, Run gate, Tempo CV, TRS MIDI         |
-| Inputs                         | None                           | Clock In + Reset In                         |
-| Local UI                       | Buttons + LEDs                 | OLED + encoder + status LEDs                |
-| BLE MIDI (notes/CC)            | None                           | Full support                                |
-| Aesthetic                      | Minimal industrial             | Bold 90s “Saved by the Bell” neon geometric |
+Ableton Link is the modern standard for tempo and phase sync across devices and apps. The only proper commercial Eurorack solution is the Circuit Happy **ML:2m** — a $250, 2HP, WiFi-only, one-way clock box with two outputs and no local display.
 
-The ML:2m is elegant and compact. We win on capability, usability, reliability, and value.
+NEON LINK is designed to beat it on nearly every axis:
 
----
-
-## 3. High-Level Requirements
-
-### Form Factor
-- Preferred: **10HP** (actual panel width ≈ 50.5 mm)
-- Acceptable fallback: 8HP
-- Depth target: **≤ 40 mm** from rear of panel (skiff-friendly preferred)
-- Standard Eurorack mounting (M3, Doepfer-compatible hole positions)
-- Panel material: Aluminum preferred (or high-quality PCB panel for early prototypes)
-
-### Electrical
-- Powered from Eurorack bus (+12 V primary)
-- Efficient regulation to 3.3 V
-- Target current: **< 150 mA** typical
-- Clean power (heavy filtering — digital modules can be noisy neighbors)
-- Reverse polarity protection
-
-### Core Platform
-- **ESP32-S3-WROOM-1** (N8 or N16R8)
-- Onboard WiFi + BLE
-- SPI Ethernet via W5500 + MagJack
-- Sufficient GPIO and hardware timers / RMT for low-jitter multi-channel pulse generation
-
-### Must-Have I/O
-- 4× independent Clock outputs (5 V logic)
-- 1× Reset / Start pulse
-- 1× Run / Stop gate
-- 1× Tempo CV (0–5 V)
-- 1× TRS MIDI out (Type A)
-- 1× Clock In
-- 1× Reset In
-- OLED (0.96–1.3") + rotary encoder with push
-- 3 status LEDs (Network / Beat / Run)
-
-### Aesthetic Direction
-90s cool / *Saved by the Bell* energy: neon pink/magenta, electric teal/cyan, hot yellow accents on black or deep purple base. Bold geometric / Memphis-inspired motifs. Playful but highly readable labeling.
+| Capability              | ML:2m                     | NEON LINK                              |
+|-------------------------|---------------------------|----------------------------------------|
+| Directionality          | One-way                   | **True bidirectional**                 |
+| Networking              | WiFi only                 | **WiFi + RJ45 Ethernet**               |
+| Clock outputs           | 2                         | **4 independent**                      |
+| Extra outputs           | Optional MIDI clock       | Reset, Run gate, **Tempo CV**, TRS MIDI |
+| Inputs                  | None                      | **Clock In + Reset In**                |
+| Local UI                | Buttons + LEDs            | **OLED + encoder**                     |
+| BLE MIDI (notes/CC)     | None                      | **Full support**                       |
+| Aesthetic               | Minimal industrial        | **90s neon / Saved by the Bell**       |
+| Price                   | $250                      | Components < $75                       |
 
 ---
 
-## 4. Prototype Phasing (What We Need From Hardware)
+## Key Features (v1 Locked)
 
-| Phase | Goal                                      | Deliverable                                      | Priority |
-|-------|-------------------------------------------|--------------------------------------------------|----------|
-| 0     | Prove Link + basic clock on ESP32-S3     | Breadboard / DevKit bring-up                     | Immediate |
-| 1     | Minimal viable I/O                        | Small PCB with ESP32-S3, power, 1–2 clocks, basic input | High |
-| 2     | Full feature prototype                    | Complete 10HP PCB + panel, all I/O, Ethernet, OLED | Core |
-| 3     | Refined / production-intent               | Layout clean-up, BOM optimization, DFM           | Follow-on |
-
-Software will develop in parallel against the same milestones. Clean electrical interfaces and documented pinouts are critical so firmware can progress without waiting for final panels.
-
----
-
-## 5. Success Criteria for Hardware
-
-A successful first full prototype will:
-
-1. Fit comfortably in a standard 10HP Eurorack space and ≤ 40 mm depth.
-2. Draw well under 150 mA from +12 V with clean rails.
-3. Provide low-jitter digital clock/gate outputs at 5 V.
-4. Deliver a usable 0–5 V Tempo CV.
-5. Survive normal Eurorack power connection abuse (reverse polarity, hot-plug).
-6. Support simultaneous WiFi + Ethernet + BLE without excessive interference or thermal issues.
-7. Present a panel that is both functional and unmistakably “90s cool.”
-8. Stay inside the component cost target so the product can be priced aggressively against the ML:2m.
+- Ableton Link 3.x (tempo, phase, start/stop)
+- **Bidirectional**: external clock can drive the Link session
+- WiFi 2.4 GHz + **Ethernet** (W5500)
+- 4 independent clock outputs (per-output PPQN / mult / div, trigger length, square duty, shuffle)
+- Dedicated Reset pulse + Run/Stop gate
+- Tempo CV out (0–5 V)
+- TRS MIDI out (Type A)
+- **BLE MIDI** (notes, CCs, clock, transport) with routing to CV/Gate and TRS
+- OLED local UI + rotary encoder
+- Web-based configuration editor
+- Latency compensation
+- Distinctive 90s neon geometric panel design
 
 ---
 
-## 6. Key Documents Already Available
+## Architecture at a Glance
 
-- `HANDOFF.md` — Software Architect handoff (architecture, dual-core strategy, real-time requirements, BLE MIDI routing, milestones). Hardware should treat the real-time pulse path as sacred.
-- This Executive Briefing.
-- Full Hardware PRD (separate document) — exhaustive requirements for design and build.
+```
+                    ┌─────────────────────────────────────┐
+                    │           ESP32-S3                   │
+                    │  ┌─────────────┐  ┌───────────────┐ │
+   WiFi / BLE  <───►│  │ Core 0      │  │ Core 1        │ │
+   Ethernet    <───►│  │ Networking  │  │ Real-time     │ │
+   (W5500)          │  │ Link / BLE  │  │ Pulse Engine  │ │
+                    │  │ Web / UI    │  │ (RMT/Timers)  │ │
+                    │  └─────────────┘  └───────────────┘ │
+                    └─────────────────────────────────────┘
+                                      │
+          ┌───────────┬───────────────┼───────────────┬──────────┐
+          ▼           ▼               ▼               ▼          ▼
+       CLK 1–4     RESET/RUN      TEMPO CV        MIDI TRS    CLK/RST IN
+```
+
+- **Core 0**: Networking, Ableton Link, BLE MIDI, web server, OLED
+- **Core 1**: High-priority, low-jitter pulse generation from Link session state
+- Real-time path is sacred — BLE MIDI and UI must never compromise clock integrity
 
 ---
 
-## 7. What We Need From You First
+## Documentation
 
-1. Confirmation of preferred width (10HP strongly preferred) and achievable depth.
-2. Preliminary power architecture proposal (buck choice, filtering strategy).
-3. High-level block diagram and proposed pinout for the ESP32-S3.
-4. Any concerns about simultaneous WiFi + Ethernet + BLE + multi-channel RMT on the chosen module.
-5. Rough first-pass BOM and risk list.
+| Document | Audience | Description |
+|----------|----------|-------------|
+| **[HARDWARE.md](HARDWARE.md)** | Hardware Engineer | Exhaustive hardware PRD — mechanical, electrical, power, I/O specs, BOM targets, prototype phases, acceptance criteria |
+| **[SOFTWARE.md](SOFTWARE.md)** | Software / Firmware Architect | Full software architecture handoff — dual-core strategy, Link integration, BLE MIDI routing matrix, UI requirements, milestones, risks |
+| **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
 
-Welcome aboard. This is a high-leverage, clearly differentiated product with a realistic path to both a strong DIY/kit offering and a commercial module. Looking forward to collaborating.
+Start with the Executive Briefing if you are joining hardware, then dive into `HARDWARE.md`.  
+Software contributors should begin with `SOFTWARE.md`.
+
+---
+
+## Prototype Roadmap
+
+| Phase | Goal | Key Deliverable |
+|-------|------|-----------------|
+| **0** | Platform bring-up | ESP32-S3 + Link session + one clean clock output |
+| **1** | Minimal I/O | Power section + several clocks + Clock In on a small PCB |
+| **2** | Full feature prototype | Complete 10HP PCB + panel, all I/O, Ethernet, OLED, encoder |
+| **3** | Refined / production-intent | BOM optimization, DFM, multiple units for testing |
+
+---
+
+## Design Constraints (Non-Negotiable)
+
+- **Width**: 10HP preferred (≈ 50.5 mm actual panel), 8HP acceptable
+- **Depth**: ≤ 40 mm from rear of panel (skiff-friendly goal)
+- **Power**: +12 V from Eurorack bus, < 150 mA typical, reverse-polarity protected
+- **Cost**: Complete component BOM < $75 (stretch goal < $65)
+- **Timing**: Hardware timers / RMT only for primary clocks — no software bit-banging
+- **Aesthetic**: Bold 90s neon (pink / teal / yellow) geometric / Memphis-inspired panel on black or deep base
+
+---
+
+## Aesthetic Direction
+
+**Saved by the Bell / early-90s cool.**
+
+- Neon pink/magenta, electric teal/cyan, hot yellow accents
+- Black or deep purple panel base
+- Bold geometric shapes, grids, abstract motifs
+- Highly legible but playful typography
+- The module should look like it belongs in a 1993 locker while remaining fully professional in use
+
+---
+
+## Licensing Notes
+
+Ableton Link is dual-licensed (GPLv2+ and commercial).  
+Open-source firmware using the Link library will fall under GPL obligations.  
+A commercial license path from Ableton exists for closed-source / commercial products.  
+This must be resolved before any public release or sale.
+
+---
+
+## Current Team Focus
+
+- **Hardware**: Design power architecture, mechanical layout, first prototype PCBs and panel
+- **Software**: Dual-core firmware skeleton, Link peer, multi-channel pulse engine, then BLE MIDI and UI
+
+---
+
+## Getting Started
+
+**Hardware Engineer**  
+1. Read `EXECUTIVE_BRIEFING.md`  
+2. Read `HARDWARE.md` in full  
+3. Produce block diagram, power tree, proposed pinout, and first-pass BOM  
+
+**Software / Firmware Architect**  
+1. Read `SOFTWARE.md`  
+2. Validate current best Ableton Link integration path on ESP32-S3  
+3. Stand up dual-core project skeleton and a single clean clock from Link session state  
+
+---
+
+## Open Questions
+
+- Final product name confirmation (NEON LINK is the working title)
+- Exact 10HP vs 8HP decision after mechanical packing study
+- Ethernet MagJack placement strategy
+- Tempo CV implementation (filtered PWM vs dedicated DAC)
+- Antenna approach (PCB vs external)
+- Ableton Link commercial licensing path if required
+
+---
+
+**NEON LINK** — more outputs, true bidirectional sync, Ethernet, BLE MIDI, and a local UI, without the $250 price tag.
+
+Questions, proposed deviations, or prototype updates should be raised early so hardware and software stay aligned.
