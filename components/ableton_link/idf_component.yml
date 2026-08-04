@@ -1,0 +1,5 @@
+dependencies:
+  # Provides pipe()/socketpair()/getifaddrs() shims over lwIP sockets —
+  # asio's select interrupter needs pipe(). Same dependency Espressif's
+  # official asio port uses.
+  espressif/sock_utils: "^1.0.0"
