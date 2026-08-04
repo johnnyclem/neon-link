@@ -194,6 +194,34 @@ the expected input rate. RST IN produces a phase request forwarded to
 Link's `requestBeatAtTime`, anchoring the session downbeat to the external
 reset.
 
+## BLE MIDI + TRS MIDI (milestone 7)
+
+- **Transport** (`components/ble_midi`): NimBLE peripheral advertising the
+  MIDI service (03B8…C700 / data I/O 7772…6BF3) as "NEON LINK"; GATT
+  writes are copied into a queue and never processed on the NimBLE host
+  task. `Config.ble_enabled=0` is the SOFTWARE.md kill switch — the stack
+  is fully deinitialized (and a CI leg compiles with `CONFIG_BT_ENABLED`
+  unset entirely).
+- **Parser** (`neon::BleMidiParser`, portable): BLE-MIDI framing —
+  header/timestamp bytes, running status, multi-message packets, realtime
+  interleaving, SysEx spanning packets (payload skipped in v1) — hardened
+  against pathological input.
+- **Routing matrix** (`neon::MidiRouter`, portable, SOFTWARE.md §4):
+  notes → mono last-note gate on a configurable target (CLK1–4 or Run;
+  point it at a *disabled* clock output so sources don't fight) and/or
+  pitch → CV jack at 1 V/oct (5 octaves from C2; overrides tempo CV while
+  enabled); CCs → latency and per-clock shuffle (configurable CC numbers,
+  CC 123 = all-notes-off); Start/Stop/Continue → Link transport; MIDI
+  clock policy ignore/replace/merge for the TRS stream. Program-change
+  preset recall arrives with milestone 9.
+- **TRS out** (`halesp::midi_uart`, UART1 @ 31.25 kbaud): Link-derived
+  24 PPQN clock scheduled by a re-arming esp_timer on the session grid
+  (~100 µs accuracy), Start/Stop on transport changes, and BLE
+  passthrough per the clock policy.
+- **Gates** travel core 0 → core 1 through a queue; the pulse task emits
+  them through the same GPTimer emitter with the standard scheduling
+  lead, so MIDI gates and clock edges share one hardware path.
+
 ## Local UI (milestone 6)
 
 The UI splits portable-vs-driver like everything else:

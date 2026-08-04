@@ -12,6 +12,9 @@ set(NEON_CORE_SRCS
   src/gfx_framebuffer.cpp
   src/menu_model.cpp
   src/ui_render.cpp
+  src/ble_midi_parser.cpp
+  src/midi_encoder.cpp
+  src/midi_router.cpp
 )
 
 if(ESP_PLATFORM)

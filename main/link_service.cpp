@@ -136,9 +136,12 @@ void link_service_task(void*) {
                  static_cast<unsigned>(state.num_peers), state.tempo_bpm,
                  state.playing ? 1 : 0);
         const auto& cfg = neon_config();
-        halesp::tempo_cv_set_ratio(neon::tempo_cv_ratio_q16(
-            static_cast<uint32_t>(state.tempo_bpm * 1000.0),
-            cfg.tempo_cv_min_bpm, cfg.tempo_cv_max_bpm));
+        // When BLE-MIDI pitch CV owns the jack, tempo does not drive it.
+        if (!cfg.midi.pitch_cv) {
+          halesp::tempo_cv_set_ratio(neon::tempo_cv_ratio_q16(
+              static_cast<uint32_t>(state.tempo_bpm * 1000.0),
+              cfg.tempo_cv_min_bpm, cfg.tempo_cv_max_bpm));
+        }
         last_logged_peers = state.num_peers;
         last_logged_tempo = state.tempo_bpm;
       }

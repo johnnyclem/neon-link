@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "neon/midi/router.hpp"
 #include "neon/multi_engine.hpp"
 #include "neon/output_config.hpp"
 
@@ -32,6 +33,13 @@ struct Config {
   // Bidirectional operation (milestone 5).
   ClockSource clock_source = ClockSource::kAuto;
   uint32_t clock_in_ppqn = 4;  // pulses per beat expected on CLK IN
+
+  // BLE MIDI (milestone 7). ble_enabled=0 keeps the BT controller fully
+  // deinitialized for maximum Link reliability (the SOFTWARE.md kill
+  // switch).
+  uint8_t ble_enabled = 1;
+  uint8_t midi_clock_out = 1;  // 24 PPQN Link-derived clock on TRS
+  MidiRouteConfig midi;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"

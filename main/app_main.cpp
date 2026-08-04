@@ -21,5 +21,6 @@ extern "C" void app_main(void) {
   neon_start_core1_tasks();
   // Networking / application side.
   neon_start_link_service();
+  neon_start_midi_service();
   neon_start_core0_tasks();
 }
