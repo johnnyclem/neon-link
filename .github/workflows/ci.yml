@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  host-tests:
+    name: Host unit tests (gcc + ASan/UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Debug -DNEON_SANITIZERS=ON
+      - name: Build
+        run: cmake --build build-host -j
+      - name: Test
+        run: ctest --test-dir build-host --output-on-failure
+
+  firmware-build:
+    name: ESP-IDF build (esp32s3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.3.2
+          target: esp32s3
+          path: '.'
