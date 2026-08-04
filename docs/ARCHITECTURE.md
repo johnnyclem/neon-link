@@ -172,6 +172,23 @@ transport messages; core 1 still takes no mutexes.
   (menuconfig) until the web editor lands in milestone 8; without them the
   module still forms a local Link session.
 
+## Networking (milestone 4)
+
+- **W5500 SPI Ethernet** (`components/net_manager`): SPI2 at 20 MHz with
+  IRQ, MAC derived from the SoC's Ethernet MAC, brought up before WiFi.
+  The Ethernet netif gets route priority 128 (WiFi STA is 100), so lwIP —
+  and therefore Ableton Link, whose scanner enumerates all interfaces —
+  prefers the cable whenever it holds an address. Absence of the chip is
+  detected at driver install and the module runs WiFi-only.
+- **Preference policy** (`neon/net/preference.hpp`, pure logic, host-
+  tested): Ethernet-with-IP > WiFi-with-IP > none; a setup-AP
+  recommendation fires after a 10 s grace when WiFi was never configured,
+  or 60 s when configured networks stay down, and the timer resets on any
+  connectivity. The AP itself arrives with the web editor milestone —
+  milestone 4 logs the decision.
+- **mDNS**: `neon-link.local` (espressif/mdns registry component), for the
+  web editor and general discovery.
+
 ## Proposed ESP32-S3 pinout
 
 First-pass proposal from the software side (input to HARDWARE.md §13
