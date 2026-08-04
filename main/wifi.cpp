@@ -8,6 +8,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "netman/net_manager.h"
 
 namespace {
 
@@ -21,10 +22,12 @@ void on_wifi_event(void*, esp_event_base_t base, int32_t id, void*) {
     esp_wifi_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(g_events, kGotIpBit);
+    netman::preference().wifi_ip(false);
     ESP_LOGW(kTag, "disconnected, retrying");
     esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(kTag, "got IP");
+    netman::preference().wifi_ip(true);
     xEventGroupSetBits(g_events, kGotIpBit);
   }
 }
@@ -40,8 +43,7 @@ void neon_wifi_start() {
   }
   g_events = xEventGroupCreate();
 
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  netman::init_common();  // tolerant of prior esp_netif/event-loop init
   esp_netif_create_default_wifi_sta();
 
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();

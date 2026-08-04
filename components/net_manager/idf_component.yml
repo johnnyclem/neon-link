@@ -1,0 +1,3 @@
+dependencies:
+  # .local hostname for the web editor (milestone 8) and general discovery.
+  espressif/mdns: "^1.0.0"
