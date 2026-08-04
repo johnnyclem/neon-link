@@ -8,11 +8,11 @@
 #include "freertos/task.h"
 
 #include "board_pins.h"
-#include "config_store.h"
+#include "app_state/config_store.h"
 #include "halesp/pulse_hw_gptimer.hpp"
 #include "neon/multi_engine.hpp"
 #include "tasks.h"
-#include "timeline_bus.h"
+#include "app_state/timeline_bus.h"
 
 namespace {
 
@@ -44,17 +44,26 @@ void pulse_task(void*) {
 
   int64_t cursor = g_pulse_hw.now_us() + kLeadUs;
   uint32_t timeline_version = 0;
+  uint32_t config_version = engine_config_bus().version();
   bool have_timeline = false;
+  neon::TimelineSnapshot last_snap{};
 
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
     if (timeline_bus().version() != timeline_version) {
-      neon::TimelineSnapshot snap;
-      timeline_version = timeline_bus().read(snap);
-      engine.retime(snap, cursor);
+      timeline_version = timeline_bus().read(last_snap);
+      engine.retime(last_snap, cursor);
       if (!have_timeline) {
         ESP_LOGI(kTag, "timeline acquired; outputs live");
         have_timeline = true;
+      }
+    }
+    if (engine_config_bus().version() != config_version) {
+      neon::EngineConfig cfg;
+      config_version = engine_config_bus().read(cfg);
+      engine.set_config(cfg);
+      if (have_timeline) {
+        engine.retime(last_snap, cursor);
       }
     }
 

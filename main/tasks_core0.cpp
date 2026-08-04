@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "oledui/oled_ui.h"
 #include "tasks.h"
 
 namespace {
@@ -25,4 +26,5 @@ void app_task(void*) {
 
 void neon_start_core0_tasks() {
   xTaskCreatePinnedToCore(app_task, "app", 4096, nullptr, 5, nullptr, 0);
+  oledui_start();
 }
