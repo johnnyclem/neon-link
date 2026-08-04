@@ -6,8 +6,12 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "halesp/tempo_cv_ledc.hpp"
 #include "neon/link_snapshot.hpp"
+#include "neon/tempo_cv.hpp"
 
+#include "board_pins.h"
+#include "config_store.h"
 #include "tasks.h"
 #include "timeline_bus.h"
 #include "wifi.h"
@@ -31,6 +35,10 @@ void link_service_task(void*) {
   session.start(120.0);
   ESP_LOGI(kTag, "Link session started");
 
+  if (!halesp::tempo_cv_init(kPinTempoCv)) {
+    ESP_LOGW(kTag, "tempo CV init failed");
+  }
+
   neon::TimelineSnapshot prev{};
   bool have_prev = false;
   uint32_t last_logged_peers = UINT32_MAX;
@@ -50,6 +58,10 @@ void link_service_task(void*) {
         ESP_LOGI(kTag, "peers=%u tempo=%.2f playing=%d",
                  static_cast<unsigned>(state.num_peers), state.tempo_bpm,
                  state.playing ? 1 : 0);
+        const auto& cfg = neon_config();
+        halesp::tempo_cv_set_ratio(neon::tempo_cv_ratio_q16(
+            static_cast<uint32_t>(state.tempo_bpm * 1000.0),
+            cfg.tempo_cv_min_bpm, cfg.tempo_cv_max_bpm));
         last_logged_peers = state.num_peers;
         last_logged_tempo = state.tempo_bpm;
       }

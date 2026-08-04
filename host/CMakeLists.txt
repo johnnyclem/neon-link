@@ -27,13 +27,16 @@ find_package(Threads REQUIRED)
 
 add_executable(neon_tests
   tests/doctest_main.cpp
-  tests/test_clock_engine.cpp
+  tests/test_pulse_channel.cpp
+  tests/test_multi_engine.cpp
+  tests/test_config.cpp
   tests/test_fixed_math.cpp
   tests/test_timeline.cpp
   tests/test_link_snapshot.cpp
 )
 target_include_directories(neon_tests PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest)
+  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest
+  ${CMAKE_CURRENT_SOURCE_DIR}/fakes)
 target_link_libraries(neon_tests PRIVATE neon_core neon_hal Threads::Threads)
 
 enable_testing()

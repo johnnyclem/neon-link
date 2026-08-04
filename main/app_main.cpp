@@ -1,6 +1,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "config_store.h"
 #include "tasks.h"
 
 static const char* kTag = "neon";
@@ -14,6 +15,7 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(err);
 
   ESP_LOGI(kTag, "NEON LINK firmware starting");
+  neon_config_load();
 
   // Real-time pulse engine first: the clock path is the product.
   neon_start_core1_tasks();
