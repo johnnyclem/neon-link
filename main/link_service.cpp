@@ -87,8 +87,9 @@ void link_service_task(void*) {
     if (follow_external) {
       uint32_t mbpm = 0;
       if (ext_clock.take_tempo_update(&mbpm)) {
-        ESP_LOGI(kTag, "external tempo -> %u.%03u BPM", mbpm / 1000,
-                 mbpm % 1000);
+        ESP_LOGI(kTag, "external tempo -> %u.%03u BPM",
+                 static_cast<unsigned>(mbpm / 1000),
+                 static_cast<unsigned>(mbpm % 1000));
         session.set_tempo(static_cast<double>(mbpm) / 1000.0);
       }
       int64_t downbeat_us = 0;
