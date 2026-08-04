@@ -4,8 +4,10 @@
 # job, which compiles this library with gcc + -Werror + sanitizers).
 
 set(NEON_CORE_SRCS
-  src/clock_engine.cpp
+  src/pulse_channel.cpp
+  src/multi_engine.cpp
   src/link_snapshot.cpp
+  src/config_model.cpp
 )
 
 if(ESP_PLATFORM)

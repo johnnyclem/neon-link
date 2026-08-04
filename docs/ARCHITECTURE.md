@@ -93,14 +93,42 @@ with the ISR.
 
 Doubles exist only at the Link boundary (core 0). The engine carries tempo
 as **microseconds-per-beat in Q32.32** and advances each output's grid with
-a quotient/remainder accumulator: the per-tick period is
-`mpb / ppqn` kept as `(q, r)`, and the remainder accumulates so that every
-`ppqn` ticks sum to *exactly* `mpb` — the grid cannot drift from the ideal
-beat grid no matter how long the set runs. Host tests assert this
-bit-exactly (`host/tests/test_clock_engine.cpp`).
+a quotient/remainder accumulator. An output's rate is the rational
+`p/q = (ppqn × mult) / div` pulses-per-beat, and the per-tick period
+`mpb·q/p` is kept as `(quotient, remainder over p)` so that every `p`
+ticks sum to *exactly* `q` beats — the grid cannot drift from the session
+grid no matter how long the set runs. Host tests assert this bit-exactly
+(`host/tests/test_pulse_channel.cpp`).
 
 The ESP32-S3 FPU is single-precision only; doubles are software-emulated
 and are banned from anything reachable by the pulse path.
+
+### Output engine (milestone 3)
+
+`neon::MultiClockEngine` owns six merged, time-ordered channels:
+
+- **CLK 1–4** — independent `PulseChannel`s: per-output PPQN/mult/div,
+  trigger or duty-cycle square pulse shape, and shuffle (odd ticks delayed
+  by a percentage of the period; parity is derived from the absolute tick
+  index so swing feel survives re-anchors). Defaults: 4/2/1/24 PPQN.
+- **RESET** — `kStartOfPlay` (one pulse when the transport starts — the
+  HARDWARE.md "Reset / Start pulse" default), `kEveryBar` (a 1/quantum
+  rational channel while playing), or off.
+- **RUN** — gate mirroring the session transport.
+
+Latency compensation is a signed µs offset applied uniformly to every
+emitted edge. Clocks free-run on the beat grid by default;
+`transport_gating` optionally stops them with the transport (Run/Reset
+follow transport either way).
+
+### Configuration
+
+One versioned `neon::Config` struct → a single NVS blob (`neon/cfg`) with
+magic + version + CRC-32; corrupt or missing blobs fall back to compiled
+defaults (`components/neon_core/src/config_model.cpp`, storage behind
+`hal::IStorage`). Tempo CV maps the session tempo linearly onto 0–5 V
+between configurable min/max BPM, emitted as 12-bit LEDC PWM at ~19.5 kHz
+(`halesp::tempo_cv_*`, DAC option open behind the same call shape).
 
 ## Inter-core contract (implemented in milestone 2)
 

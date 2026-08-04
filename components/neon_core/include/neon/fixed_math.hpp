@@ -61,10 +61,49 @@ inline uint64_t div_u128_u64(U128 n, uint64_t d) {
   return q;
 }
 
+// (n.hi:n.lo) / d with remainder. Same range contract as div_u128_u64;
+// on saturation the remainder is 0.
+inline uint64_t div_u128_u64_rem(U128 n, uint64_t d, uint64_t* rem) {
+  if (n.hi == 0) {
+    *rem = n.lo % d;
+    return n.lo / d;
+  }
+  if (n.hi >= d) {
+    *rem = 0;
+    return UINT64_MAX;
+  }
+  uint64_t q = 0;
+  uint64_t r = n.hi;
+  for (int i = 63; i >= 0; --i) {
+    const uint64_t bit = (n.lo >> i) & 1u;
+    const bool carry = (r >> 63) != 0;
+    r = (r << 1) | bit;
+    if (carry || r >= d) {
+      r -= d;
+      q |= 1ull << i;
+    }
+  }
+  *rem = r;
+  return q;
+}
+
 // Q32.32 division: (a << 32) / b.
 inline uint64_t q32_div(uint64_t a, uint64_t b) {
   const U128 n{a >> 32, a << 32};
   return div_u128_u64(n, b);
+}
+
+// Tempo helper: microseconds-per-beat in Q32.32 from milli-BPM (e.g.
+// 120000 = 120 BPM). Values below 1000 (1 BPM) are clamped so the
+// intermediate math cannot overflow.
+inline uint64_t micros_per_beat_q32_from_milli_bpm(uint32_t milli_bpm) {
+  if (milli_bpm < 1000) {
+    milli_bpm = 1000;
+  }
+  const uint64_t n = 60000000000ull;  // µs per minute × 1000
+  const uint64_t i = n / milli_bpm;
+  const uint64_t r = n % milli_bpm;
+  return (i << 32) | ((r << 32) / milli_bpm);
 }
 
 }  // namespace neon
