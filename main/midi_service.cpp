@@ -21,6 +21,7 @@
 #include "halesp/midi_uart.hpp"
 #include "halesp/tempo_cv_ledc.hpp"
 #include "neon/midi/ble_midi_parser.hpp"
+#include "neon/midi/midi_encoder.hpp"
 #include "neon/midi/router.hpp"
 #include "neon/multi_engine.hpp"
 #include "tasks.h"
