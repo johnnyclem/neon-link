@@ -1,0 +1,24 @@
+# NEON LINK — pinned build configuration (ESP-IDF v5.3.x, esp32s3)
+
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# 1 ms tick so task-level scheduling stays fine-grained; actual pulse edges
+# come from the GPTimer alarm, never from the RTOS tick.
+CONFIG_FREERTOS_HZ=1000
+
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# Ableton Link (milestone 2) requires C++ exceptions.
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+
+# Keep core 1 clear for the pulse engine: pin housekeeping to core 0.
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0=y
+CONFIG_ESP_TIMER_TASK_AFFINITY_CPU0=y
+
+# The pulse ISR re-arms the alarm from IRAM and must survive cache-disabled
+# windows (flash writes).
+CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM=y
+CONFIG_GPTIMER_ISR_IRAM_SAFE=y

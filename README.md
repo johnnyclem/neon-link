@@ -119,6 +119,29 @@ Software contributors should begin with `SOFTWARE.md`.
 
 ---
 
+## Firmware
+
+Firmware development follows the nine milestones in [SOFTWARE.md](SOFTWARE.md) §8, one pull request per milestone. Architecture decisions, the dual-core/pulse-engine design, and the proposed pinout live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+**Building** (ESP-IDF v5.3.x, target `esp32s3`):
+
+```
+idf.py set-target esp32s3
+idf.py build flash monitor
+```
+
+**Host-native tests** (no ESP-IDF or hardware required):
+
+```
+cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-host -j
+ctest --test-dir build-host --output-on-failure
+```
+
+CI builds the firmware and runs the host test suite on every pull request.
+
+---
+
 ## Licensing Notes
 
 Ableton Link is dual-licensed (GPLv2+ and commercial).  

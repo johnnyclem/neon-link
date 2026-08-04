@@ -1,0 +1,77 @@
+// Core 1: the real-time pulse engine task. Milestone 1 scope: a single
+// clean 4 PPQN clock on CLK1 at a fixed internal 120 BPM, scheduled through
+// the GPTimer edge emitter. Milestone 2 replaces the fixed tempo with the
+// Ableton Link session timeline.
+
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include "board_pins.h"
+#include "halesp/pulse_hw_gptimer.hpp"
+#include "neon/clock_engine.hpp"
+#include "tasks.h"
+
+namespace {
+
+const char* kTag = "pulse_task";
+
+// Scheduling cadence: refill every 5 ms with a 15 ms horizon and a 2 ms
+// minimum lead. The hardware's parked-poll interval is 1 ms, so a freshly
+// submitted edge is always noticed with >= 1 ms to spare.
+constexpr int64_t kHorizonUs = 15000;
+constexpr int64_t kLeadUs = 2000;
+constexpr TickType_t kRefillTicks = pdMS_TO_TICKS(5);
+
+halesp::PulseHwGptimer g_pulse_hw;
+
+void pulse_task(void*) {
+  const int gpios[] = {kPinClk1};
+  if (!g_pulse_hw.init(gpios, sizeof(gpios) / sizeof(gpios[0]))) {
+    ESP_LOGE(kTag, "pulse hardware init failed");
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  neon::ClockEngine engine;
+  engine.set_tempo(neon::micros_per_beat_q32_from_milli_bpm(120000));
+  neon::OutputSettings out;
+  out.ppqn = 4;
+  out.trig_len_us = 5000;
+  engine.set_output(out);
+
+  int64_t cursor = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
+  engine.reset(cursor);
+  ESP_LOGI(kTag, "clock start: 120 BPM, 4 PPQN on GPIO%d", kPinClk1);
+
+  TickType_t wake = xTaskGetTickCount();
+  for (;;) {
+    const int64_t until = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
+    if (until > cursor) {
+      neon::Edge edges[64];
+      size_t n;
+      do {
+        n = engine.generate(cursor, until, edges,
+                            sizeof(edges) / sizeof(edges[0]));
+        for (size_t i = 0; i < n; ++i) {
+          const uint32_t mask = 1u << kPinClk1;
+          const hal::PulseEdge pe{edges[i].t_us,
+                                  edges[i].high ? mask : 0u,
+                                  edges[i].high ? 0u : mask};
+          while (!g_pulse_hw.submit(pe)) {
+            vTaskDelay(1);
+          }
+        }
+      } while (n == sizeof(edges) / sizeof(edges[0]));
+      cursor = until;
+    }
+    vTaskDelayUntil(&wake, kRefillTicks);
+  }
+}
+
+}  // namespace
+
+void neon_start_core1_tasks() {
+  xTaskCreatePinnedToCore(pulse_task, "pulse", 4096, nullptr,
+                          configMAX_PRIORITIES - 2, nullptr, 1);
+}
