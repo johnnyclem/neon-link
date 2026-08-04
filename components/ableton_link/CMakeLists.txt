@@ -1,7 +1,16 @@
+get_filename_component(NEON_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../.. ABSOLUTE)
+set(LINK_ROOT ${NEON_REPO_ROOT}/third_party/link)
+
 if(CONFIG_NEON_LINK_STUB)
   set(ABLINK_SRCS src/link_stub.cpp)
 else()
-  set(ABLINK_SRCS src/link_session_esp.cpp src/asio_compat.cpp)
+  # asio is built in separate-compilation mode (like Espressif's asio port):
+  # asio.cpp provides the non-inline implementation, except posix_event's
+  # constructor, which src/asio_compat.cpp replaces (see the guard define).
+  set(ABLINK_SRCS
+    src/link_session_esp.cpp
+    src/asio_compat.cpp
+    ${LINK_ROOT}/modules/asio-standalone/asio/src/asio.cpp)
 endif()
 
 idf_component_register(
@@ -13,16 +22,16 @@ idf_component_register(
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
 
 if(NOT CONFIG_NEON_LINK_STUB)
-  get_filename_component(NEON_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../.. ABSOLUTE)
-  set(LINK_ROOT ${NEON_REPO_ROOT}/third_party/link)
   if(NOT EXISTS ${LINK_ROOT}/include/ableton/Link.hpp)
     message(FATAL_ERROR
       "Ableton Link submodule missing — run: git submodule update --init --recursive")
   endif()
-  # Link is header-only; its ESP32 platform is selected automatically via
-  # the globally-defined ESP_PLATFORM macro. asio comes from Link's own
-  # submodule (1.36.0). Exceptions are required (see sdkconfig.defaults).
+  # Link's ESP32 platform is selected automatically via the globally-defined
+  # ESP_PLATFORM macro. asio comes from Link's own submodule (1.36.0).
+  # link_overrides/ shadows upstream headers that predate asio 1.36 (see the
+  # note inside each override) — it must come first on the include path.
   target_include_directories(${COMPONENT_LIB} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/link_overrides
     ${LINK_ROOT}/include
     ${LINK_ROOT}/modules/asio-standalone/asio/include)
   target_compile_options(${COMPONENT_LIB} PRIVATE -fexceptions)
@@ -34,6 +43,7 @@ if(NOT CONFIG_NEON_LINK_STUB)
     # ports, no typeid (IDF builds with -fno-rtti), and signal.h macros
     # newlib does not define but asio's signal_set code references.
     ASIO_STANDALONE
+    ASIO_SEPARATE_COMPILATION
     ASIO_HAS_PTHREADS
     ASIO_DISABLE_SERIAL_PORT
     ASIO_NO_TYPEID
