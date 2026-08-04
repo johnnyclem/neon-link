@@ -1,0 +1,15 @@
+menu "NEON LINK configuration"
+
+config NEON_WIFI_SSID
+    string "WiFi SSID"
+    default ""
+    help
+        Station-mode network to join at boot. Leave empty to skip WiFi
+        (Link still forms a local session). Provisioning via AP mode and
+        the web editor arrives in milestone 8.
+
+config NEON_WIFI_PASSWORD
+    string "WiFi password"
+    default ""
+
+endmenu

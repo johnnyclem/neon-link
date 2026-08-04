@@ -1,0 +1,4 @@
+# CI matrix leg: build with the Link stub instead of the real Ableton Link
+# session, proving the rest of the firmware never depends on the Link
+# dependency compiling. Combined with sdkconfig.defaults.
+CONFIG_NEON_LINK_STUB=y

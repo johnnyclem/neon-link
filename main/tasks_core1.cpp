@@ -1,7 +1,7 @@
-// Core 1: the real-time pulse engine task. Milestone 1 scope: a single
-// clean 4 PPQN clock on CLK1 at a fixed internal 120 BPM, scheduled through
-// the GPTimer edge emitter. Milestone 2 replaces the fixed tempo with the
-// Ableton Link session timeline.
+// Core 1: the real-time pulse engine task. Milestone 2: the clock follows
+// the Ableton Link session — core 0 publishes timeline snapshots through
+// the seqlock bus, this task re-anchors the engine on each new version and
+// schedules a 4 PPQN clock on CLK1 through the GPTimer edge emitter.
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -11,6 +11,7 @@
 #include "halesp/pulse_hw_gptimer.hpp"
 #include "neon/clock_engine.hpp"
 #include "tasks.h"
+#include "timeline_bus.h"
 
 namespace {
 
@@ -34,20 +35,32 @@ void pulse_task(void*) {
   }
 
   neon::ClockEngine engine;
-  engine.set_tempo(neon::micros_per_beat_q32_from_milli_bpm(120000));
   neon::OutputSettings out;
   out.ppqn = 4;
   out.trig_len_us = 5000;
   engine.set_output(out);
+  // Milestone 2: clocks free-run from the session beat grid; transport
+  // gating of outputs arrives with Run/Reset in milestone 3.
+  engine.set_transport_gating(false);
 
-  int64_t cursor = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
-  engine.reset(cursor);
-  ESP_LOGI(kTag, "clock start: 120 BPM, 4 PPQN on GPIO%d", kPinClk1);
+  int64_t cursor = g_pulse_hw.now_us() + kLeadUs;
+  uint32_t timeline_version = 0;
+  bool have_timeline = false;
 
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
+    if (timeline_bus().version() != timeline_version) {
+      neon::TimelineSnapshot snap;
+      timeline_version = timeline_bus().read(snap);
+      engine.retime(snap, cursor);
+      if (!have_timeline) {
+        ESP_LOGI(kTag, "timeline acquired; clock on GPIO%d", kPinClk1);
+        have_timeline = true;
+      }
+    }
+
     const int64_t until = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
-    if (until > cursor) {
+    if (have_timeline && until > cursor) {
       neon::Edge edges[64];
       size_t n;
       do {

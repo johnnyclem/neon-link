@@ -102,14 +102,47 @@ bit-exactly (`host/tests/test_clock_engine.cpp`).
 The ESP32-S3 FPU is single-precision only; doubles are software-emulated
 and are banned from anything reachable by the pulse path.
 
-## Planned inter-core contract (milestone 2)
+## Inter-core contract (implemented in milestone 2)
 
-Core 0 publishes a `TimelineSnapshot { generation, tempo_q32,
-beat_origin_us, quantum, phase, running, latency_us }` through a seqlock;
-core 1 reads it lock-free at each refill and projects upcoming edges from
-the snapshot. The engine never calls Link in the hot path. Config, MIDI,
-capture, and transport messages travel over FreeRTOS queues; core 1 takes
-no mutexes.
+Core 0's Link service task captures session state every 10 ms, converts it
+to an integer `neon::TimelineSnapshot` (`tempo_mpb_q32`, `origin_us`,
+`beat_at_origin_q32`, quantum, playing, peers) via `neon::build_snapshot`,
+and publishes it through a single-writer seqlock (`neon::SeqLock`) — but
+only when the session *materially* changed (tempo beyond ~0.005 BPM,
+transport/peer change, or phase deviating > 1e-4 beats from what the
+previous snapshot predicts). Core 1 checks the seqlock version at each
+5 ms refill, re-anchors the engine with `ClockEngine::retime()` on a new
+version, and projects edges from the snapshot. The engine never calls Link
+in the hot path, and core 1 takes no locks — the seqlock payload is stored
+as relaxed atomic words fenced seq_cst on both sides, so reads are
+retry-based and never block the writer.
+
+`retime()` places tick k of the grid exactly at session beat `k/ppqn`
+(anchor rounding < 2^-32 beats, non-accumulating), so clocks from separate
+NEON LINK units in the same session land on the same instants.
+
+Later milestones add FreeRTOS queues for config, MIDI, capture, and
+transport messages; core 1 still takes no mutexes.
+
+## Ableton Link integration
+
+- `third_party/link` is the official Ableton Link repo, pinned at
+  **Link-3.1.5**, vendored as a recursive submodule (brings standalone
+  asio). Link is header-only; its ESP32 platform (esp_timer clock, asio
+  service task) is auto-selected via ESP-IDF's global `ESP_PLATFORM`
+  define.
+- `components/ableton_link` wraps it behind `hal::ILinkSession`
+  (`ablink::session()`), compiled with `-fexceptions` and
+  `LINK_ESP_TASK_CORE_ID=0` so Link's asio service task stays off the
+  real-time core. The component also provides the lwIP
+  `if_nametoindex`/`if_indextoname` shims the official esp32 example uses.
+- `CONFIG_NEON_LINK_STUB=y` swaps in a free-running internal timeline with
+  the same interface — CI builds both legs so the project never wedges on
+  the Link dependency, and everything downstream of the snapshot is
+  provably independent of it.
+- WiFi STA credentials come from `CONFIG_NEON_WIFI_SSID/PASSWORD`
+  (menuconfig) until the web editor lands in milestone 8; without them the
+  module still forms a local Link session.
 
 ## Proposed ESP32-S3 pinout
 

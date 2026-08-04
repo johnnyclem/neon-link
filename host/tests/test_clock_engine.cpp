@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>
 
 #include <cstdint>
@@ -153,6 +152,162 @@ TEST_CASE("small output buffers never lose or reorder edges") {
     CHECK(expected[i].t_us == got[i].t_us);
     CHECK(expected[i].high == got[i].high);
   }
+}
+
+namespace {
+
+neon::TimelineSnapshot snapshot_at(uint32_t milli_bpm, double beat_at_origin,
+                                   int64_t origin_us, bool playing = true) {
+  neon::TimelineSnapshot tl;
+  tl.tempo_mpb_q32 = neon::micros_per_beat_q32_from_milli_bpm(milli_bpm);
+  tl.origin_us = origin_us;
+  tl.beat_at_origin_q32 =
+      static_cast<int64_t>(beat_at_origin * 4294967296.0);
+  tl.playing = playing ? 1 : 0;
+  return tl;
+}
+
+}  // namespace
+
+TEST_CASE("retime: ticks land on session beats") {
+  // Session at beat 0 exactly at origin: ticks every 125 ms from origin.
+  neon::ClockEngine eng;
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 5000;
+  eng.set_output(s);
+
+  const int64_t origin = 1000000;
+  eng.retime(snapshot_at(120000, 0.0, origin), origin);
+  const auto edges = collect(eng, origin, origin + 1000000);
+  REQUIRE(edges.size() == 16);
+  for (int i = 0; i < 8; ++i) {
+    CHECK(edges[2 * i].t_us == origin + i * 125000);
+    CHECK(edges[2 * i].high);
+  }
+}
+
+TEST_CASE("retime: anchors mid-beat to the next grid tick") {
+  // Beat 0.1 at origin, 4 PPQN: next tick is beat 0.25, i.e. 75 ms later.
+  neon::ClockEngine eng;
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 1000;
+  eng.set_output(s);
+
+  const int64_t origin = 500000;
+  eng.retime(snapshot_at(120000, 0.1, origin), origin);
+  const auto edges = collect(eng, origin, origin + 500000);
+  REQUIRE(!edges.empty());
+  CHECK(edges[0].t_us == origin + 75000);
+  CHECK(edges[0].high);
+  // Subsequent ticks stay on the 125 ms grid.
+  REQUIRE(edges.size() >= 4);
+  CHECK(edges[2].t_us == origin + 75000 + 125000);
+}
+
+TEST_CASE("retime: exact on-tick anchor emits at the anchor") {
+  // Beat 2.5 at 4 PPQN is tick 10 exactly: first rise at origin itself.
+  neon::ClockEngine eng;
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 1000;
+  eng.set_output(s);
+
+  const int64_t origin = 250000;
+  eng.retime(snapshot_at(120000, 2.5, origin), origin);
+  const auto edges = collect(eng, origin, origin + 200000);
+  REQUIRE(!edges.empty());
+  CHECK(edges[0].t_us == origin);
+}
+
+TEST_CASE("retime: negative session beats anchor correctly") {
+  // Link beats can be negative before the session origin. Beat -1.75 at
+  // 4 PPQN is tick -7 exactly: first rise at the origin itself.
+  neon::ClockEngine eng;
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 1000;
+  eng.set_output(s);
+
+  const int64_t origin = 3000000;
+  eng.retime(snapshot_at(120000, -1.75, origin), origin);
+  const auto edges = collect(eng, origin, origin + 400000);
+  REQUIRE(!edges.empty());
+  CHECK(edges[0].t_us == origin);
+  CHECK(edges[2].t_us == origin + 125000);
+}
+
+TEST_CASE("retime: tempo change re-anchors without reordering edges") {
+  neon::ClockEngine eng;
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 2000;
+  eng.set_output(s);
+
+  eng.retime(snapshot_at(120000, 0.0, 0), 0);
+  auto first = collect(eng, 0, 1000000);
+  REQUIRE(!first.empty());
+
+  // 140 BPM from t=1s; the session says beat 2.0 lands exactly there.
+  eng.retime(snapshot_at(140000, 2.0, 1000000), 1000000);
+  const auto second = collect(eng, 1000000, 2000000);
+  REQUIRE(!second.empty());
+
+  // New grid: 140 BPM, 4 PPQN -> ~107142.86 µs period from t=1s.
+  CHECK(second[0].t_us == 1000000);
+  CHECK(second[0].high);
+  const int64_t second_period = second[2].t_us - second[0].t_us;
+  CHECK(second_period >= 107142);
+  CHECK(second_period <= 107143);
+
+  // Continuity: nothing out of order across the retime boundary.
+  int64_t last = first.back().t_us;
+  for (const auto& e : second) {
+    CHECK(e.t_us >= last);
+    last = e.t_us;
+  }
+}
+
+TEST_CASE("retime with transport gating: stop drains the pulse, start resumes") {
+  neon::ClockEngine eng;
+  eng.set_transport_gating(true);
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 5000;
+  eng.set_output(s);
+
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+  neon::Edge buf[8];
+  // Consume the first rise so a fall is pending.
+  REQUIRE(eng.generate(0, 1000, buf, 8) == 1);
+  CHECK(buf[0].high);
+
+  // Transport stops: the pending fall must still drain, then silence.
+  eng.retime(snapshot_at(120000, 0.0, 0, false), 1000);
+  const size_t n = eng.generate(1000, 1000000, buf, 8);
+  REQUIRE(n == 1);
+  CHECK_FALSE(buf[0].high);
+  CHECK(buf[0].t_us == 5000);
+  CHECK(eng.generate(1000, 10000000, buf, 8) == 0);
+
+  // Transport starts again: rises resume on the session grid.
+  eng.retime(snapshot_at(120000, 8.0, 2000000, true), 2000000);
+  REQUIRE(eng.generate(2000000, 2200000, buf, 8) >= 1);
+  CHECK(buf[0].high);
+  CHECK(buf[0].t_us == 2000000);
+}
+
+TEST_CASE("retime without gating ignores the playing flag") {
+  neon::ClockEngine eng;  // gating off by default (milestone 2 behavior)
+  neon::OutputSettings s;
+  s.ppqn = 4;
+  s.trig_len_us = 1000;
+  eng.set_output(s);
+
+  eng.retime(snapshot_at(120000, 0.0, 0, false), 0);
+  neon::Edge buf[4];
+  CHECK(eng.generate(0, 500000, buf, 4) > 0);
 }
 
 TEST_CASE("engine emits nothing before reset or with zero tempo") {

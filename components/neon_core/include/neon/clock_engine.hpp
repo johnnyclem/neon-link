@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "neon/timeline.hpp"
+
 namespace neon {
 
 // Tempo is carried through the engine as microseconds-per-beat in Q32.32
@@ -42,6 +44,19 @@ class ClockEngine {
   void set_tempo(uint64_t micros_per_beat_q32);
   void set_output(const OutputSettings& s);
 
+  // Re-anchor the tick grid to a session timeline so that ticks land on
+  // session beats: tick k sits at beat k/ppqn. The next emitted rise is the
+  // first tick at or after from_us. A pending falling edge is preserved so
+  // an in-flight pulse always completes. Anchor rounding is < 2^-32 beats;
+  // no error accumulates between retimes.
+  void retime(const TimelineSnapshot& tl, int64_t from_us);
+
+  // When enabled, a snapshot with playing=false silences rising edges
+  // (pending falls still complete). Off by default in milestone 2: clocks
+  // free-run from the session beat grid; transport gating drives Run/Reset
+  // from milestone 3.
+  void set_transport_gating(bool enabled);
+
   // Append up to max_out edges with t_us in [t0_us, t1_us), in
   // non-decreasing time order. Returns the number written. If the return
   // value equals max_out there may be more edges in the window; call again
@@ -51,9 +66,11 @@ class ClockEngine {
  private:
   void recompute_period();
   void advance_rise();
+  void anchor_tick(const TimelineSnapshot& tl, int64_t k);
   int64_t effective_trig_len() const;
 
   bool running_ = false;
+  bool gate_transport_ = false;
   uint64_t mpb_q32_ = 0;
 
   // Tick period as quotient/remainder of mpb_q32 / ppqn (see class comment).
