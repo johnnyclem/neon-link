@@ -3,13 +3,18 @@
 # portable C++17 only — no ESP-IDF includes allowed (enforced by the host CI
 # job, which compiles this library with gcc + -Werror + sanitizers).
 
-set(NEON_CORE_SRCS src/clock_engine.cpp)
+set(NEON_CORE_SRCS
+  src/clock_engine.cpp
+  src/link_snapshot.cpp
+)
 
 if(ESP_PLATFORM)
-  idf_component_register(SRCS ${NEON_CORE_SRCS} INCLUDE_DIRS include)
+  idf_component_register(SRCS ${NEON_CORE_SRCS} INCLUDE_DIRS include
+                         REQUIRES neon_hal)
   target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
 else()
   add_library(neon_core STATIC ${NEON_CORE_SRCS})
   target_include_directories(neon_core PUBLIC include)
   target_compile_features(neon_core PUBLIC cxx_std_17)
+  target_link_libraries(neon_core PUBLIC neon_hal)
 endif()

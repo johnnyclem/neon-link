@@ -21,8 +21,12 @@ jobs:
         run: ctest --test-dir build-host --output-on-failure
 
   firmware-build:
-    name: ESP-IDF build (esp32s3)
+    name: ESP-IDF build (esp32s3, ${{ matrix.variant }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [link, stub]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,3 +37,7 @@ jobs:
           esp_idf_version: v5.3.2
           target: esp32s3
           path: '.'
+          command: >-
+            idf.py
+            ${{ matrix.variant == 'stub' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub"' || '' }}
+            build

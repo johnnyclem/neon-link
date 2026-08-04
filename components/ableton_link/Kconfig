@@ -1,0 +1,12 @@
+menu "NEON LINK — Ableton Link"
+
+config NEON_LINK_STUB
+    bool "Build with Link stub (no Ableton Link networking)"
+    default n
+    help
+        Replaces the Ableton Link session with a free-running internal
+        timeline (fixed tempo, no peers). Used as a CI fallback leg and
+        for debugging: everything downstream of the timeline snapshot
+        behaves identically.
+
+endmenu

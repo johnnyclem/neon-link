@@ -20,13 +20,21 @@ if(NEON_SANITIZERS)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_core neon_core)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_hal neon_hal)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_core neon_core)
 
-add_executable(neon_tests tests/test_clock_engine.cpp)
+find_package(Threads REQUIRED)
+
+add_executable(neon_tests
+  tests/doctest_main.cpp
+  tests/test_clock_engine.cpp
+  tests/test_fixed_math.cpp
+  tests/test_timeline.cpp
+  tests/test_link_snapshot.cpp
+)
 target_include_directories(neon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest)
-target_link_libraries(neon_tests PRIVATE neon_core neon_hal)
+target_link_libraries(neon_tests PRIVATE neon_core neon_hal Threads::Threads)
 
 enable_testing()
 add_test(NAME neon_tests COMMAND neon_tests)

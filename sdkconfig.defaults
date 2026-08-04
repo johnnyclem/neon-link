@@ -22,3 +22,10 @@ CONFIG_ESP_TIMER_TASK_AFFINITY_CPU0=y
 # windows (flash writes).
 CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM=y
 CONFIG_GPTIMER_ISR_IRAM_SAFE=y
+
+# Ableton Link networking: multicast discovery needs SO_REUSE; headroom on
+# sockets and default stacks for Link's asio service task.
+CONFIG_LWIP_SO_REUSE=y
+CONFIG_LWIP_MAX_SOCKETS=16
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

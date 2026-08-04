@@ -17,6 +17,7 @@ extern "C" void app_main(void) {
 
   // Real-time pulse engine first: the clock path is the product.
   neon_start_core1_tasks();
-  // Networking / application side (Link, BLE, UI arrive in later milestones).
+  // Networking / application side.
+  neon_start_link_service();
   neon_start_core0_tasks();
 }
