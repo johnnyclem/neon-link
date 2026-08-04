@@ -7,7 +7,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "halesp/clkin_capture.hpp"
 #include "halesp/tempo_cv_ledc.hpp"
+#include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/tempo_cv.hpp"
 
@@ -47,6 +49,13 @@ void link_service_task(void*) {
     ESP_LOGW(kTag, "tempo CV init failed");
   }
 
+  neon::ExtClockEstimator ext_clock;
+  ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
+  if (!halesp::clkin_capture_init(kPinClkIn, kPinRstIn)) {
+    ESP_LOGW(kTag, "CLK/RST IN capture init failed");
+  }
+  bool ext_active = false;
+
   neon::TimelineSnapshot prev{};
   bool have_prev = false;
   uint32_t last_logged_peers = UINT32_MAX;
@@ -55,6 +64,46 @@ void link_service_task(void*) {
   bool ap_recommended_logged = false;
 
   for (;;) {
+    // Bidirectional path: drain CLK/RST IN edges, follow the external
+    // clock when configuration allows (SOFTWARE.md §5 "External Clock
+    // Master mode").
+    halesp::CaptureEvent ev;
+    while (halesp::clkin_capture_pop(&ev)) {
+      if (ev.kind == halesp::CaptureKind::kClock) {
+        ext_clock.on_pulse(ev.t_us);
+      } else {
+        ext_clock.on_reset(ev.t_us);
+      }
+    }
+    const neon::ClockSource source = neon_config().clock_source;
+    const bool follow_external =
+        source != neon::ClockSource::kLinkMaster &&
+        ext_clock.active(esp_timer_get_time());
+    if (follow_external != ext_active) {
+      ESP_LOGI(kTag, "external clock %s",
+               follow_external ? "active: following CLK IN" : "lost");
+      ext_active = follow_external;
+    }
+    if (follow_external) {
+      uint32_t mbpm = 0;
+      if (ext_clock.take_tempo_update(&mbpm)) {
+        ESP_LOGI(kTag, "external tempo -> %u.%03u BPM", mbpm / 1000,
+                 mbpm % 1000);
+        session.set_tempo(static_cast<double>(mbpm) / 1000.0);
+      }
+      int64_t downbeat_us = 0;
+      if (ext_clock.take_phase_request(&downbeat_us)) {
+        ESP_LOGI(kTag, "RST IN: anchoring downbeat");
+        session.request_beat_at_time(downbeat_us);
+      }
+    } else {
+      // Consume stale one-shots so they don't fire on reactivation.
+      uint32_t scratch_t = 0;
+      int64_t scratch_p = 0;
+      ext_clock.take_tempo_update(&scratch_t);
+      ext_clock.take_phase_request(&scratch_p);
+    }
+
     const neon::ActiveNet net = netman::preference().active();
     if (net != last_net) {
       ESP_LOGI(kTag, "active network: %s",

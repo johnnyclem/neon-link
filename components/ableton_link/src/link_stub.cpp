@@ -48,6 +48,15 @@ class LinkStub final : public hal::ILinkSession {
 
   void set_playing(bool playing) override { playing_ = playing; }
 
+  void request_beat_at_time(int64_t t_us) override {
+    if (!started_) {
+      return;
+    }
+    // Re-anchor the internal grid: beat 0 lands at t_us.
+    t0_us_ = t_us;
+    beat0_ = 0.0;
+  }
+
  private:
   double beat_at(int64_t t_us) const {
     const double mpb = 60000000.0 / tempo_bpm_;

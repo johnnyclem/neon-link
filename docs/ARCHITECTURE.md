@@ -172,6 +172,28 @@ transport messages; core 1 still takes no mutexes.
   (menuconfig) until the web editor lands in milestone 8; without them the
   module still forms a local Link session.
 
+## Bidirectional operation (milestone 5)
+
+CLK IN / RST IN edges are timestamped by an IRAM GPIO ISR
+(`halesp::clkin_capture_*`, esp_timer domain — the same timebase as Link
+and the engine) and drained by the Link service, which feeds
+`neon::ExtClockEstimator` (pure, host-tested):
+
+- period → outlier rejection (0.5×–2× the running median: bounce and
+  dropout guard, with automatic relock when the clock rate genuinely
+  halves) → median-of-5 → EMA (α = 1/8) → milli-BPM;
+- hysteretic publishing: a new tempo fires only when the estimate leaves a
+  0.5% band and settles there — robust following without `setTempo` spam
+  that would fight the session;
+- 4×-period (min 2 s) silence deactivates the estimator and the module
+  reverts to Link-master behavior.
+
+`Config.clock_source` selects kAuto (external wins while CLK IN is
+active — default), kLinkMaster, or kExternalMaster; `clock_in_ppqn` sets
+the expected input rate. RST IN produces a phase request forwarded to
+Link's `requestBeatAtTime`, anchoring the session downbeat to the external
+reset.
+
 ## Networking (milestone 4)
 
 - **W5500 SPI Ethernet** (`components/net_manager`): SPI2 at 20 MHz with

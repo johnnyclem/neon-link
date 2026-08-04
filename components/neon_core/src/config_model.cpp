@@ -57,6 +57,11 @@ void config_sanitize(Config* cfg) {
     cfg->tempo_cv_max_bpm = cfg->tempo_cv_min_bpm + 1;
   }
   clamp<uint32_t>(&cfg->quantum_beats, 1, 16);
+  if (cfg->clock_source != ClockSource::kLinkMaster &&
+      cfg->clock_source != ClockSource::kExternalMaster) {
+    cfg->clock_source = ClockSource::kAuto;
+  }
+  clamp<uint32_t>(&cfg->clock_in_ppqn, 1, 96);
 }
 
 size_t config_blob_size() { return sizeof(BlobHeader) + sizeof(Config); }

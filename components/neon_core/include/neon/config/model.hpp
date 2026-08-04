@@ -14,6 +14,12 @@ namespace neon {
 // appending fields and bumping kConfigVersion (decode rejects unknown
 // versions and the caller uses defaults — explicit migrations can be
 // added when there is a fleet to migrate).
+enum class ClockSource : uint8_t {
+  kAuto = 0,            // external when CLK IN is active, Link otherwise
+  kLinkMaster = 1,      // ignore CLK IN
+  kExternalMaster = 2,  // follow CLK IN whenever it is active
+};
+
 struct Config {
   EngineConfig engine;
 
@@ -22,6 +28,10 @@ struct Config {
   uint16_t tempo_cv_max_bpm = 300;
 
   uint32_t quantum_beats = 4;
+
+  // Bidirectional operation (milestone 5).
+  ClockSource clock_source = ClockSource::kAuto;
+  uint32_t clock_in_ppqn = 4;  // pulses per beat expected on CLK IN
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
