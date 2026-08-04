@@ -1,7 +1,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-#include "config_store.h"
+#include "app_state/config_store.h"
 #include "tasks.h"
 
 static const char* kTag = "neon";

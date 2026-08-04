@@ -9,6 +9,9 @@ set(NEON_CORE_SRCS
   src/link_snapshot.cpp
   src/config_model.cpp
   src/ext_clock.cpp
+  src/gfx_framebuffer.cpp
+  src/menu_model.cpp
+  src/ui_render.cpp
 )
 
 if(ESP_PLATFORM)

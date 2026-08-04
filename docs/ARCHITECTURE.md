@@ -194,6 +194,34 @@ the expected input rate. RST IN produces a phase request forwarded to
 Link's `requestBeatAtTime`, anchoring the session downbeat to the external
 reset.
 
+## Local UI (milestone 6)
+
+The UI splits portable-vs-driver like everything else:
+
+- `neon::Framebuffer` — 128×64 1bpp in SSD1306 page layout (flush is a
+  buffer hand-off), 5×7 font with 2×/3× scaling, ASCII dump for golden
+  tests.
+- `neon::MenuModel` — encoder-driven state machine over the live
+  `neon::Config`: Home → Menu → Outputs → per-clock edit (PPQN, mult,
+  div, mode, trigger/duty, shuffle, enable) and Settings (latency, reset
+  mode, clock source, CLK IN PPQN, transport gating). Click toggles edit
+  mode; rotation adjusts with clamping; `take_dirty()` reports changes
+  one-shot.
+- `neon::render_ui` — Home shows large BPM, source/transport/network/peer
+  status, and a quantum-segmented phase bar; list screens share one
+  renderer.
+- `components/oled_ui` — ~15 fps core-0 task: esp_lcd SSD1306 over I2C
+  (400 kHz; a missing display degrades to LED-only), PCNT quadrature
+  encoder (×4 decode, glitch filter, polled click), status LEDs
+  (Network = active net, Run = transport, Beat = first 15% of each beat).
+- `components/app_state` — the shared buses: the timeline seqlock, an
+  `EngineConfig` seqlock (core 1 re-applies + re-anchors on version
+  change), peer/ext-clock status atomics, and the config store with
+  live-apply + 2 s debounced NVS persistence.
+
+SH1106 (132-column offset variant) is a planned Kconfig option once the
+esp_lcd driver line-up covers it; the render path is unaffected.
+
 ## Networking (milestone 4)
 
 - **W5500 SPI Ethernet** (`components/net_manager`): SPI2 at 20 MHz with

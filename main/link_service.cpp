@@ -14,10 +14,10 @@
 #include "neon/tempo_cv.hpp"
 
 #include "board_pins.h"
-#include "config_store.h"
+#include "app_state/config_store.h"
 #include "netman/net_manager.h"
 #include "tasks.h"
-#include "timeline_bus.h"
+#include "app_state/timeline_bus.h"
 #include "wifi.h"
 
 namespace {
@@ -75,6 +75,7 @@ void link_service_task(void*) {
         ext_clock.on_reset(ev.t_us);
       }
     }
+    ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
     const neon::ClockSource source = neon_config().clock_source;
     const bool follow_external =
         source != neon::ClockSource::kLinkMaster &&
@@ -83,6 +84,7 @@ void link_service_task(void*) {
       ESP_LOGI(kTag, "external clock %s",
                follow_external ? "active: following CLK IN" : "lost");
       ext_active = follow_external;
+      app_status_set_ext_clock(follow_external);
     }
     if (follow_external) {
       uint32_t mbpm = 0;
@@ -140,7 +142,9 @@ void link_service_task(void*) {
         last_logged_peers = state.num_peers;
         last_logged_tempo = state.tempo_bpm;
       }
+      app_status_set_peers(state.num_peers);
     }
+    neon_config_flush(esp_timer_get_time());
     vTaskDelay(kCapturePeriod);
   }
 }
