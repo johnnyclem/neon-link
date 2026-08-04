@@ -14,9 +14,13 @@ else()
   # lwIP's sys/socket.h never declares socketpair(); sock_utils implements
   # it and ships the declaration in socketpair.h. asio's socket_ops.ipp
   # calls ::socketpair, so force-include the declaration for the asio TU.
-  set_source_files_properties(
-    ${LINK_ROOT}/modules/asio-standalone/asio/src/asio.cpp
-    PROPERTIES COMPILE_OPTIONS "-include;socketpair.h")
+  # (Guarded: IDF evaluates component CMakeLists in script mode during
+  # early expansion, where set_source_files_properties is not allowed.)
+  if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    set_source_files_properties(
+      ${LINK_ROOT}/modules/asio-standalone/asio/src/asio.cpp
+      PROPERTIES COMPILE_OPTIONS "-include;socketpair.h")
+  endif()
 endif()
 
 idf_component_register(
