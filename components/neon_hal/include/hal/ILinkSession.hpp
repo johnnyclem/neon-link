@@ -30,6 +30,10 @@ class ILinkSession {
 
   virtual void set_tempo(double bpm) = 0;
   virtual void set_playing(bool playing) = 0;
+
+  // Ask the session to place a quantum boundary (beat 0 mod quantum) at
+  // the given time — used when RST IN provides an external downbeat.
+  virtual void request_beat_at_time(int64_t t_us) = 0;
 };
 
 }  // namespace hal

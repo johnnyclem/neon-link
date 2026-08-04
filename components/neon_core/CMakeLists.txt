@@ -8,6 +8,7 @@ set(NEON_CORE_SRCS
   src/multi_engine.cpp
   src/link_snapshot.cpp
   src/config_model.cpp
+  src/ext_clock.cpp
 )
 
 if(ESP_PLATFORM)

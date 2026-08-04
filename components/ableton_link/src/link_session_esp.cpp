@@ -67,6 +67,15 @@ class LinkSessionEsp final : public hal::ILinkSession {
     link_->commitAppSessionState(state);
   }
 
+  void request_beat_at_time(int64_t t_us) override {
+    if (link_ == nullptr) {
+      return;
+    }
+    auto state = link_->captureAppSessionState();
+    state.requestBeatAtTime(0.0, std::chrono::microseconds(t_us), kQuantum);
+    link_->commitAppSessionState(state);
+  }
+
  private:
   // Heap-allocated on first start(): constructing ableton::Link spins up
   // sockets and its asio service task, which must not happen from static
