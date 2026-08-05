@@ -2,9 +2,17 @@
 
 #include <atomic>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
 namespace {
 std::atomic<uint32_t> g_peers{0};
 std::atomic<bool> g_ext_clock{false};
+
+QueueHandle_t gate_queue() {
+  static QueueHandle_t q = xQueueCreate(16, sizeof(GateEvent));
+  return q;
+}
 }  // namespace
 
 neon::SeqLock<neon::TimelineSnapshot>& timeline_bus() {
@@ -27,4 +35,12 @@ void app_status_set_ext_clock(bool active) {
 }
 bool app_status_ext_clock() {
   return g_ext_clock.load(std::memory_order_relaxed);
+}
+
+bool gate_queue_push(const GateEvent& ev) {
+  return xQueueSend(gate_queue(), &ev, 0) == pdTRUE;
+}
+
+bool gate_queue_pop(GateEvent* ev) {
+  return xQueueReceive(gate_queue(), ev, 0) == pdTRUE;
 }

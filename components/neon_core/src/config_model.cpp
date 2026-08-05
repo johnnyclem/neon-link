@@ -62,6 +62,26 @@ void config_sanitize(Config* cfg) {
     cfg->clock_source = ClockSource::kAuto;
   }
   clamp<uint32_t>(&cfg->clock_in_ppqn, 1, 96);
+
+  cfg->ble_enabled = cfg->ble_enabled ? 1 : 0;
+  cfg->midi_clock_out = cfg->midi_clock_out ? 1 : 0;
+  MidiRouteConfig& m = cfg->midi;
+  if (m.midi_channel > 15) {
+    m.midi_channel = 255;
+  }
+  if (m.gate_target > MidiRouteConfig::kTargetRun) {
+    m.gate_target = MidiRouteConfig::kTargetNone;
+  }
+  if (m.cc_latency > 127) {
+    m.cc_latency = MidiRouteConfig::kCcOff;
+  }
+  if (m.cc_shuffle_base > 124) {
+    m.cc_shuffle_base = MidiRouteConfig::kCcOff;
+  }
+  if (m.clock_policy != MidiRouteConfig::ClockPolicy::kReplace &&
+      m.clock_policy != MidiRouteConfig::ClockPolicy::kMerge) {
+    m.clock_policy = MidiRouteConfig::ClockPolicy::kIgnore;
+  }
 }
 
 size_t config_blob_size() { return sizeof(BlobHeader) + sizeof(Config); }

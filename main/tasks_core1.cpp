@@ -67,6 +67,21 @@ void pulse_task(void*) {
       }
     }
 
+    // MIDI note gates: emit immediately (with the scheduling lead) on the
+    // target channel. Point gates at a disabled clock output so the two
+    // sources don't fight.
+    GateEvent gate;
+    while (gate_queue_pop(&gate)) {
+      if (gate.channel < neon::kChannelCount) {
+        const uint32_t mask = 1u << kChannelGpio[gate.channel];
+        const hal::PulseEdge pe{g_pulse_hw.now_us() + kLeadUs,
+                                gate.on ? mask : 0u, gate.on ? 0u : mask};
+        while (!g_pulse_hw.submit(pe)) {
+          vTaskDelay(1);
+        }
+      }
+    }
+
     const int64_t until = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
     if (have_timeline && until > cursor) {
       neon::Edge edges[64];

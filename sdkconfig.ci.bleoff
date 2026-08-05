@@ -1,0 +1,4 @@
+# CI matrix leg: BLE compiled out entirely — proves the firmware (and the
+# blemidi stubs) build with the radio kill switch taken to its extreme.
+# Combined with sdkconfig.defaults.
+# CONFIG_BT_ENABLED is not set

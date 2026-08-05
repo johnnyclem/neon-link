@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [link, stub]
+        variant: [link, stub, bleoff]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,4 +40,5 @@ jobs:
           command: >-
             idf.py
             ${{ matrix.variant == 'stub' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub"' || '' }}
+            ${{ matrix.variant == 'bleoff' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.bleoff"' || '' }}
             build

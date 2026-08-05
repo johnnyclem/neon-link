@@ -1,6 +1,7 @@
 idf_component_register(
   SRCS src/pulse_hw_gptimer.cpp src/storage_nvs.cpp src/tempo_cv_ledc.cpp
        src/clkin_capture.cpp src/encoder_pcnt.cpp src/status_leds.cpp
+       src/midi_uart.cpp
   INCLUDE_DIRS include
   REQUIRES neon_hal driver esp_timer nvs_flash
 )
