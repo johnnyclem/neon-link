@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEON LINK</title>
+<style>
+:root{--pink:#ff2e97;--teal:#19e6d9;--yellow:#ffe33d;--bg:#12081f;--panel:#1c1030;--ink:#f4efff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 "Courier New",monospace;padding:16px;max-width:880px;margin:0 auto}
+h1{font-size:26px;letter-spacing:4px;color:var(--pink);text-shadow:0 0 8px var(--pink);margin-bottom:2px}
+h1 span{color:var(--teal);text-shadow:0 0 8px var(--teal)}
+#status{color:var(--yellow);margin-bottom:16px;min-height:1.4em}
+fieldset{border:2px solid var(--teal);background:var(--panel);margin:0 0 14px;padding:10px 12px}
+legend{color:var(--teal);padding:0 8px;letter-spacing:2px}
+label{display:inline-block;margin:4px 10px 4px 0}
+input,select{background:#0c0618;color:var(--ink);border:1px solid var(--pink);padding:3px 6px;font:inherit;width:6em}
+input[type=checkbox]{width:auto}
+select{width:auto}
+input[type=text],input[type=password]{width:14em}
+.clk{border-top:1px dashed #5a3f8a;padding-top:6px;margin-top:6px}
+.clk b{color:var(--yellow)}
+button{background:var(--pink);color:#fff;border:0;padding:8px 22px;font:inherit;letter-spacing:2px;cursor:pointer;box-shadow:0 0 10px var(--pink)}
+button:hover{background:var(--teal);box-shadow:0 0 10px var(--teal)}
+.bar{display:flex;gap:12px;align-items:center;margin-top:10px}
+small{color:#9a86c8}
+</style>
+</head>
+<body>
+<h1>NEON <span>LINK</span></h1>
+<div id="status">connecting…</div>
+
+<form id="f">
+<fieldset><legend>CLOCK OUTPUTS</legend><div id="clocks"></div></fieldset>
+
+<fieldset><legend>ENGINE</legend>
+<label>Reset <select name="reset_mode"><option value="start">start of play</option><option value="bar">every bar</option><option value="off">off</option></select></label>
+<label>Reset len (µs) <input name="reset_trig_len_us" type="number" min="100" max="100000"></label>
+<label>Latency (µs) <input name="latency_us" type="number" min="-50000" max="50000"></label>
+<label><input name="transport_gating" type="checkbox"> gate clocks with transport</label>
+</fieldset>
+
+<fieldset><legend>CLOCK SOURCE</legend>
+<label>Source <select name="clock_source"><option value="auto">auto</option><option value="link">link master</option><option value="external">external master</option></select></label>
+<label>CLK IN PPQN <input name="clock_in_ppqn" type="number" min="1" max="96"></label>
+<label>Quantum <input name="quantum" type="number" min="1" max="16"></label>
+</fieldset>
+
+<fieldset><legend>TEMPO CV</legend>
+<label>Min BPM <input name="cv_min" type="number" min="1" max="998"></label>
+<label>Max BPM <input name="cv_max" type="number" min="2" max="999"></label>
+</fieldset>
+
+<fieldset><legend>BLE MIDI</legend>
+<label><input name="ble_enabled" type="checkbox"> BLE enabled</label>
+<label><input name="midi_clock_out" type="checkbox"> TRS MIDI clock</label>
+<label>Channel <select name="channel"><option value="255">omni</option></select></label>
+<label>Gate → <select name="gate_target"><option value="255">none</option><option value="0">CLK1</option><option value="1">CLK2</option><option value="2">CLK3</option><option value="3">CLK4</option><option value="4">RUN</option></select></label>
+<label><input name="pitch_cv" type="checkbox"> pitch → CV (1V/oct)</label>
+<label>CC latency <input name="cc_latency" type="number" min="0" max="255"></label>
+<label>CC shuffle base <input name="cc_shuffle_base" type="number" min="0" max="255"></label>
+<label>Clock <select name="clock_policy"><option value="ignore">ignore</option><option value="replace">replace</option><option value="merge">merge</option></select></label>
+<label><input name="transport_enabled" type="checkbox"> BLE transport</label>
+<br><small>255 = disabled/omni</small>
+</fieldset>
+
+<fieldset><legend>WIFI</legend>
+<label>SSID <input name="ssid" type="text" maxlength="32"></label>
+<label>Password <input name="pass" type="password" maxlength="64" placeholder="(unchanged)"></label>
+<br><small>WiFi changes apply after a power cycle.</small>
+</fieldset>
+
+<div class="bar"><button type="submit">SAVE</button><span id="msg"></span></div>
+</form>
+
+<script>
+"use strict";
+const $=n=>document.querySelector(`[name=${n}]`);
+const chsel=$("channel");for(let i=0;i<16;i++){const o=document.createElement("option");o.value=i;o.textContent="ch "+(i+1);chsel.appendChild(o);}
+const clocksDiv=document.getElementById("clocks");
+for(let i=0;i<4;i++){
+  clocksDiv.insertAdjacentHTML("beforeend",`<div class="clk"><b>CLK ${i+1}</b>
+  <label><input data-c="${i}" data-k="enabled" type="checkbox"> on</label>
+  <label>PPQN <input data-c="${i}" data-k="ppqn" type="number" min="1" max="192"></label>
+  <label>×<input data-c="${i}" data-k="mult" type="number" min="1" max="16"></label>
+  <label>÷<input data-c="${i}" data-k="div" type="number" min="1" max="16"></label>
+  <label>Mode <select data-c="${i}" data-k="mode"><option value="trig">trig</option><option value="square">square</option></select></label>
+  <label>Trig µs <input data-c="${i}" data-k="trig_len_us" type="number" min="1000" max="100000" step="1000"></label>
+  <label>Duty % <input data-c="${i}" data-k="duty_pct" type="number" min="1" max="99"></label>
+  <label>Shuffle % <input data-c="${i}" data-k="shuffle_pct" type="number" min="0" max="75"></label></div>`);
+}
+const cinp=(c,k)=>document.querySelector(`[data-c="${c}"][data-k="${k}"]`);
+
+async function loadConfig(){
+  const cfg=await (await fetch("/api/config")).json();
+  cfg.engine.clocks.forEach((c,i)=>{for(const k in c){const el=cinp(i,k);if(!el)continue;
+    if(el.type==="checkbox")el.checked=c[k];else el.value=c[k];}});
+  $("reset_mode").value=cfg.engine.reset_mode;
+  $("reset_trig_len_us").value=cfg.engine.reset_trig_len_us;
+  $("latency_us").value=cfg.engine.latency_us;
+  $("transport_gating").checked=cfg.engine.transport_gating;
+  $("clock_source").value=cfg.clock_source;
+  $("clock_in_ppqn").value=cfg.clock_in_ppqn;
+  $("quantum").value=cfg.quantum;
+  $("cv_min").value=cfg.tempo_cv.min_bpm;$("cv_max").value=cfg.tempo_cv.max_bpm;
+  $("ble_enabled").checked=cfg.ble.enabled;$("midi_clock_out").checked=cfg.ble.midi_clock_out;
+  $("channel").value=cfg.ble.channel;$("gate_target").value=cfg.ble.gate_target;
+  $("pitch_cv").checked=cfg.ble.pitch_cv;$("cc_latency").value=cfg.ble.cc_latency;
+  $("cc_shuffle_base").value=cfg.ble.cc_shuffle_base;$("clock_policy").value=cfg.ble.clock_policy;
+  $("transport_enabled").checked=cfg.ble.transport_enabled;
+  $("ssid").value=cfg.wifi.ssid;
+}
+function buildConfig(){
+  const clocks=[];
+  for(let i=0;i<4;i++)clocks.push({enabled:cinp(i,"enabled").checked,ppqn:+cinp(i,"ppqn").value,
+    mult:+cinp(i,"mult").value,div:+cinp(i,"div").value,mode:cinp(i,"mode").value,
+    trig_len_us:+cinp(i,"trig_len_us").value,duty_pct:+cinp(i,"duty_pct").value,
+    shuffle_pct:+cinp(i,"shuffle_pct").value});
+  const cfg={engine:{clocks,reset_mode:$("reset_mode").value,
+      reset_trig_len_us:+$("reset_trig_len_us").value,latency_us:+$("latency_us").value,
+      transport_gating:$("transport_gating").checked},
+    tempo_cv:{min_bpm:+$("cv_min").value,max_bpm:+$("cv_max").value},
+    quantum:+$("quantum").value,clock_source:$("clock_source").value,
+    clock_in_ppqn:+$("clock_in_ppqn").value,
+    ble:{enabled:$("ble_enabled").checked,midi_clock_out:$("midi_clock_out").checked,
+      channel:+$("channel").value,gate_target:+$("gate_target").value,
+      pitch_cv:$("pitch_cv").checked,cc_latency:+$("cc_latency").value,
+      cc_shuffle_base:+$("cc_shuffle_base").value,clock_policy:$("clock_policy").value,
+      transport_enabled:$("transport_enabled").checked},
+    wifi:{ssid:$("ssid").value,pass:$("pass").value}};
+  return cfg;
+}
+document.getElementById("f").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const msg=document.getElementById("msg");
+  try{
+    const r=await fetch("/api/config",{method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(buildConfig())});
+    msg.textContent=r.ok?"saved ✔":"error "+r.status;
+    if(r.ok){$("pass").value="";await loadConfig();}
+  }catch(err){msg.textContent="failed: "+err;}
+});
+async function poll(){
+  try{
+    const s=await (await fetch("/api/status")).json();
+    document.getElementById("status").textContent=
+      `${s.bpm.toFixed(1)} BPM · ${s.playing?"PLAY":"STOP"} · ${s.network.toUpperCase()} · ${s.peers} peer${s.peers==1?"":"s"}${s.ext_clock?" · EXT CLK":""}`;
+  }catch(e){document.getElementById("status").textContent="offline";}
+  setTimeout(poll,2000);
+}
+loadConfig().then(poll).catch(()=>{document.getElementById("status").textContent="failed to load config";});
+</script>
+</body>
+</html>

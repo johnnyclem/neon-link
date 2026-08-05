@@ -82,6 +82,9 @@ void config_sanitize(Config* cfg) {
       m.clock_policy != MidiRouteConfig::ClockPolicy::kMerge) {
     m.clock_policy = MidiRouteConfig::ClockPolicy::kIgnore;
   }
+
+  cfg->wifi_ssid[sizeof(cfg->wifi_ssid) - 1] = '\0';
+  cfg->wifi_pass[sizeof(cfg->wifi_pass) - 1] = '\0';
 }
 
 size_t config_blob_size() { return sizeof(BlobHeader) + sizeof(Config); }

@@ -3,7 +3,7 @@ idf_component_register(
        wifi.cpp link_service.cpp midi_service.cpp
   INCLUDE_DIRS .
   REQUIRES neon_core neon_hal neon_hal_esp ableton_link net_manager
-           neon_board app_state oled_ui ble_midi
+           neon_board app_state oled_ui ble_midi web_ui
            nvs_flash esp_timer esp_wifi esp_netif esp_event
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

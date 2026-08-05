@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include <cstdio>
+
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_eth.h"
@@ -9,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_wifi.h"
 #include "mdns.h"
 
 #include "board_pins.h"
@@ -140,6 +143,51 @@ void mdns_start() {
   mdns_hostname_set("neon-link");
   mdns_instance_name_set("NEON LINK");
   ESP_LOGI(kTag, "mDNS: neon-link.local");
+}
+
+bool ap_start() {
+  static bool started = false;
+  if (started) {
+    return true;
+  }
+
+  wifi_mode_t mode = WIFI_MODE_NULL;
+  const bool wifi_inited = esp_wifi_get_mode(&mode) == ESP_OK;
+  if (!wifi_inited) {
+    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+    if (esp_wifi_init(&init) != ESP_OK) {
+      return false;
+    }
+    mode = WIFI_MODE_NULL;
+  }
+  esp_netif_create_default_wifi_ap();
+
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+  wifi_config_t cfg = {};
+  std::snprintf(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid),
+                "NEON-LINK-%02X%02X", mac[4], mac[5]);
+  cfg.ap.ssid_len = 0;  // derive from string
+  cfg.ap.channel = 1;
+  cfg.ap.authmode = WIFI_AUTH_OPEN;  // setup network; editor sets STA creds
+  cfg.ap.max_connection = 2;
+
+  const wifi_mode_t new_mode =
+      (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) ? WIFI_MODE_APSTA
+                                                         : WIFI_MODE_AP;
+  if (esp_wifi_set_mode(new_mode) != ESP_OK ||
+      esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK) {
+    return false;
+  }
+  if (!wifi_inited || mode == WIFI_MODE_NULL) {
+    if (esp_wifi_start() != ESP_OK) {
+      return false;
+    }
+  }
+  started = true;
+  ESP_LOGI(kTag, "setup AP up: %s (192.168.4.1)",
+           reinterpret_cast<char*>(cfg.ap.ssid));
+  return true;
 }
 
 neon::NetPreference& preference() { return g_preference; }
