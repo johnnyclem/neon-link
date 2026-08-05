@@ -1,5 +1,6 @@
 #include "webui/web_ui.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
