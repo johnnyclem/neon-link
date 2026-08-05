@@ -11,7 +11,20 @@ namespace halesp {
 namespace {
 constexpr const char* kTag = "pulse_hw";
 constexpr uint64_t kParkIntervalUs = 1000;
+
+std::atomic<uint32_t> g_edges{0};
+std::atomic<uint32_t> g_late_max_us{0};
+std::atomic<uint64_t> g_late_sum_us{0};
 }  // namespace
+
+PulseStats pulse_stats() {
+  PulseStats s;
+  s.edges = g_edges.load(std::memory_order_relaxed);
+  s.late_max_us = g_late_max_us.load(std::memory_order_relaxed);
+  const uint64_t sum = g_late_sum_us.load(std::memory_order_relaxed);
+  s.late_avg_us = s.edges != 0 ? static_cast<uint32_t>(sum / s.edges) : 0;
+  return s;
+}
 
 bool PulseHwGptimer::init(const int* gpios, size_t count) {
   for (size_t i = 0; i < count; ++i) {
@@ -99,6 +112,12 @@ bool IRAM_ATTR PulseHwGptimer::on_alarm(gptimer_handle_t timer,
     }
     if (e.gpio_clear_mask != 0) {
       REG_WRITE(GPIO_OUT_W1TC_REG, e.gpio_clear_mask);
+    }
+    const uint32_t late = static_cast<uint32_t>(now - due);
+    g_edges.fetch_add(1, std::memory_order_relaxed);
+    g_late_sum_us.fetch_add(late, std::memory_order_relaxed);
+    if (late > g_late_max_us.load(std::memory_order_relaxed)) {
+      g_late_max_us.store(late, std::memory_order_relaxed);
     }
     ++tail;
   }

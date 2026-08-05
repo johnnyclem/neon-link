@@ -46,6 +46,9 @@ class PulseChannel {
  private:
   void recompute_period();
   void advance_tick();
+  void skip_silent_ticks();
+  bool tick_emits(int64_t tick) const;
+  int64_t humanize_us() const;
   int64_t shuffled_rise() const;
   int64_t next_shuffled_rise_after_advance();
   int64_t swing_us() const;

@@ -10,6 +10,7 @@
 
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "halesp/pulse_hw_gptimer.hpp"
 #include "neon/config/json.hpp"
 #include "neon/net/preference.hpp"
 #include "netman/net_manager.h"
@@ -84,11 +85,13 @@ esp_err_t handle_status(httpd_req_t* req) {
       mpb_us != 0 ? static_cast<uint32_t>(60000000000ull / mpb_us) : 0;
   const neon::ActiveNet net = netman::preference().active();
 
-  char buf[256];
+  const halesp::PulseStats ps = halesp::pulse_stats();
+  char buf[384];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
-      "\"ext_clock\":%s,\"uptime_s\":%lld}",
+      "\"ext_clock\":%s,\"uptime_s\":%lld,"
+      "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -96,9 +99,38 @@ esp_err_t handle_status(httpd_req_t* req) {
       : net == neon::ActiveNet::kWifi   ? "wifi"
                                         : "none",
       app_status_ext_clock() ? "true" : "false",
-      static_cast<long long>(esp_timer_get_time() / 1000000));
+      static_cast<long long>(esp_timer_get_time() / 1000000),
+      static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),
+      static_cast<unsigned>(ps.late_avg_us));
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, buf, n);
+}
+
+// POST /api/preset?op=save|recall&slot=0..3
+esp_err_t handle_preset(httpd_req_t* req) {
+  char query[64] = {};
+  char op[16] = {};
+  char slot_s[8] = {};
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+      httpd_query_key_value(query, "op", op, sizeof(op)) != ESP_OK ||
+      httpd_query_key_value(query, "slot", slot_s, sizeof(slot_s)) !=
+          ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "op and slot required");
+    return ESP_OK;
+  }
+  const int slot = std::atoi(slot_s);
+  bool ok = false;
+  if (std::strcmp(op, "save") == 0) {
+    ok = neon_preset_save(slot);
+  } else if (std::strcmp(op, "recall") == 0) {
+    ok = neon_preset_recall(slot);
+  }
+  if (!ok) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad op/slot or empty");
+    return ESP_OK;
+  }
+  httpd_resp_set_type(req, "application/json");
+  return httpd_resp_send(req, "{\"ok\":true}", HTTPD_RESP_USE_STRLEN);
 }
 
 }  // namespace
@@ -128,9 +160,14 @@ void webui_start() {
                                   .method = HTTP_GET,
                                   .handler = handle_status,
                                   .user_ctx = nullptr};
+  const httpd_uri_t preset_uri = {.uri = "/api/preset",
+                                  .method = HTTP_POST,
+                                  .handler = handle_preset,
+                                  .user_ctx = nullptr};
   httpd_register_uri_handler(server, &index_uri);
   httpd_register_uri_handler(server, &get_cfg);
   httpd_register_uri_handler(server, &put_cfg);
   httpd_register_uri_handler(server, &status_uri);
+  httpd_register_uri_handler(server, &preset_uri);
   ESP_LOGI(kTag, "web editor up (http://neon-link.local/)");
 }

@@ -76,8 +76,13 @@ void MidiRouter::on_message(const MidiMessage& m) {
       }
       break;
     }
+    case 0xc0:  // program change -> preset recall
+      if (cfg_.pc_presets) {
+        sink_->program_change(m.data1);
+      }
+      break;
     default:
-      break;  // program change: preset recall arrives in milestone 9
+      break;
   }
 }
 

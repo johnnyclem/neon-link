@@ -73,6 +73,9 @@ class Sink final : public neon::IRouterSink {
   void trs_realtime(uint8_t status) override {
     halesp::midi_uart_send_byte(status);
   }
+  void program_change(uint8_t program) override {
+    neon_preset_recall(program % kPresetSlots);
+  }
 };
 
 Sink g_sink;

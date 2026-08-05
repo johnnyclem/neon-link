@@ -1,6 +1,8 @@
 #include "neon/pulse_channel.hpp"
 
 #include "neon/fixed_math.hpp"
+#include "neon/rhythm/euclid.hpp"
+#include "neon/rhythm/random.hpp"
 
 namespace neon {
 
@@ -18,9 +20,57 @@ void PulseChannel::configure(const ClockOutputConfig& cfg) {
   if (cfg_.duty_pct < 1) cfg_.duty_pct = 1;
   if (cfg_.duty_pct > 99) cfg_.duty_pct = 99;
   if (cfg_.shuffle_pct > 75) cfg_.shuffle_pct = 75;
+  if (cfg_.euclid_steps < 1) cfg_.euclid_steps = 1;
+  if (cfg_.euclid_steps > 64) cfg_.euclid_steps = 64;
+  if (cfg_.humanize_pct > 50) cfg_.humanize_pct = 50;
   rate_p_ = cfg_.ppqn * cfg_.mult;
   rate_q_ = cfg_.div;
   recompute_period();
+}
+
+bool PulseChannel::tick_emits(int64_t tick) const {
+  switch (cfg_.rhythm) {
+    case ClockOutputConfig::RhythmMode::kEuclid: {
+      const uint32_t steps = cfg_.euclid_steps;
+      const uint64_t step =
+          tick >= 0 ? static_cast<uint64_t>(tick) % steps
+                    : (steps - (static_cast<uint64_t>(-tick) % steps)) % steps;
+      return euclid_hit(static_cast<uint32_t>(step), steps, cfg_.euclid_fills,
+                        cfg_.euclid_rot);
+    }
+    case ClockOutputConfig::RhythmMode::kProbability:
+      return probability_hit(static_cast<uint64_t>(tick),
+                             cfg_.probability_pct);
+    default:
+      return true;
+  }
+}
+
+int64_t PulseChannel::humanize_us() const {
+  if (cfg_.humanize_pct == 0) {
+    return 0;
+  }
+  const int64_t period_int = static_cast<int64_t>(period_q32_ >> 32);
+  const int64_t max_off = period_int * cfg_.humanize_pct / 100;
+  if (max_off <= 0) {
+    return 0;
+  }
+  return static_cast<int64_t>(
+      tick_hash(static_cast<uint64_t>(tick_index_) ^ 0x48554dull) %
+      static_cast<uint64_t>(max_off + 1));
+}
+
+void PulseChannel::skip_silent_ticks() {
+  // Bounded probe: covers many pattern lengths (euclid steps <= 64) and
+  // makes a miss at probability >= 1% vanishingly unlikely. A genuinely
+  // silent pattern (fills=0, pct=0) parks the channel until the next
+  // retime re-probes.
+  for (int i = 0; i < 1024 && !tick_emits(tick_index_); ++i) {
+    advance_tick();
+  }
+  if (!tick_emits(tick_index_)) {
+    running_ = false;
+  }
 }
 
 void PulseChannel::set_latency(int32_t latency_us) { latency_us_ = latency_us; }
@@ -64,7 +114,16 @@ int64_t PulseChannel::swing_us() const {
   return period_int * cfg_.shuffle_pct / 100;
 }
 
-int64_t PulseChannel::shuffled_rise() const { return rise_us_ + swing_us(); }
+int64_t PulseChannel::shuffled_rise() const {
+  // Combined swing + humanize stays below one period so rises can never
+  // reorder across ticks.
+  int64_t off = swing_us() + humanize_us();
+  const int64_t period_int = static_cast<int64_t>(period_q32_ >> 32);
+  if (period_int > 1 && off > period_int - 1) {
+    off = period_int - 1;
+  }
+  return rise_us_ + off;
+}
 
 void PulseChannel::retime(const TimelineSnapshot& tl, int64_t from_us,
                           bool running) {
@@ -143,10 +202,12 @@ void PulseChannel::retime(const TimelineSnapshot& tl, int64_t from_us,
   while (rise_us_ < from_us) {
     advance_tick();
   }
+  skip_silent_ticks();
 }
 
 int64_t PulseChannel::next_shuffled_rise_after_advance() {
   advance_tick();
+  skip_silent_ticks();
   return shuffled_rise();
 }
 

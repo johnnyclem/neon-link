@@ -18,6 +18,7 @@ struct MidiRouteConfig {
   uint8_t cc_latency = kCcOff;       // CC number mapped to latency
   uint8_t cc_shuffle_base = kCcOff;  // base CC: base..base+3 -> CLK1..4 shuffle
   bool transport_enabled = true;
+  bool pc_presets = true;  // Program Change n recalls preset slot n % 4
 
   enum class ClockPolicy : uint8_t {
     kIgnore = 0,   // TRS clock comes from the Link timeline (default)
@@ -39,6 +40,7 @@ class IRouterSink {
   virtual void shuffle(uint8_t clock_index, uint8_t pct) = 0;
   virtual void transport(bool play) = 0;
   virtual void trs_realtime(uint8_t status) = 0;
+  virtual void program_change(uint8_t program) = 0;
 };
 
 // 1 V/oct pitch mapping: 5 V span = 60 semitones from the base note.

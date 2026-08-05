@@ -112,6 +112,17 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
     cJSON_AddNumberToObject(o, "trig_len_us", c.trig_len_us);
     cJSON_AddNumberToObject(o, "duty_pct", c.duty_pct);
     cJSON_AddNumberToObject(o, "shuffle_pct", c.shuffle_pct);
+    cJSON_AddStringToObject(
+        o, "rhythm",
+        c.rhythm == ClockOutputConfig::RhythmMode::kEuclid ? "euclid"
+        : c.rhythm == ClockOutputConfig::RhythmMode::kProbability
+            ? "probability"
+            : "all");
+    cJSON_AddNumberToObject(o, "euclid_steps", c.euclid_steps);
+    cJSON_AddNumberToObject(o, "euclid_fills", c.euclid_fills);
+    cJSON_AddNumberToObject(o, "euclid_rot", c.euclid_rot);
+    cJSON_AddNumberToObject(o, "probability_pct", c.probability_pct);
+    cJSON_AddNumberToObject(o, "humanize_pct", c.humanize_pct);
     cJSON_AddItemToArray(clocks, o);
   }
   cJSON_AddStringToObject(engine, "reset_mode",
@@ -143,6 +154,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
                           policy_str(cfg.midi.clock_policy));
   cJSON_AddBoolToObject(ble, "transport_enabled",
                         cfg.midi.transport_enabled);
+  cJSON_AddBoolToObject(ble, "pc_presets", cfg.midi.pc_presets);
 
   cJSON* wifi = cJSON_AddObjectToObject(root, "wifi");
   cJSON_AddStringToObject(wifi, "ssid", cfg.wifi_ssid);
@@ -188,6 +200,19 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
         get_u32(o, "trig_len_us", &c.trig_len_us);
         get_u8(o, "duty_pct", &c.duty_pct);
         get_u8(o, "shuffle_pct", &c.shuffle_pct);
+        const cJSON* rhythm = cJSON_GetObjectItemCaseSensitive(o, "rhythm");
+        if (str_eq(rhythm, "all")) {
+          c.rhythm = ClockOutputConfig::RhythmMode::kAll;
+        } else if (str_eq(rhythm, "euclid")) {
+          c.rhythm = ClockOutputConfig::RhythmMode::kEuclid;
+        } else if (str_eq(rhythm, "probability")) {
+          c.rhythm = ClockOutputConfig::RhythmMode::kProbability;
+        }
+        get_u8(o, "euclid_steps", &c.euclid_steps);
+        get_u8(o, "euclid_fills", &c.euclid_fills);
+        get_u8(o, "euclid_rot", &c.euclid_rot);
+        get_u8(o, "probability_pct", &c.probability_pct);
+        get_u8(o, "humanize_pct", &c.humanize_pct);
         ++i;
       }
     }
@@ -240,6 +265,7 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       cfg->midi.clock_policy = MidiRouteConfig::ClockPolicy::kMerge;
     }
     get_bool(ble, "transport_enabled", &cfg->midi.transport_enabled);
+    get_bool(ble, "pc_presets", &cfg->midi.pc_presets);
   }
 
   const cJSON* wifi = cJSON_GetObjectItemCaseSensitive(root, "wifi");

@@ -44,6 +44,15 @@ void config_sanitize(Config* cfg) {
     if (c.mode != ClockOutputConfig::PulseMode::kSquare) {
       c.mode = ClockOutputConfig::PulseMode::kTrigger;
     }
+    if (c.rhythm != ClockOutputConfig::RhythmMode::kEuclid &&
+        c.rhythm != ClockOutputConfig::RhythmMode::kProbability) {
+      c.rhythm = ClockOutputConfig::RhythmMode::kAll;
+    }
+    clamp<uint8_t>(&c.euclid_steps, 1, 64);
+    clamp<uint8_t>(&c.euclid_fills, 0, 64);
+    clamp<uint8_t>(&c.euclid_rot, 0, 63);
+    clamp<uint8_t>(&c.probability_pct, 0, 100);
+    clamp<uint8_t>(&c.humanize_pct, 0, 50);
   }
   if (cfg->engine.reset_mode != ResetMode::kEveryBar &&
       cfg->engine.reset_mode != ResetMode::kOff) {

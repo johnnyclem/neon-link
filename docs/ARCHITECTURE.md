@@ -194,6 +194,27 @@ the expected input rate. RST IN produces a phase request forwarded to
 Link's `requestBeatAtTime`, anchoring the session downbeat to the external
 reset.
 
+## Rhythm Explorer + presets + instrumentation (milestone 9)
+
+- **Rhythm modes per clock output** (on top of the rational grid — skipped
+  ticks advance silently, so patterns stay session-locked): `all`
+  (classic), `euclid` E(fills, steps) with rotation (Bresenham form of
+  Bjorklund — canonical up to rotation, hit at step 0, maximal evenness
+  property is test-asserted), `probability` (per-tick chance). **Humanize**
+  adds a deterministic pseudo-random delay (≤50% of the period); together
+  with shuffle the offset is clamped below one period so edges never
+  reorder. Probability and humanize decisions hash the absolute tick
+  index, so they are reproducible across re-anchors and identical on every
+  unit in a session.
+- **Presets**: four NVS slots snapshotting the full config (CRC-protected
+  like the main blob; WiFi identity excluded on recall). Saved/recalled
+  from the web editor (`POST /api/preset?op=save|recall&slot=n`) or via
+  **MIDI Program Change** (`n % 4`, disable with `ble.pc_presets`).
+- **ISR self-instrumentation**: the pulse ISR records per-edge lateness
+  (scheduled vs. actual); max/avg/count appear under `pulse` in
+  `GET /api/status`, so the first hardware bring-up quantifies output
+  jitter with no extra tooling.
+
 ## Web editor + AP setup (milestone 8)
 
 - **REST API** (`components/web_ui`, esp_http_server on all interfaces):

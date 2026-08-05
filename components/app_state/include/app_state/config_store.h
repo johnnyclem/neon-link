@@ -22,3 +22,9 @@ void neon_config_flush(int64_t now_us);
 
 // Immediate persist + adopt (used at explicit save points).
 bool neon_config_save(const neon::Config& cfg);
+
+// Preset slots (milestone 9): full-config snapshots in NVS, recalled from
+// the web editor or via MIDI Program Change. slot is 0..3.
+inline constexpr int kPresetSlots = 4;
+bool neon_preset_save(int slot);
+bool neon_preset_recall(int slot);  // applies live (WiFi fields excluded)

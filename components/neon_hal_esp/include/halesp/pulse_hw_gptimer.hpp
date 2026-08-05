@@ -9,6 +9,16 @@
 
 namespace halesp {
 
+// ISR self-instrumentation: lateness between an edge's scheduled time and
+// its actual emission (interrupt latency + queue effects). Exposed on
+// /api/status so first hardware bring-up quantifies jitter for free.
+struct PulseStats {
+  uint32_t edges;
+  uint32_t late_max_us;
+  uint32_t late_avg_us;
+};
+PulseStats pulse_stats();
+
 // GPTimer-based pulse emitter (see docs/ARCHITECTURE.md for the RMT vs
 // GPTimer decision). One 1 MHz timer; the alarm is always armed at the
 // earliest pending edge, and the IRAM ISR writes GPIO set/clear registers
