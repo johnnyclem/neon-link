@@ -19,6 +19,11 @@ bool ethernet_start();
 // Advertise neon-link.local via mDNS (call once after init_common()).
 void mdns_start();
 
+// Setup access point: open network "NEON-LINK-XXXX" (XXXX from the MAC)
+// at 192.168.4.1, serving the web editor for first-time configuration.
+// Keeps STA running if it was started. Idempotent.
+bool ap_start();
+
 // Preference state fed by the ETH/WiFi/IP event handlers.
 neon::NetPreference& preference();
 

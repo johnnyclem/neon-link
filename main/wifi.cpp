@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "app_state/config_store.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -32,9 +33,20 @@ void on_wifi_event(void*, esp_event_base_t base, int32_t id, void*) {
   }
 }
 
+// Stored config wins; the menuconfig credentials are the fallback for
+// development builds.
+const char* effective_ssid() {
+  return neon_config().wifi_ssid[0] != '\0' ? neon_config().wifi_ssid
+                                            : CONFIG_NEON_WIFI_SSID;
+}
+const char* effective_pass() {
+  return neon_config().wifi_ssid[0] != '\0' ? neon_config().wifi_pass
+                                            : CONFIG_NEON_WIFI_PASSWORD;
+}
+
 }  // namespace
 
-bool neon_wifi_has_credentials() { return CONFIG_NEON_WIFI_SSID[0] != '\0'; }
+bool neon_wifi_has_credentials() { return effective_ssid()[0] != '\0'; }
 
 void neon_wifi_start() {
   if (!neon_wifi_has_credentials()) {
@@ -54,14 +66,14 @@ void neon_wifi_start() {
                                              &on_wifi_event, nullptr));
 
   wifi_config_t cfg = {};
-  std::strncpy(reinterpret_cast<char*>(cfg.sta.ssid), CONFIG_NEON_WIFI_SSID,
+  std::strncpy(reinterpret_cast<char*>(cfg.sta.ssid), effective_ssid(),
                sizeof(cfg.sta.ssid) - 1);
-  std::strncpy(reinterpret_cast<char*>(cfg.sta.password),
-               CONFIG_NEON_WIFI_PASSWORD, sizeof(cfg.sta.password) - 1);
+  std::strncpy(reinterpret_cast<char*>(cfg.sta.password), effective_pass(),
+               sizeof(cfg.sta.password) - 1);
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
   ESP_ERROR_CHECK(esp_wifi_start());
-  ESP_LOGI(kTag, "connecting to \"%s\"", CONFIG_NEON_WIFI_SSID);
+  ESP_LOGI(kTag, "connecting to \"%s\"", effective_ssid());
 }
 
 bool neon_wifi_wait_ip(uint32_t timeout_ms) {

@@ -40,6 +40,11 @@ struct Config {
   uint8_t ble_enabled = 1;
   uint8_t midi_clock_out = 1;  // 24 PPQN Link-derived clock on TRS
   MidiRouteConfig midi;
+
+  // WiFi station credentials (milestone 8; empty = fall back to the
+  // menuconfig defaults). Changes apply on the next boot.
+  char wifi_ssid[33] = {};
+  char wifi_pass[65] = {};
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"

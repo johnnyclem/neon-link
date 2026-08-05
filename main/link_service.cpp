@@ -18,6 +18,7 @@
 #include "netman/net_manager.h"
 #include "tasks.h"
 #include "app_state/timeline_bus.h"
+#include "webui/web_ui.h"
 #include "wifi.h"
 
 namespace {
@@ -40,6 +41,7 @@ void link_service_task(void*) {
     }
   }
   netman::mdns_start();
+  webui_start();
 
   auto& session = ablink::session();
   session.start(120.0);
@@ -118,8 +120,8 @@ void link_service_task(void*) {
     }
     if (netman::preference().update_should_start_ap(esp_timer_get_time()) &&
         !ap_recommended_logged) {
-      ESP_LOGW(kTag, "no connectivity: setup AP would start here "
-                     "(AP flow arrives with the web editor milestone)");
+      ESP_LOGW(kTag, "no connectivity: starting setup AP");
+      netman::ap_start();
       ap_recommended_logged = true;
     }
     hal::LinkState state;

@@ -194,6 +194,27 @@ the expected input rate. RST IN produces a phase request forwarded to
 Link's `requestBeatAtTime`, anchoring the session downbeat to the external
 reset.
 
+## Web editor + AP setup (milestone 8)
+
+- **REST API** (`components/web_ui`, esp_http_server on all interfaces):
+  `GET /api/status` (BPM/transport/network/peers/ext-clock), `GET
+  /api/config`, `PUT /api/config`. PUT semantics: **partial update** —
+  only fields present in the document change — then sanitize, live-apply
+  through the milestone-6 pipeline (engine seqlock + debounced NVS), and
+  echo the sanitized result.
+- **Config JSON** (`neon/config/json.hpp`, portable, host-tested):
+  string enums, vendored cJSON (the one C dependency in `neon_core`,
+  compiled privately). The WiFi password is **write-only**: encode emits
+  "" and decode ignores empty passwords, so the secret never round-trips
+  through a browser.
+- **Editor page**: single embedded HTML file (vanilla JS, neon 90s
+  styling) served at `/` — clock outputs, engine, clock source, tempo CV,
+  BLE MIDI routing, WiFi credentials; 2 s status ticker.
+- **Setup AP**: when the milestone-4 preference machine's grace expires,
+  `netman::ap_start()` raises an open AP `NEON-LINK-XXXX` (MAC suffix) at
+  192.168.4.1 serving the editor; STA credentials saved there apply on
+  the next boot (stored config outranks the menuconfig fallback).
+
 ## BLE MIDI + TRS MIDI (milestone 7)
 
 - **Transport** (`components/ble_midi`): NimBLE peripheral advertising the
