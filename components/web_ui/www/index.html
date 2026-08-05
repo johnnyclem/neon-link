@@ -70,6 +70,11 @@ small{color:#9a86c8}
 <br><small>WiFi changes apply after a power cycle.</small>
 </fieldset>
 
+<fieldset><legend>PRESETS</legend>
+<div id="presets"></div>
+<small>Recall also via MIDI Program Change 1–4.</small>
+</fieldset>
+
 <div class="bar"><button type="submit">SAVE</button><span id="msg"></span></div>
 </form>
 
@@ -87,7 +92,14 @@ for(let i=0;i<4;i++){
   <label>Mode <select data-c="${i}" data-k="mode"><option value="trig">trig</option><option value="square">square</option></select></label>
   <label>Trig µs <input data-c="${i}" data-k="trig_len_us" type="number" min="1000" max="100000" step="1000"></label>
   <label>Duty % <input data-c="${i}" data-k="duty_pct" type="number" min="1" max="99"></label>
-  <label>Shuffle % <input data-c="${i}" data-k="shuffle_pct" type="number" min="0" max="75"></label></div>`);
+  <label>Shuffle % <input data-c="${i}" data-k="shuffle_pct" type="number" min="0" max="75"></label>
+  <br>
+  <label>Rhythm <select data-c="${i}" data-k="rhythm"><option value="all">all</option><option value="euclid">euclid</option><option value="probability">probability</option></select></label>
+  <label>Steps <input data-c="${i}" data-k="euclid_steps" type="number" min="1" max="64"></label>
+  <label>Fills <input data-c="${i}" data-k="euclid_fills" type="number" min="0" max="64"></label>
+  <label>Rot <input data-c="${i}" data-k="euclid_rot" type="number" min="0" max="63"></label>
+  <label>Prob % <input data-c="${i}" data-k="probability_pct" type="number" min="0" max="100"></label>
+  <label>Humanize % <input data-c="${i}" data-k="humanize_pct" type="number" min="0" max="50"></label></div>`);
 }
 const cinp=(c,k)=>document.querySelector(`[data-c="${c}"][data-k="${k}"]`);
 
@@ -115,7 +127,10 @@ function buildConfig(){
   for(let i=0;i<4;i++)clocks.push({enabled:cinp(i,"enabled").checked,ppqn:+cinp(i,"ppqn").value,
     mult:+cinp(i,"mult").value,div:+cinp(i,"div").value,mode:cinp(i,"mode").value,
     trig_len_us:+cinp(i,"trig_len_us").value,duty_pct:+cinp(i,"duty_pct").value,
-    shuffle_pct:+cinp(i,"shuffle_pct").value});
+    shuffle_pct:+cinp(i,"shuffle_pct").value,rhythm:cinp(i,"rhythm").value,
+    euclid_steps:+cinp(i,"euclid_steps").value,euclid_fills:+cinp(i,"euclid_fills").value,
+    euclid_rot:+cinp(i,"euclid_rot").value,probability_pct:+cinp(i,"probability_pct").value,
+    humanize_pct:+cinp(i,"humanize_pct").value});
   const cfg={engine:{clocks,reset_mode:$("reset_mode").value,
       reset_trig_len_us:+$("reset_trig_len_us").value,latency_us:+$("latency_us").value,
       transport_gating:$("transport_gating").checked},
@@ -130,6 +145,22 @@ function buildConfig(){
     wifi:{ssid:$("ssid").value,pass:$("pass").value}};
   return cfg;
 }
+const presetsDiv=document.getElementById("presets");
+for(let s=0;s<4;s++){
+  presetsDiv.insertAdjacentHTML("beforeend",
+    `<label>Slot ${s+1} <button type="button" data-p="save" data-s="${s}">save</button>
+     <button type="button" data-p="recall" data-s="${s}">recall</button></label>`);
+}
+presetsDiv.addEventListener("click",async e=>{
+  const b=e.target.closest("button[data-p]");if(!b)return;
+  const msg=document.getElementById("msg");
+  try{
+    const r=await fetch(`/api/preset?op=${b.dataset.p}&slot=${b.dataset.s}`,{method:"POST"});
+    msg.textContent=r.ok?`preset ${+b.dataset.s+1} ${b.dataset.p} ✔`:"preset error";
+    if(r.ok&&b.dataset.p==="recall")await loadConfig();
+  }catch(err){msg.textContent="failed: "+err;}
+});
+
 document.getElementById("f").addEventListener("submit",async e=>{
   e.preventDefault();
   const msg=document.getElementById("msg");

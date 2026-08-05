@@ -29,6 +29,24 @@ struct ClockOutputConfig {
   uint8_t shuffle_pct = 0;
 
   bool enabled = true;
+
+  // Rhythm Explorer (milestone 9): pattern selection on top of the grid.
+  // Skipped ticks advance the grid silently, so patterns stay locked to
+  // the session beat.
+  enum class RhythmMode : uint8_t {
+    kAll = 0,          // every tick fires (classic clock)
+    kEuclid = 1,       // Euclidean E(fills, steps) with rotation
+    kProbability = 2,  // each tick fires with probability_pct
+  };
+  RhythmMode rhythm = RhythmMode::kAll;
+  uint8_t euclid_steps = 16;  // 1..64
+  uint8_t euclid_fills = 16;  // 0..64
+  uint8_t euclid_rot = 0;     // 0..63
+  uint8_t probability_pct = 100;
+
+  // Humanize: deterministic pseudo-random delay of each pulse, up to this
+  // percentage of the period (0..50).
+  uint8_t humanize_pct = 0;
 };
 
 enum class ResetMode : uint8_t {

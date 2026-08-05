@@ -121,7 +121,7 @@ Software contributors should begin with `SOFTWARE.md`.
 
 ## Firmware
 
-Firmware development follows the nine milestones in [SOFTWARE.md](SOFTWARE.md) §8, one pull request per milestone. Architecture decisions, the dual-core/pulse-engine design, and the proposed pinout live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Firmware development followed the nine milestones in [SOFTWARE.md](SOFTWARE.md) §8, one pull request per milestone — **all nine are implemented**: dual-core skeleton, Ableton Link peer, the six-output pulse engine with latency compensation, W5500 Ethernet with preference logic, external clock input driving the session, OLED + encoder UI, BLE MIDI with the §4 routing matrix, the web editor with AP setup, and the Rhythm Explorer / preset / instrumentation polish pass. Architecture decisions, the dual-core/pulse-engine design, and the proposed pinout live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Bench validation on real hardware is the remaining step; each milestone PR carries its hardware-validation checklist, and the firmware self-reports output jitter on `/api/status`.
 
 **Building** (ESP-IDF v5.3.x, target `esp32s3`):
 

@@ -1,5 +1,7 @@
 #include "app_state/config_store.h"
 
+#include <cstring>
+
 #include "esp_log.h"
 #include "halesp/storage_nvs.hpp"
 
@@ -78,5 +80,45 @@ bool neon_config_save(const neon::Config& cfg) {
   g_config = clean;
   engine_config_bus().publish(g_config.engine);
   g_save_pending = false;
+  return true;
+}
+
+namespace {
+const char* preset_key(int slot) {
+  static const char* kKeys[kPresetSlots] = {"p0", "p1", "p2", "p3"};
+  return kKeys[slot];
+}
+}  // namespace
+
+bool neon_preset_save(int slot) {
+  if (slot < 0 || slot >= kPresetSlots) {
+    return false;
+  }
+  uint8_t buf[512];
+  const size_t n = neon::config_encode(g_config, buf, sizeof(buf));
+  if (n == 0 || !g_storage.write_blob(preset_key(slot), buf, n)) {
+    return false;
+  }
+  ESP_LOGI(kTag, "preset %d saved", slot);
+  return true;
+}
+
+bool neon_preset_recall(int slot) {
+  if (slot < 0 || slot >= kPresetSlots) {
+    return false;
+  }
+  uint8_t buf[512];
+  size_t len = 0;
+  neon::Config preset;
+  if (!g_storage.read_blob(preset_key(slot), buf, sizeof(buf), &len) ||
+      !neon::config_decode(buf, len, &preset)) {
+    ESP_LOGW(kTag, "preset %d empty or invalid", slot);
+    return false;
+  }
+  // Presets are performance snapshots: keep the current network identity.
+  std::memcpy(preset.wifi_ssid, g_config.wifi_ssid, sizeof(preset.wifi_ssid));
+  std::memcpy(preset.wifi_pass, g_config.wifi_pass, sizeof(preset.wifi_pass));
+  neon_config_apply(preset);
+  ESP_LOGI(kTag, "preset %d recalled", slot);
   return true;
 }

@@ -30,8 +30,10 @@ struct SinkRecorder final : public neon::IRouterSink {
   std::vector<std::pair<uint8_t, uint8_t>> shuffles;
   std::vector<bool> transports;
   std::vector<uint8_t> trs;
+  std::vector<uint8_t> programs;
 
   void gate(uint8_t target, bool on) override { gates.push_back({target, on}); }
+  void program_change(uint8_t p) override { programs.push_back(p); }
   void pitch_cv(uint16_t r) override { cvs.push_back(r); }
   void latency_offset(int32_t us) override { latencies.push_back(us); }
   void shuffle(uint8_t idx, uint8_t pct) override {
@@ -257,6 +259,20 @@ TEST_CASE("router: transport and clock policies") {
   r.on_realtime(0xfa);
   CHECK(sink.transports.size() == 3);
   CHECK(sink.trs.size() == 3);
+}
+
+TEST_CASE("router: program change recalls presets when enabled") {
+  neon::MidiRouteConfig cfg;
+  SinkRecorder sink;
+  neon::MidiRouter r(cfg, &sink);
+  r.on_message({0xc0, 2, 0, 2});
+  REQUIRE(sink.programs.size() == 1);
+  CHECK(sink.programs[0] == 2);
+
+  cfg.pc_presets = false;
+  r.set_config(cfg);
+  r.on_message({0xc0, 3, 0, 2});
+  CHECK(sink.programs.size() == 1);
 }
 
 TEST_CASE("config sanitize covers the BLE MIDI fields") {
