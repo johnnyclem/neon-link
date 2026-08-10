@@ -72,16 +72,64 @@ NEON LINK is designed to beat it on nearly every axis:
 
 ---
 
+## Visuals & Mockups
+
+### 10HP Panel Concept (Photorealistic)
+![NEON LINK 10HP panel mockup](docs/images/uxCeJ.jpg)
+
+### 10HP Flat Panel Layout
+![NEON LINK 10HP flat panel](docs/images/lwBHG.jpg)
+
+### 8HP Variant (Photorealistic)
+![NEON LINK 8HP panel mockup](docs/images/NO9KJ.jpg)
+
+### 8HP Variant (Flat Layout)
+![NEON LINK 8HP flat panel](docs/images/6ZyCS.jpg)
+
+### System Block Diagram
+![NEON LINK system architecture](docs/images/z6exi.jpg)
+
+### Power & I/O Schematic Overview
+![NEON LINK power and I/O schematic](docs/images/wRi6I.jpg)
+
+> These are concept renderings for direction and discussion. Final mechanical drawings, exact jack coordinates, and production schematics will live in the hardware design files (KiCad, etc.).  
+> **Note**: 10HP is preferred for comfort and full feature set. 8HP is a viable denser alternative if skiff space is critical.
+
+### Pocket Operator Format Concept
+
+Teenage Engineering Pocket Operator form factor — already supported in Eurorack via community adapters and mounts. This explores a portable / hybrid version of NEON LINK.
+
+**3/4 View**  
+![NEON LINK PO-style 3/4](docs/images/po/CoLkx.jpg)
+
+**Front Product Shot**  
+![NEON LINK PO-style front](docs/images/po/YVGb9.jpg)
+
+**With Eurorack Adapter Concept**  
+![NEON LINK PO in Eurorack mount](docs/images/po/RR3MI.jpg)
+
+**Flat Technical Layout**  
+![NEON LINK PO flat layout](docs/images/po/ayxA2.jpg)
+
+> The PO format trades some I/O density for extreme portability and a different interaction model (button grid + small knobs). It can live standalone or drop into a Eurorack case via adapter. Feature prioritization for this form factor would likely focus on Link + 1–2 clocks + MIDI + BLE rather than the full 4-clock Eurorack complement.
+
+---
+
 ## Documentation
 
 | Document | Audience | Description |
 |----------|----------|-------------|
 | **[HARDWARE.md](HARDWARE.md)** | Hardware Engineer | Exhaustive hardware PRD — mechanical, electrical, power, I/O specs, BOM targets, prototype phases, acceptance criteria |
 | **[SOFTWARE.md](SOFTWARE.md)** | Software / Firmware Architect | Full software architecture handoff — dual-core strategy, Link integration, BLE MIDI routing matrix, UI requirements, milestones, risks |
+| **[FEATURES.md](FEATURES.md)** | Everyone | **Authoritative feature priority list** (Must / Should / Nice / Deferred) after AMYboard pivot |
 | **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
+| **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
+| **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
+| **[ADDENDUM_01-SOFTWARE.md](ADDENDUM_01-SOFTWARE.md)** | Software / Firmware | BLE MIDI standards, compatibility, scope, latency expectations, and build guidance |
 
 Start with the Executive Briefing if you are joining hardware, then dive into `HARDWARE.md`.  
-Software contributors should begin with `SOFTWARE.md`.
+Software contributors should begin with `FEATURES.md` + `SOFTWARE.md` + `ADDENDUM_01-SOFTWARE.md`.  
+For the Bela Gem platform variant, see `docs/BELA_GEM_SPEC.md`.
 
 ---
 
@@ -116,29 +164,6 @@ Software contributors should begin with `SOFTWARE.md`.
 - Bold geometric shapes, grids, abstract motifs
 - Highly legible but playful typography
 - The module should look like it belongs in a 1993 locker while remaining fully professional in use
-
----
-
-## Firmware
-
-Firmware development followed the nine milestones in [SOFTWARE.md](SOFTWARE.md) §8, one pull request per milestone — **all nine are implemented**: dual-core skeleton, Ableton Link peer, the six-output pulse engine with latency compensation, W5500 Ethernet with preference logic, external clock input driving the session, OLED + encoder UI, BLE MIDI with the §4 routing matrix, the web editor with AP setup, and the Rhythm Explorer / preset / instrumentation polish pass. Architecture decisions, the dual-core/pulse-engine design, and the proposed pinout live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Bench validation on real hardware is the remaining step; each milestone PR carries its hardware-validation checklist, and the firmware self-reports output jitter on `/api/status`.
-
-**Building** (ESP-IDF v5.3.x, target `esp32s3`):
-
-```
-idf.py set-target esp32s3
-idf.py build flash monitor
-```
-
-**Host-native tests** (no ESP-IDF or hardware required):
-
-```
-cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-host -j
-ctest --test-dir build-host --output-on-failure
-```
-
-CI builds the firmware and runs the host test suite on every pull request.
 
 ---
 
