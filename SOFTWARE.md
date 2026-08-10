@@ -1,10 +1,14 @@
 # NEON LINK — Software Architect Handoff
 
 **Project**: Bidirectional Ableton Link + BLE MIDI Eurorack Module  
-**Codename / Working Name**: NEON LINK (final name TBD)  
-**Date**: 2026-07-28  
-**Target Form Factor**: 8–10 HP Eurorack  
+**Codename / Working Name**: NEON LINK / Formidable (final name TBD)  
+**Date**: 2026-07-28 (updated 2026-08-09)  
+**Target Form Factor**: 10 HP Eurorack (AMYboard base)  
 **Hardware Lead Context**: This document is the primary handoff for firmware / software architecture.
+
+**Related documents**:
+- [`FEATURES.md`](FEATURES.md) — **Authoritative feature priority list** (Must / Should / Nice / Deferred)
+- [`ADDENDUM_01-SOFTWARE.md`](ADDENDUM_01-SOFTWARE.md) — BLE MIDI standards, compatibility, latency, scope, and build guidance
 
 ---
 
@@ -12,43 +16,42 @@
 
 We are building a superior alternative to the Circuit Happy ML:2m ($250, 2HP, WiFi-only, one-way, two outputs, no local display, no inputs).
 
-### Primary Differentiators
-| Capability                    | ML:2m              | NEON LINK (ours)                          |
-|------------------------------|--------------------|-------------------------------------------|
-| Directionality               | One-way            | True bidirectional (Clock/Reset In)       |
-| Networking                   | WiFi only          | WiFi + RJ45 Ethernet                      |
-| Outputs                      | 2 CV + optional MIDI | 4 independent clocks + Reset + Run + Tempo CV + TRS MIDI |
-| Local UI                     | Buttons + LEDs     | OLED + encoder                            |
-| BLE MIDI                     | None               | Full notes/CC/clock → CV/Gate + TRS       |
-| Price target (components)    | N/A                | < $65–75                                  |
+**Platform decision (2026-08-09)**: Primary hardware base is the **AMYboard** (ESP32-S3, 10HP, Eurorack power, 2× ±10 V CV I/O, TRS MIDI, I2C). We deliberately limit ourselves to two CV outputs. Additional clock divisions are left to mults and existing modules (Pam’s Workout, etc.).
 
-**Core promise**: A rock-solid Ableton Link peer that also functions as a wireless MIDI-to-CV bridge and multi-clock generator, with Ethernet reliability and a real local interface.
+### Primary Differentiators (v1)
+| Capability                    | ML:2m              | NEON LINK / Formidable (v1)               |
+|------------------------------|--------------------|-------------------------------------------|
+| Directionality               | One-way            | **True bidirectional** (Clock In → Link)  |
+| Networking                   | WiFi only          | WiFi (Ethernet later via add-on)          |
+| Outputs                      | 2 CV               | Tempo CV + 1 flexible clock/gate + TRS MIDI |
+| Local UI                     | Buttons + LEDs     | **OLED + encoder**                        |
+| BLE MIDI                     | None               | **Full** notes/CC/transport → CV + MIDI   |
+| Hardware cost                | ~$250 retail       | Extremely low (AMYboard ≈ $30)            |
+
+**Core promise**: A rock-solid Ableton Link peer that also functions as a wireless MIDI-to-CV bridge, with Tempo CV and one flexible clock/gate output, in 10HP, at very low cost.
+
+See [`FEATURES.md`](FEATURES.md) for the full prioritized list and success criteria.
 
 ---
 
 ## 2. Hardware Platform
 
-### MCU
-- **ESP32-S3-WROOM-1** (N8 or N16R8 recommended)
-- Dual-core Xtensa, WiFi + BLE onboard, sufficient GPIO and peripherals
-- One core for networking / Link / BLE
-- One core (or high-priority tasks) for real-time pulse generation
+### Primary Target: AMYboard
+- **MCU**: ESP32-S3-WROOM-1 (dual-core, WiFi + BLE, PSRAM)
+- **Form factor**: 10HP Eurorack with acrylic panel
+- **Power**: Eurorack 10-pin (+12 V) + USB-C
+- **Existing I/O**:
+  - 2× CV out (±10 V, GP8413 DAC)
+  - 2× CV in (±10 V, ADS1015 ADC)
+  - TRS MIDI in + out
+  - Stereo audio in/out (switchable line / modular levels)
+  - S/PDIF in/out
+  - Front-panel I2C (Grove) for OLED + encoder
+  - MicroSD
+- **Outputs for v1**: Tempo CV on one CV out; primary clock/gate on the second CV out (or buffered GPIO if needed)
+- **Inputs for v1**: Clock In (and optional Reset In) on the two CV inputs
 
-### Key Peripherals
-- **Ethernet**: W5500 on SPI (prefer Ethernet when cable is present)
-- **Display**: 0.96" or 1.3" SSD1306 / SH1106 OLED over I2C
-- **User input**: Rotary encoder with push button
-- **Status LEDs**: Network, Beat, Run (3×)
-- **Outputs** (5 V logic level):
-  - 4× independent Clock
-  - 1× Reset / Start pulse
-  - 1× Run / Stop gate
-  - 1× Tempo CV (0–5 V, filtered PWM or MCP4725 DAC)
-  - 1× TRS MIDI out (Type A)
-- **Inputs**:
-  - Clock In (protected, Schmitt)
-  - Reset In
-- **Power**: +12 V from Eurorack bus → efficient buck → 3.3 V. Target <150 mA.
+Ethernet (W5500) remains an optional later add-on. Custom multi-output PCBs are deferred until the software stack is proven.
 
 ### Real-time Requirements
 - Clock/gate jitter must be low enough for musical use (sub-millisecond target, preferably much tighter).
@@ -57,32 +60,28 @@ We are building a superior alternative to the Circuit Happy ML:2m ($250, 2HP, Wi
 
 ---
 
-## 3. Locked Feature Set (v1)
+## 3. Feature Set
 
-### Must-Have
-- Ableton Link 3.x (tempo, phase, start/stop sync)
-- WiFi (2.4 GHz) + Ethernet (W5500)
-- Bidirectional operation:
-  - Link → modular (classic behavior)
-  - External clock → Link (measure period, set tempo, attempt phase alignment)
-- 4 independent clock outputs with per-output:
-  - PPQN / division / multiplication
-  - Trigger length or square duty cycle
-  - Shuffle
-- Dedicated Reset pulse and Run gate
-- Tempo CV output (0–5 V, software scalable)
-- OLED local UI (BPM, phase bar, network status, current mappings, latency)
-- Web-based editor (configuration, WiFi, firmware update style of ML:2m)
-- Latency / delay compensation (adjustable from panel and web)
-- TRS MIDI out
-- **BLE MIDI** (notes, velocity, CCs, program change, clock, transport)
-- Ability to fully disable BLE for maximum Link reliability
+**Authoritative prioritized list**: see [`FEATURES.md`](FEATURES.md).
 
-### Explicitly Out of Scope for v1
+### Must-Have (summary — see FEATURES.md for full detail)
+- Ableton Link (WiFi) — tempo, phase, transport
+- Bidirectional: external Clock In can drive Link tempo
+- Tempo CV on one AMYboard CV out
+- Primary configurable clock/gate on the second CV out
+- BLE MIDI (notes / CCs / transport) → CV + TRS MIDI, fully disableable
+- TRS MIDI I/O (already on board)
+- OLED + encoder local UI via I2C
+- Eurorack power + 10HP form factor (AMYboard)
+
+### Explicitly Out of Scope / Deferred for First Hardware
+- 4+ independent clock outputs
+- Onboard Ethernet (external module later)
+- Complex polyphonic MIDI-to-CV voice allocation
+- Custom multi-output PCB before software is proven on AMYboard
 - Ableton Link Audio streaming
-- Full polyphonic MIDI-to-CV voice allocation beyond simple note → pitch + gate
 - Touch screen
-- Battery / portable standalone mode
+- Battery / portable mode as a primary goal
 
 ---
 
@@ -90,7 +89,7 @@ We are building a superior alternative to the Circuit Happy ML:2m ($250, 2HP, Wi
 
 | Incoming Message       | Default Behavior                                      | Configurable Options                          |
 |------------------------|-------------------------------------------------------|-----------------------------------------------|
-| Note On/Off            | Pitch → Tempo CV (1 V/oct scaled) + Gate on selected output | Route gate to any of the 4 clocks or Run     |
+| Note On/Off            | Pitch → Tempo CV (1 V/oct scaled) + Gate on primary clock out | Route gate to available outs / Run behavior |
 | Velocity               | Ignored or secondary filtered PWM (v1.1)              | Later expansion                               |
 | CC                     | Software-mappable (latency, PPQN, shuffle, CV offset) | OLED + web menu                               |
 | MIDI Clock             | Parallel or fallback to Link pulse engine             | Merge / replace / ignore                      |
