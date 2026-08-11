@@ -185,13 +185,35 @@ This must be resolved before any public release or sale.
 
 ## Getting Started
 
+### Run on AMYboard (primary v1 target)
+
+The firmware builds for the shorepine **AMYboard** 10HP Eurorack module.
+See **[docs/AMYBOARD.md](docs/AMYBOARD.md)** for the full I/O map, flash
+instructions, and first-boot WiFi setup.
+
+```bash
+cd neon-link
+git submodule update --init --recursive
+. ~/esp/esp-idf-v5.3.2/export.sh          # ESP-IDF v5.3.2
+idf.py set-target esp32s3
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" build
+idf.py -p /dev/cu.usbmodem* flash monitor
+```
+
+Host unit tests (no ESP-IDF):
+
+```bash
+cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-host -j && ctest --test-dir build-host --output-on-failure
+```
+
 **Hardware Engineer**  
 1. Read `EXECUTIVE_BRIEFING.md`  
 2. Read `HARDWARE.md` in full  
 3. Produce block diagram, power tree, proposed pinout, and first-pass BOM  
 
 **Software / Firmware Architect**  
-1. Read `SOFTWARE.md`  
+1. Read `SOFTWARE.md` + `docs/FEATURES.md` + `docs/AMYBOARD.md`  
 2. Validate current best Ableton Link integration path on ESP32-S3  
 3. Stand up dual-core project skeleton and a single clean clock from Link session state  
 

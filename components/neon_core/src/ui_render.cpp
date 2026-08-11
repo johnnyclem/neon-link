@@ -9,13 +9,20 @@ namespace {
 using Font = Framebuffer::Font;
 
 void render_home(const UiStatus& s, Framebuffer& fb) {
-  // Large BPM, centered-ish.
+  // Title strip.
+  fb.draw_text(0, 2, "NEON LINK", Font::kSmall);
+  fb.fill_rect(0, 12, Framebuffer::kWidth, 1, true);
+
+  // Large BPM, centered on the 128×128 canvas.
   char bpm[16];
   std::snprintf(bpm, sizeof(bpm), "%u.%u",
                 static_cast<unsigned>(s.milli_bpm / 1000),
                 static_cast<unsigned>((s.milli_bpm % 1000) / 100));
   const int w = Framebuffer::text_width(bpm, Font::kLarge);
-  fb.draw_text((Framebuffer::kWidth - w) / 2, 8, bpm, Font::kLarge);
+  fb.draw_text((Framebuffer::kWidth - w) / 2, 28, bpm, Font::kLarge);
+  fb.draw_text((Framebuffer::kWidth - Framebuffer::text_width("BPM", Font::kSmall)) /
+                   2,
+               54, "BPM", Font::kSmall);
 
   // Status line: source, transport, network, peers.
   char line[32];
@@ -24,11 +31,11 @@ void render_home(const UiStatus& s, Framebuffer& fb) {
   std::snprintf(line, sizeof(line), "%s %s %s %up",
                 s.ext_clock ? "EXT" : "LINK", s.playing ? "PLAY" : "STOP",
                 net, static_cast<unsigned>(s.peers));
-  fb.draw_text(0, 40, line, Font::kSmall);
+  fb.draw_text(0, 80, line, Font::kSmall);
 
-  // Phase bar: quantum segments along the bottom.
-  const int bar_y = 54;
-  const int bar_h = 8;
+  // Phase bar: quantum segments near the bottom.
+  const int bar_y = 108;
+  const int bar_h = 12;
   fb.rect(0, bar_y, Framebuffer::kWidth, bar_h, true);
   const uint32_t quantum = s.quantum_beats != 0 ? s.quantum_beats : 4;
   const uint32_t span = quantum * 1000;
@@ -44,7 +51,7 @@ void render_home(const UiStatus& s, Framebuffer& fb) {
   for (uint32_t b = 1; b < quantum; ++b) {
     const int x = static_cast<int>(static_cast<uint64_t>(Framebuffer::kWidth) *
                                    b / quantum);
-    fb.fill_rect(x, bar_y - 3, 1, 2, true);
+    fb.fill_rect(x, bar_y - 4, 1, 3, true);
   }
 }
 
@@ -53,7 +60,8 @@ void render_list(const MenuModel& menu, const char* title, Framebuffer& fb) {
   fb.fill_rect(0, 9, Framebuffer::kWidth, 1, true);
 
   const int n = menu.item_count();
-  const int visible = 6;
+  // 128-tall panel: ~12 rows of 9 px after the title.
+  const int visible = 12;
   int first = menu.cursor() - (visible - 1);
   if (first < 0) {
     first = 0;
@@ -63,7 +71,7 @@ void render_list(const MenuModel& menu, const char* title, Framebuffer& fb) {
     if (idx >= n) {
       break;
     }
-    const int y = 12 + row * 9;
+    const int y = 14 + row * 9;
     if (idx == menu.cursor()) {
       fb.draw_text(0, y, menu.editing() ? "*" : ">", Font::kSmall);
     }

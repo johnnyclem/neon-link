@@ -5,15 +5,16 @@
 
 namespace neon {
 
-// 128×64 monochrome framebuffer in SSD1306 page layout (each byte is 8
-// vertical pixels, pages of 8 rows, column-major within a page) so the
-// device flush is a straight buffer hand-off. Portable — host tests render
-// screens and compare ASCII dumps.
+// 128×128 monochrome framebuffer in SSD1306/SH1107 page layout (each byte
+// is 8 vertical pixels, pages of 8 rows, column-major within a page).
+// AMYboard's Grove OLEDs are 128×128 (SSD1327 grayscale / SH1107 mono);
+// smaller 128×64 panels can still be driven by using the top half.
+// Portable — host tests render screens and compare ASCII dumps.
 class Framebuffer {
  public:
   static constexpr int kWidth = 128;
-  static constexpr int kHeight = 64;
-  static constexpr size_t kSize = kWidth * kHeight / 8;
+  static constexpr int kHeight = 128;
+  static constexpr size_t kSize = kWidth * kHeight / 8;  // 2048
 
   enum class Font : uint8_t {
     kSmall = 1,   // 5×7

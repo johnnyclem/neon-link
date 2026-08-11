@@ -39,7 +39,6 @@ class BleMidiParser {
   void deliver(uint8_t status, uint8_t d1, uint8_t d2);
 
   IMidiSink* sink_;
-  uint8_t running_status_ = 0;
   bool in_sysex_ = false;
 };
 

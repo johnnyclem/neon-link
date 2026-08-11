@@ -6,6 +6,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
+#include "halesp/ads1015.hpp"
+#include "sdkconfig.h"
 
 namespace halesp {
 
@@ -41,6 +44,39 @@ bool config_input(int gpio, CaptureKind kind) {
              reinterpret_cast<void*>(static_cast<intptr_t>(kind))) == ESP_OK;
 }
 
+#if CONFIG_NEON_BOARD_AMYBOARD
+// ADS1015 path: poll both CV inputs ~every 1 ms and emit rising-edge
+// events when the signal crosses kThreshVolts. Good enough for external
+// tempo following (period measurement); not for sample-accurate phase.
+constexpr float kThreshVolts = 1.0f;
+constexpr TickType_t kPollTicks = pdMS_TO_TICKS(1);
+
+void ads_poll_task(void*) {
+  bool clk_high = false;
+  bool rst_high = false;
+  for (;;) {
+    float v0 = 0, v1 = 0;
+    if (ads1015_read_volts(0, &v0)) {
+      const bool high = v0 >= kThreshVolts;
+      if (high && !clk_high) {
+        const CaptureEvent ev{CaptureKind::kClock, esp_timer_get_time()};
+        xQueueSend(g_queue, &ev, 0);
+      }
+      clk_high = high;
+    }
+    if (ads1015_read_volts(1, &v1)) {
+      const bool high = v1 >= kThreshVolts;
+      if (high && !rst_high) {
+        const CaptureEvent ev{CaptureKind::kReset, esp_timer_get_time()};
+        xQueueSend(g_queue, &ev, 0);
+      }
+      rst_high = high;
+    }
+    vTaskDelay(kPollTicks);
+  }
+}
+#endif
+
 }  // namespace
 
 bool clkin_capture_init(int clk_gpio, int rst_gpio) {
@@ -48,6 +84,21 @@ bool clkin_capture_init(int clk_gpio, int rst_gpio) {
   if (g_queue == nullptr) {
     return false;
   }
+
+#if CONFIG_NEON_BOARD_AMYBOARD
+  // Pins are -1 on AMYboard: use the onboard ADS1015.
+  if (clk_gpio < 0 || rst_gpio < 0) {
+    if (!ads1015_init()) {
+      ESP_LOGW(kTag, "ADS1015 init failed; external clock disabled");
+      return false;
+    }
+    xTaskCreatePinnedToCore(ads_poll_task, "clkin_ads", 3072, nullptr, 8,
+                            nullptr, 0);
+    ESP_LOGI(kTag, "capturing CLK/RST IN via ADS1015 (CV1/CV2 inputs)");
+    return true;
+  }
+#endif
+
   const esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
     ESP_LOGE(kTag, "isr service install failed: %d", err);

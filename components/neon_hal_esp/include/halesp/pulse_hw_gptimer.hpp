@@ -21,9 +21,11 @@ PulseStats pulse_stats();
 
 // GPTimer-based pulse emitter (see docs/ARCHITECTURE.md for the RMT vs
 // GPTimer decision). One 1 MHz timer; the alarm is always armed at the
-// earliest pending edge, and the IRAM ISR writes GPIO set/clear registers
-// directly, then re-arms for the next edge (or parks with a 1 ms poll when
-// the queue is empty — the producer keeps a >= 2 ms lead so a parked poll
+// earliest pending edge, and the IRAM ISR either:
+//   - writes GPIO set/clear registers directly (custom PCB), or
+//   - updates an atomic channel-level word (AMYboard virtual mode),
+// then re-arms for the next edge (or parks with a 1 ms poll when the
+// queue is empty — the producer keeps a >= 2 ms lead so a parked poll
 // can never miss an edge).
 //
 // Single-producer (core 1 pulse task) / single-consumer (ISR) ring buffer;
@@ -31,11 +33,16 @@ PulseStats pulse_stats();
 class PulseHwGptimer final : public hal::IPulseHw {
  public:
   // gpios: output pins to claim (all must be < 32). Returns false on any
-  // driver error.
-  bool init(const int* gpios, size_t count);
+  // driver error. Pass virtual=true to treat the "GPIO" numbers as bit
+  // indices in an atomic level word (AMYboard CV-DAC path).
+  bool init(const int* gpios, size_t count, bool virtual_channels = false);
 
   bool submit(const hal::PulseEdge& e) override;
   int64_t now_us() const override;
+
+  // Current channel/GPIO level word (bit N high = that output is high).
+  // Safe to read from any context; used by the AMYboard CV mirror task.
+  static uint32_t levels();
 
  private:
   static bool on_alarm(gptimer_handle_t timer,
@@ -47,10 +54,12 @@ class PulseHwGptimer final : public hal::IPulseHw {
   // esp_timer domain minus gptimer count domain, fixed at init. Both derive
   // from the same crystal, so the offset is constant (no drift).
   int64_t offset_us_ = 0;
+  bool virtual_ = false;
 
   hal::PulseEdge ring_[kRingSize] = {};
   std::atomic<uint32_t> head_{0};  // producer writes
   std::atomic<uint32_t> tail_{0};  // ISR writes
 };
+
 
 }  // namespace halesp

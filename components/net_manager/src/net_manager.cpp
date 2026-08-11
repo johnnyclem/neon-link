@@ -61,6 +61,11 @@ void init_common() {
 }
 
 bool ethernet_start() {
+  // AMYboard (and any board without a wired W5500) leaves eth pins at -1.
+  if (kPinEthCs < 0 || kPinEthSclk < 0) {
+    ESP_LOGI(kTag, "no Ethernet pins; WiFi-only");
+    return false;
+  }
   spi_bus_config_t bus = {};
   bus.mosi_io_num = kPinEthMosi;
   bus.miso_io_num = kPinEthMiso;

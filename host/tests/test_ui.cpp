@@ -38,15 +38,15 @@ TEST_CASE("framebuffer pixel ops and page layout") {
   CHECK(lit_pixels(fb) == 0);
 
   fb.set_pixel(0, 0, true);
-  fb.set_pixel(127, 63, true);
-  fb.set_pixel(-1, 0, true);   // out of range: ignored
-  fb.set_pixel(0, 64, true);   // out of range: ignored
+  fb.set_pixel(127, 127, true);
+  fb.set_pixel(-1, 0, true);    // out of range: ignored
+  fb.set_pixel(0, 128, true);   // out of range: ignored
   CHECK(fb.pixel(0, 0));
-  CHECK(fb.pixel(127, 63));
+  CHECK(fb.pixel(127, 127));
   CHECK(lit_pixels(fb) == 2);
 
-  // SSD1306 page layout: (0,0) is bit 0 of byte 0; (127,63) is bit 7 of
-  // the last byte.
+  // Page layout: (0,0) is bit 0 of byte 0; (127,127) is bit 7 of the last
+  // page's last column.
   CHECK((fb.data()[0] & 0x01) != 0);
   CHECK((fb.data()[neon::Framebuffer::kSize - 1] & 0x80) != 0);
 
@@ -95,10 +95,10 @@ TEST_CASE("home screen renders deterministically (golden)") {
   CHECK(dump(a) == dump(b));
   CHECK(lit_pixels(a) > 100);
 
-  // Phase bar: interior fill reaches about half width at phase 2/4.
+  // Phase bar (y≈110 interior): fill reaches about half width at phase 2/4.
   int fill_end = 0;
   for (int x = 2; x < 126; ++x) {
-    if (a.pixel(x, 57)) fill_end = x;
+    if (a.pixel(x, 110)) fill_end = x;
   }
   CHECK(fill_end > 55);
   CHECK(fill_end < 70);

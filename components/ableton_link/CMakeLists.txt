@@ -2,7 +2,7 @@ get_filename_component(NEON_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../.. ABSOLUTE
 set(LINK_ROOT ${NEON_REPO_ROOT}/third_party/link)
 
 if(CONFIG_NEON_LINK_STUB)
-  set(ABLINK_SRCS src/link_stub.cpp)
+  set(ABLINK_SRCS src/link_stub.cpp src/atomic_shim.c)
 else()
   # asio is built in separate-compilation mode (like Espressif's asio port):
   # asio.cpp provides the non-inline implementation, except posix_event's
@@ -10,6 +10,7 @@ else()
   set(ABLINK_SRCS
     src/link_session_esp.cpp
     src/asio_compat.cpp
+    src/atomic_shim.c
     ${LINK_ROOT}/modules/asio-standalone/asio/src/asio.cpp)
   # lwIP's sys/socket.h never declares socketpair(); sock_utils implements
   # it and ships the declaration in socketpair.h. asio's socket_ops.ipp

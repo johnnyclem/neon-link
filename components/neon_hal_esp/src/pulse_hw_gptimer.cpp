@@ -15,6 +15,7 @@ constexpr uint64_t kParkIntervalUs = 1000;
 std::atomic<uint32_t> g_edges{0};
 std::atomic<uint32_t> g_late_max_us{0};
 std::atomic<uint64_t> g_late_sum_us{0};
+std::atomic<uint32_t> g_levels{0};
 }  // namespace
 
 PulseStats pulse_stats() {
@@ -26,11 +27,20 @@ PulseStats pulse_stats() {
   return s;
 }
 
-bool PulseHwGptimer::init(const int* gpios, size_t count) {
+uint32_t PulseHwGptimer::levels() {
+  return g_levels.load(std::memory_order_relaxed);
+}
+
+bool PulseHwGptimer::init(const int* gpios, size_t count, bool virtual_channels) {
+  virtual_ = virtual_channels;
+  g_levels.store(0, std::memory_order_relaxed);
   for (size_t i = 0; i < count; ++i) {
     if (gpios[i] < 0 || gpios[i] >= 32) {
       ESP_LOGE(kTag, "pulse GPIO %d out of w1ts range", gpios[i]);
       return false;
+    }
+    if (virtual_) {
+      continue;  // no real pin to claim
     }
     gpio_config_t io = {};
     io.pin_bit_mask = 1ull << gpios[i];
@@ -107,11 +117,25 @@ bool IRAM_ATTR PulseHwGptimer::on_alarm(gptimer_handle_t timer,
     if (due > now) {
       break;
     }
-    if (e.gpio_set_mask != 0) {
-      REG_WRITE(GPIO_OUT_W1TS_REG, e.gpio_set_mask);
-    }
-    if (e.gpio_clear_mask != 0) {
-      REG_WRITE(GPIO_OUT_W1TC_REG, e.gpio_clear_mask);
+    if (self->virtual_) {
+      // AMYboard: track levels in RAM; a core-1 task mirrors CLK1 onto
+      // the GP8413. Keep the ISR free of I2C.
+      uint32_t lv = g_levels.load(std::memory_order_relaxed);
+      lv |= e.gpio_set_mask;
+      lv &= ~e.gpio_clear_mask;
+      g_levels.store(lv, std::memory_order_relaxed);
+    } else {
+      if (e.gpio_set_mask != 0) {
+        REG_WRITE(GPIO_OUT_W1TS_REG, e.gpio_set_mask);
+      }
+      if (e.gpio_clear_mask != 0) {
+        REG_WRITE(GPIO_OUT_W1TC_REG, e.gpio_clear_mask);
+      }
+      // Keep levels in sync for instrumentation on the GPIO path too.
+      uint32_t lv = g_levels.load(std::memory_order_relaxed);
+      lv |= e.gpio_set_mask;
+      lv &= ~e.gpio_clear_mask;
+      g_levels.store(lv, std::memory_order_relaxed);
     }
     const uint32_t late = static_cast<uint32_t>(now - due);
     g_edges.fetch_add(1, std::memory_order_relaxed);

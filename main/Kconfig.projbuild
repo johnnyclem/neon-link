@@ -1,12 +1,25 @@
 menu "NEON LINK configuration"
 
+choice NEON_BOARD
+    prompt "Target hardware"
+    default NEON_BOARD_CUSTOM
+    help
+        Board profile selects the pin map, pulse path, and CV drivers.
+        AMYboard is the FEATURES.md v1 platform (10HP Eurorack module).
+
+config NEON_BOARD_CUSTOM
+    bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
+config NEON_BOARD_AMYBOARD
+    bool "AMYboard (GP8413 CV outs, ADS1015 CV ins, TRS MIDI)"
+endchoice
+
 config NEON_WIFI_SSID
     string "WiFi SSID"
     default ""
     help
         Station-mode network to join at boot. Leave empty to skip WiFi
-        (Link still forms a local session). Provisioning via AP mode and
-        the web editor arrives in milestone 8.
+        (Link still forms a local session). The web editor / setup AP
+        can also store credentials in NVS after first boot.
 
 config NEON_WIFI_PASSWORD
     string "WiFi password"

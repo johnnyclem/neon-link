@@ -1,0 +1,32 @@
+# AMYboard overlay — use with:
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" build
+#
+# AMYboard modules ship with 16 MB flash + octal PSRAM. Neon-link does not
+# need PSRAM for the pulse path; we only bump the flash size so esptool
+# matches the part.
+
+CONFIG_NEON_BOARD_AMYBOARD=y
+# CONFIG_NEON_BOARD_CUSTOM is not set
+
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+# Match stock AMYboard flash clocking (octal PSRAM companion).
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHFREQ="80m"
+
+# AMYboard ESP32-S3-WROOM modules ship with 8 MB octal PSRAM. WiFi + NimBLE
+# + Ableton Link need the headroom; without SPIRAM the app OOM-crashes in
+# startup and produces no console output.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+
+# AMYboard only exposes the ESP32-S3 native USB (Serial/JTAG) to the host.
+# Put the primary console there so `idf.py monitor` works over USB-C.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+# CONFIG_ESP_CONSOLE_UART is not set

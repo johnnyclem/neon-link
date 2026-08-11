@@ -1,12 +1,8 @@
-// Local UI task: renders the portable menu model to the SSD1306 and feeds
-// it encoder input. Display flushes are full-frame (1 KB over I2C at
-// 400 kHz ≈ 25 ms worst case — fine at ~15 fps, and irrelevant to the
-// pulse path on core 1).
+// Local UI task: renders the portable menu model to a 128×128 panel
+// (SSD1327 / SH1107 over I2C, optional SH1107 over SPI) and feeds it
+// encoder input. Display flushes stay on core 0 — irrelevant to the
+// pulse path on core 1.
 
-#include "driver/i2c_master.h"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -23,55 +19,15 @@
 #include "neon/ui/render.hpp"
 #include "netman/net_manager.h"
 #include "oledui/oled_ui.h"
+#include "oledui/panel128.hpp"
 
 namespace {
 
 const char* kTag = "oled_ui";
-constexpr TickType_t kFrameTicks = pdMS_TO_TICKS(66);  // ~15 fps
-
-esp_lcd_panel_handle_t g_panel = nullptr;
-
-bool display_init() {
-  i2c_master_bus_config_t bus_cfg = {};
-  bus_cfg.i2c_port = I2C_NUM_0;
-  bus_cfg.sda_io_num = static_cast<gpio_num_t>(kPinI2cSda);
-  bus_cfg.scl_io_num = static_cast<gpio_num_t>(kPinI2cScl);
-  bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
-  bus_cfg.glitch_ignore_cnt = 7;
-  bus_cfg.flags.enable_internal_pullup = true;
-  i2c_master_bus_handle_t bus = nullptr;
-  if (i2c_new_master_bus(&bus_cfg, &bus) != ESP_OK) {
-    return false;
-  }
-
-  esp_lcd_panel_io_i2c_config_t io_cfg = {};
-  io_cfg.dev_addr = 0x3c;
-  io_cfg.scl_speed_hz = 400000;
-  io_cfg.control_phase_bytes = 1;
-  io_cfg.lcd_cmd_bits = 8;
-  io_cfg.lcd_param_bits = 8;
-  io_cfg.dc_bit_offset = 6;
-  esp_lcd_panel_io_handle_t io = nullptr;
-  if (esp_lcd_new_panel_io_i2c(bus, &io_cfg, &io) != ESP_OK) {
-    return false;
-  }
-
-  esp_lcd_panel_ssd1306_config_t ssd_cfg = {};
-  ssd_cfg.height = 64;
-  esp_lcd_panel_dev_config_t panel_cfg = {};
-  panel_cfg.bits_per_pixel = 1;
-  panel_cfg.reset_gpio_num = -1;
-  panel_cfg.vendor_config = &ssd_cfg;
-  if (esp_lcd_new_panel_ssd1306(io, &panel_cfg, &g_panel) != ESP_OK) {
-    return false;
-  }
-  if (esp_lcd_panel_reset(g_panel) != ESP_OK ||
-      esp_lcd_panel_init(g_panel) != ESP_OK ||
-      esp_lcd_panel_disp_on_off(g_panel, true) != ESP_OK) {
-    return false;
-  }
-  return true;
-}
+// ~10 fps: a full SSD1327 grayscale frame is 8 KB over I2C (~200 ms worst
+// case at 400 kHz). Diff-less full flushes are fine; lower rate keeps the
+// bus free for GP8413 / ADS1015.
+constexpr TickType_t kFrameTicks = pdMS_TO_TICKS(100);
 
 void assemble_status(neon::UiStatus* s) {
   neon::TimelineSnapshot tl;
@@ -82,7 +38,6 @@ void assemble_status(neon::UiStatus* s) {
   s->playing = tl.playing != 0;
   s->quantum_beats = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
 
-  // Phase within the bar, milli-beats.
   const int64_t now = esp_timer_get_time();
   if (tl.tempo_mpb_q32 != 0) {
     const double mpb_us =
@@ -106,9 +61,12 @@ void assemble_status(neon::UiStatus* s) {
 }
 
 void ui_task(void*) {
-  const bool have_display = display_init();
+  const oledui::PanelKind kind = oledui::panel_init();
+  const bool have_display = kind != oledui::PanelKind::kNone;
   if (!have_display) {
     ESP_LOGW(kTag, "no OLED detected; UI task drives LEDs only");
+  } else {
+    ESP_LOGI(kTag, "panel kind=%d", static_cast<int>(kind));
   }
   halesp::encoder_init(kPinEncA, kPinEncB, kPinEncSw);
   halesp::status_leds_init(kPinLedNet, kPinLedBeat, kPinLedRun);
@@ -127,7 +85,7 @@ void ui_task(void*) {
       menu.on_click();
     }
     if (menu.take_dirty()) {
-      neon_config_apply(ui_cfg);  // live-apply + debounced persist
+      neon_config_apply(ui_cfg);
     }
 
     neon::UiStatus status;
@@ -135,13 +93,13 @@ void ui_task(void*) {
 
     halesp::status_led_net(status.active_net != 0);
     halesp::status_led_run(status.playing);
-    // Beat LED: first 15% of every beat.
     halesp::status_led_beat((status.phase_milli_beats % 1000) < 150);
 
     if (have_display) {
       neon::render_ui(menu, status, fb);
-      esp_lcd_panel_draw_bitmap(g_panel, 0, 0, neon::Framebuffer::kWidth,
-                                neon::Framebuffer::kHeight, fb.data());
+      if (!oledui::panel_flush(fb)) {
+        ESP_LOGW(kTag, "panel flush failed");
+      }
     }
     vTaskDelayUntil(&wake, kFrameTicks);
   }
@@ -150,5 +108,7 @@ void ui_task(void*) {
 }  // namespace
 
 void oledui_start() {
-  xTaskCreatePinnedToCore(ui_task, "oled_ui", 6144, nullptr, 3, nullptr, 0);
+  // 128×128 FB (2 KB) + SSD1327 pack buffer lives in panel128; give the
+  // UI task room for both.
+  xTaskCreatePinnedToCore(ui_task, "oled_ui", 8192, nullptr, 3, nullptr, 0);
 }

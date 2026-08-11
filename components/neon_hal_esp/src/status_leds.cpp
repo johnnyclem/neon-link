@@ -10,6 +10,9 @@ int g_beat = -1;
 int g_run = -1;
 
 bool init_pin(int pin) {
+  if (pin < 0) {
+    return true;  // disabled
+  }
   gpio_config_t io = {};
   io.pin_bit_mask = 1ull << pin;
   io.mode = GPIO_MODE_OUTPUT;

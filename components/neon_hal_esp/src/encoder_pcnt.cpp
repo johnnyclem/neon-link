@@ -15,6 +15,12 @@ int64_t g_sw_change_us = 0;
 }  // namespace
 
 bool encoder_init(int pin_a, int pin_b, int pin_sw) {
+  // -1 pins = no hardware encoder (AMYboard stock, or web-only UI).
+  if (pin_a < 0 || pin_b < 0) {
+    g_unit = nullptr;
+    g_pin_sw = -1;
+    return true;
+  }
   pcnt_unit_config_t unit_cfg = {};
   unit_cfg.high_limit = 32767;
   unit_cfg.low_limit = -32768;

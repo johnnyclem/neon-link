@@ -2,10 +2,14 @@
 // engine — four independently-configured clocks, Reset pulse, Run gate,
 // and latency compensation — scheduled through the GPTimer edge emitter
 // from the published Link timeline.
+//
+// On AMYboard (kPulseVirtual) a second core-1 task mirrors the CLK1 bit
+// of the atomic level word onto GP8413 CV out 2 as a 0/5 V gate.
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #include "board_pins.h"
 #include "app_state/config_store.h"
@@ -13,6 +17,10 @@
 #include "neon/multi_engine.hpp"
 #include "tasks.h"
 #include "app_state/timeline_bus.h"
+
+#if CONFIG_NEON_BOARD_AMYBOARD
+#include "halesp/gp8413.hpp"
+#endif
 
 namespace {
 
@@ -26,21 +34,53 @@ constexpr int64_t kLeadUs = 2000;
 constexpr TickType_t kRefillTicks = pdMS_TO_TICKS(5);
 
 // Edge-stream channel index -> GPIO (all < 32; see board_pins.h).
+// On AMYboard these are virtual bit indices, not real pins.
 constexpr int kChannelGpio[neon::kChannelCount] = {
     kPinClk1, kPinClk2, kPinClk3, kPinClk4, kPinReset, kPinRun,
 };
 
 halesp::PulseHwGptimer g_pulse_hw;
 
+#if CONFIG_NEON_BOARD_AMYBOARD
+// Mirror the CLK1 level onto CV jack 2. Polled at 250 µs — I2C write is
+// ~100 µs, so this is the practical floor for gate edges on the DAC path.
+// Tempo CV is driven separately from the Link service.
+void cv_mirror_task(void*) {
+  bool last_high = false;
+  bool have_last = false;
+  for (;;) {
+    const uint32_t levels = halesp::PulseHwGptimer::levels();
+    const bool high = (levels & (1u << kPinClk1)) != 0;
+    if (!have_last || high != last_high) {
+      halesp::gp8413_set_volts(kAmyCvClockChannel,
+                               high ? kAmyGateHighVolts : kAmyGateLowVolts);
+      last_high = high;
+      have_last = true;
+    }
+    // 250 µs busy-wait via delay; FreeRTOS tick is 1 ms so this is 1 tick.
+    vTaskDelay(1);
+  }
+}
+#endif
+
 void pulse_task(void*) {
-  if (!g_pulse_hw.init(kChannelGpio, neon::kChannelCount)) {
+  if (!g_pulse_hw.init(kChannelGpio, neon::kChannelCount, kPulseVirtual)) {
     ESP_LOGE(kTag, "pulse hardware init failed");
     vTaskDelete(nullptr);
     return;
   }
 
   neon::MultiClockEngine engine;
-  engine.set_config(neon_config().engine);
+  neon::EngineConfig eng_cfg = neon_config().engine;
+#if CONFIG_NEON_BOARD_AMYBOARD
+  // Only one physical clock jack: keep CLK1 (16ths) enabled, mute the
+  // other three digital outs so the engine isn't doing useless work.
+  // Users can re-enable via the web editor if they want MIDI-only rates.
+  eng_cfg.clocks[1].enabled = false;
+  eng_cfg.clocks[2].enabled = false;
+  eng_cfg.clocks[3].enabled = false;
+#endif
+  engine.set_config(eng_cfg);
 
   int64_t cursor = g_pulse_hw.now_us() + kLeadUs;
   uint32_t timeline_version = 0;
@@ -108,6 +148,12 @@ void pulse_task(void*) {
 }  // namespace
 
 void neon_start_core1_tasks() {
-  xTaskCreatePinnedToCore(pulse_task, "pulse", 4096, nullptr,
+  // MultiClockEngine + edge buffers + C++ frames need more than 4 KB;
+  // AMYboard bring-up saw "stack overflow in task pulse" at 4096.
+  xTaskCreatePinnedToCore(pulse_task, "pulse", 8192, nullptr,
                           configMAX_PRIORITIES - 2, nullptr, 1);
+#if CONFIG_NEON_BOARD_AMYBOARD
+  xTaskCreatePinnedToCore(cv_mirror_task, "cv_mirror", 4096, nullptr,
+                          configMAX_PRIORITIES - 3, nullptr, 1);
+#endif
 }
