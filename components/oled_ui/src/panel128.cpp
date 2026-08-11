@@ -123,34 +123,41 @@ bool ssd1327_flush(const neon::Framebuffer& fb) {
 }
 
 // ---- SH1107 I2C 128×128 mono ------------------------------------------
+//
+// Our portable FB is SSD1306/SH1107 *page* layout (MONO_VLSB): 16 pages ×
+// 128 columns, 1 byte = 8 vertical pixels.  That matches the MicroPython
+// rotate=90 show() path (page addressing + VLSB), so we stay in page mode.
+//
+// Do NOT software-rotate and do NOT switch to vertical/HMSB — both blanked
+// this panel.  Orientation on the AMYboard cutout is already correct; the
+// only known glitch is a circular X shift (~30 px): FB (0,y) lands near
+// screen (30,y) and (100,y) wraps to ~(2,y).  Correct with kXShift below.
 
 constexpr uint8_t kSh1107Addr = 0x3c;
 
-// AMYboard front-panel SH1107 modules are typically mounted for rotate=90
-// (same as amyboard.set_display_rotation(90)). Hardware remap alone is
-// flaky across clones; we software-rotate 90° CCW at flush so the home
-// UI is upright in the square cutout.
-constexpr int kSh1107Rotate = 90;
+// Screen shows FB x at (x + kXShift) mod 128.  Compensate by rotating each
+// page's bytes so FB x ends up at screen x.  Tune if a given module differs.
+constexpr int kXShift = 30;
 
 bool sh1107_init_i2c() {
-  // Sequence aligned with tulip/shared/py/sh1107.py for rotate=90.
+  // Page addressing + 128×128 flip(False) defaults from sh1107.py (the
+  // rotate90 addressing mode, without any content rotation).
   const uint8_t cmds[] = {
       0xAE,        // display off
       0xA8, 0x7F,  // multiplex 128-1
-      0x20,        // memory mode page (rotate90)
+      0x20,        // page addressing (matches VLSB FB)
       0xB0,        // page address 0
       0xAD, 0x81,  // DC-DC enable
       0xD5, 0x50,  // clock
       0xDB, 0x35,  // VCOM
       0xD9, 0x22,  // precharge
-      0x81, 0x80,  // contrast (POR mid)
-      0xA6,        // normal
-      // flip() for rotate=90, flag=false on 128×128:
-      0xD3, 0x00,  // display offset
-      0xA0,        // segment remap 0
-      0xC0,        // scan direction 0
+      0x81, 0x80,  // contrast
+      0xA6,        // normal (not inverted)
+      0xD3, 0x00,  // display offset (0 for 128×128)
+      0xA0,        // segment re-map
+      0xC0,        // scan direction
       0xDC, 0x00,  // start line
-      0xA4,        // resume RAM
+      0xA4,        // resume from RAM
       0xAF,        // display on
   };
   for (uint8_t c : cmds) {
@@ -158,43 +165,41 @@ bool sh1107_init_i2c() {
       return false;
     }
   }
-  vTaskDelay(pdMS_TO_TICKS(50));  // SH1107 power-on settle
-  ESP_LOGI(kTag, "SH1107 @ 0x%02x (128x128 mono I2C, rotate=%d)",
-           kSh1107Addr, kSh1107Rotate);
+  vTaskDelay(pdMS_TO_TICKS(50));
+  ESP_LOGI(kTag, "SH1107 @ 0x%02x (128x128 mono I2C, page mode, xshift=%d)",
+           kSh1107Addr, kXShift);
   return true;
 }
 
-// Pack monochrome page FB into page layout rotated 90° CCW.
-// dest(xd,yd) = src(W-1-yd, xd)
-void rotate90_ccw_pages(const neon::Framebuffer& src, uint8_t* dest) {
-  std::memset(dest, 0, neon::Framebuffer::kSize);
-  for (int y = 0; y < 128; ++y) {
-    for (int x = 0; x < 128; ++x) {
-      if (!src.pixel(x, y)) {
-        continue;
-      }
-      const int xd = y;
-      const int yd = 127 - x;
-      const size_t idx = static_cast<size_t>(yd / 8) * 128 + xd;
-      dest[idx] |= static_cast<uint8_t>(1u << (yd % 8));
-    }
-  }
+// Set page + column pointer in one I2C transaction (same as MicroPython
+// write_command([B0|page, 0x00|col_lo, 0x10|col_hi])).
+bool sh1107_set_page_col(int page, int col) {
+  const uint8_t pkt[4] = {
+      0x00,  // command control
+      static_cast<uint8_t>(0xB0 | (page & 0x0f)),
+      static_cast<uint8_t>(0x00 | (col & 0x0f)),
+      static_cast<uint8_t>(0x10 | ((col >> 4) & 0x0f)),
+  };
+  return halesp::i2c_write(kSh1107Addr, pkt, sizeof(pkt));
 }
 
 bool sh1107_flush_i2c(const neon::Framebuffer& fb) {
-  static uint8_t rotated[neon::Framebuffer::kSize];
   const uint8_t* src = fb.data();
-  if (kSh1107Rotate == 90) {
-    rotate90_ccw_pages(fb, rotated);
-    src = rotated;
-  }
+  uint8_t pagebuf[128];
   for (int page = 0; page < 16; ++page) {
-    if (!i2c_cmd(kSh1107Addr, static_cast<uint8_t>(0xB0 | page)) ||
-        !i2c_cmd(kSh1107Addr, 0x00) ||  // lower col
-        !i2c_cmd(kSh1107Addr, 0x10)) {  // upper col
+    const uint8_t* row = src + page * 128;
+    if (kXShift == 0) {
+      std::memcpy(pagebuf, row, 128);
+    } else {
+      // out[x] = src[(x + kXShift) % 128]  → cancels a +kXShift screen shift
+      for (int x = 0; x < 128; ++x) {
+        pagebuf[x] = row[(x + kXShift) % 128];
+      }
+    }
+    if (!sh1107_set_page_col(page, 0)) {
       return false;
     }
-    if (!i2c_data(kSh1107Addr, src + page * 128, 128)) {
+    if (!i2c_data(kSh1107Addr, pagebuf, 128)) {
       return false;
     }
   }
@@ -356,41 +361,43 @@ PanelKind panel_init() {
     }
   }
 
-  // Give the Grove OLED a moment after power-up / bus traffic settles
-  // (ADS1015 task may already be running).
-  vTaskDelay(pdMS_TO_TICKS(50));
-
   if (halesp::i2c_bus() != nullptr) {
-    // Quiet ACK-only scan (no command spam / NACK log flood).
-    char seen[80] = {};
-    size_t n = 0;
-    for (uint8_t a = 0x08; a < 0x78 && n + 4 < sizeof(seen); ++a) {
-      if (try_addr(a)) {
-        n += static_cast<size_t>(
-            snprintf(seen + n, sizeof(seen) - n, "%s%02x", n ? "," : "", a));
-      }
-    }
-    ESP_LOGI(kTag, "I2C scan (front Grove SDA=%d SCL=%d): %s", kPinI2cSda,
-             kPinI2cScl, n ? seen : "(none)");
+    // Retry: Grove OLED can miss the first probe right after power-up /
+    // while ADS1015+GP8413 are settling on the same front bus.
+    for (int attempt = 0; attempt < 4 && g_kind == PanelKind::kNone;
+         ++attempt) {
+      vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 50 : 100));
 
-    // Prefer the stock amyboard.init_display() order.
-    if (try_addr(kSsd1327Addr)) {
-      if (ssd1327_init()) {
-        g_kind = PanelKind::kSsd1327I2c;
-        return g_kind;
+      char seen[80] = {};
+      size_t n = 0;
+      for (uint8_t a = 0x08; a < 0x78 && n + 4 < sizeof(seen); ++a) {
+        if (try_addr(a)) {
+          n += static_cast<size_t>(
+              snprintf(seen + n, sizeof(seen) - n, "%s%02x", n ? "," : "", a));
+        }
       }
-      ESP_LOGW(kTag, "SSD1327 @ 0x3d ACKed but init failed");
-    }
-    if (try_addr(kSh1107Addr)) {
-      if (sh1107_init_i2c()) {
-        g_kind = PanelKind::kSh1107I2c;
-        return g_kind;
+      ESP_LOGI(kTag, "I2C scan attempt %d (SDA=%d SCL=%d): %s", attempt + 1,
+               kPinI2cSda, kPinI2cScl, n ? seen : "(none)");
+
+      // Prefer the stock amyboard.init_display() order.
+      if (try_addr(kSsd1327Addr)) {
+        if (ssd1327_init()) {
+          g_kind = PanelKind::kSsd1327I2c;
+          return g_kind;
+        }
+        ESP_LOGW(kTag, "SSD1327 @ 0x3d ACKed but init failed");
       }
-      if (ssd1306_init_i2c()) {
-        g_kind = PanelKind::kSsd1306I2c;
-        return g_kind;
+      if (try_addr(kSh1107Addr)) {
+        if (sh1107_init_i2c()) {
+          g_kind = PanelKind::kSh1107I2c;
+          return g_kind;
+        }
+        if (ssd1306_init_i2c()) {
+          g_kind = PanelKind::kSsd1306I2c;
+          return g_kind;
+        }
+        ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
       }
-      ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
     }
   }
 
