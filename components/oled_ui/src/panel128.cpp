@@ -126,37 +126,68 @@ bool ssd1327_flush(const neon::Framebuffer& fb) {
 
 constexpr uint8_t kSh1107Addr = 0x3c;
 
+// AMYboard front-panel SH1107 modules are typically mounted for rotate=90
+// (same as amyboard.set_display_rotation(90)). Hardware remap alone is
+// flaky across clones; we software-rotate 90° CCW at flush so the home
+// UI is upright in the square cutout.
+constexpr int kSh1107Rotate = 90;
+
 bool sh1107_init_i2c() {
-  // Minimal SH1107 128×128 init (from tulip sh1107.py defaults, rotate=0).
+  // Sequence aligned with tulip/shared/py/sh1107.py for rotate=90.
   const uint8_t cmds[] = {
-      0xAE,              // display off
-      0xDC, 0x00,        // display start line
-      0x81, 0x2F,        // contrast
-      0x20,              // page addressing (memory mode for SH1107)
-      0xA0,              // segment remap
-      0xC0,              // COM scan dir
-      0xA8, 0x7F,        // multiplex 128-1
-      0xD3, 0x60,        // display offset (SH1107 128 needs 0x60)
-      0xD5, 0x51,        // clock
-      0xD9, 0x22,        // precharge
-      0xDB, 0x35,        // VCOM
-      0xB0,              // page 0
-      0xA4,              // resume RAM
-      0xA6,              // normal (not inverted)
-      0xAF,              // display on
+      0xAE,        // display off
+      0xA8, 0x7F,  // multiplex 128-1
+      0x20,        // memory mode page (rotate90)
+      0xB0,        // page address 0
+      0xAD, 0x81,  // DC-DC enable
+      0xD5, 0x50,  // clock
+      0xDB, 0x35,  // VCOM
+      0xD9, 0x22,  // precharge
+      0x81, 0x80,  // contrast (POR mid)
+      0xA6,        // normal
+      // flip() for rotate=90, flag=false on 128×128:
+      0xD3, 0x00,  // display offset
+      0xA0,        // segment remap 0
+      0xC0,        // scan direction 0
+      0xDC, 0x00,  // start line
+      0xA4,        // resume RAM
+      0xAF,        // display on
   };
   for (uint8_t c : cmds) {
     if (!i2c_cmd(kSh1107Addr, c)) {
       return false;
     }
   }
-  ESP_LOGI(kTag, "SH1107 @ 0x%02x (128x128 mono I2C)", kSh1107Addr);
+  vTaskDelay(pdMS_TO_TICKS(50));  // SH1107 power-on settle
+  ESP_LOGI(kTag, "SH1107 @ 0x%02x (128x128 mono I2C, rotate=%d)",
+           kSh1107Addr, kSh1107Rotate);
   return true;
 }
 
+// Pack monochrome page FB into page layout rotated 90° CCW.
+// dest(xd,yd) = src(W-1-yd, xd)
+void rotate90_ccw_pages(const neon::Framebuffer& src, uint8_t* dest) {
+  std::memset(dest, 0, neon::Framebuffer::kSize);
+  for (int y = 0; y < 128; ++y) {
+    for (int x = 0; x < 128; ++x) {
+      if (!src.pixel(x, y)) {
+        continue;
+      }
+      const int xd = y;
+      const int yd = 127 - x;
+      const size_t idx = static_cast<size_t>(yd / 8) * 128 + xd;
+      dest[idx] |= static_cast<uint8_t>(1u << (yd % 8));
+    }
+  }
+}
+
 bool sh1107_flush_i2c(const neon::Framebuffer& fb) {
-  // Page layout already matches the FB: 16 pages × 128 columns.
+  static uint8_t rotated[neon::Framebuffer::kSize];
   const uint8_t* src = fb.data();
+  if (kSh1107Rotate == 90) {
+    rotate90_ccw_pages(fb, rotated);
+    src = rotated;
+  }
   for (int page = 0; page < 16; ++page) {
     if (!i2c_cmd(kSh1107Addr, static_cast<uint8_t>(0xB0 | page)) ||
         !i2c_cmd(kSh1107Addr, 0x00) ||  // lower col

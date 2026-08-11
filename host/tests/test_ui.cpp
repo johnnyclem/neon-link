@@ -95,10 +95,10 @@ TEST_CASE("home screen renders deterministically (golden)") {
   CHECK(dump(a) == dump(b));
   CHECK(lit_pixels(a) > 100);
 
-  // Phase bar (y≈110 interior): fill reaches about half width at phase 2/4.
+  // Phase bar interior (y≈108): fill reaches about half width at phase 2/4.
   int fill_end = 0;
-  for (int x = 2; x < 126; ++x) {
-    if (a.pixel(x, 110)) fill_end = x;
+  for (int x = 3; x < 126; ++x) {
+    if (a.pixel(x, 108)) fill_end = x;
   }
   CHECK(fill_end > 55);
   CHECK(fill_end < 70);
