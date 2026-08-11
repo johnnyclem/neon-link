@@ -140,6 +140,25 @@ bool ethernet_start() {
   return true;
 }
 
+bool g_ap_up = false;
+
+bool ip_from_ifkey(const char* ifkey, char* buf, size_t len) {
+  if (buf == nullptr || len == 0) {
+    return false;
+  }
+  buf[0] = '\0';
+  esp_netif_t* netif = esp_netif_get_handle_from_ifkey(ifkey);
+  if (netif == nullptr) {
+    return false;
+  }
+  esp_netif_ip_info_t info = {};
+  if (esp_netif_get_ip_info(netif, &info) != ESP_OK || info.ip.addr == 0) {
+    return false;
+  }
+  std::snprintf(buf, len, IPSTR, IP2STR(&info.ip));
+  return true;
+}
+
 void mdns_start() {
   if (mdns_init() != ESP_OK) {
     ESP_LOGW(kTag, "mDNS init failed");
@@ -147,12 +166,17 @@ void mdns_start() {
   }
   mdns_hostname_set("neon-link");
   mdns_instance_name_set("NEON LINK");
-  ESP_LOGI(kTag, "mDNS: neon-link.local");
+  // Advertise the web editor so Finder/Bonjour/Android discovery tools
+  // can resolve more than a bare hostname probe.
+  if (mdns_service_add("NEON LINK", "_http", "_tcp", 80, nullptr, 0) !=
+      ESP_OK) {
+    ESP_LOGW(kTag, "mDNS HTTP service add failed (hostname still set)");
+  }
+  ESP_LOGI(kTag, "mDNS: neon-link.local (_http._tcp:80)");
 }
 
 bool ap_start() {
-  static bool started = false;
-  if (started) {
+  if (g_ap_up) {
     return true;
   }
 
@@ -189,10 +213,49 @@ bool ap_start() {
       return false;
     }
   }
-  started = true;
+  g_ap_up = true;
   ESP_LOGI(kTag, "setup AP up: %s (192.168.4.1)",
            reinterpret_cast<char*>(cfg.ap.ssid));
   return true;
+}
+
+bool ap_is_up() { return g_ap_up; }
+
+bool primary_ip(char* buf, size_t len) {
+  if (buf == nullptr || len == 0) {
+    return false;
+  }
+  buf[0] = '\0';
+  // Prefer the interface the preference machine considers active.
+  switch (g_preference.active()) {
+    case neon::ActiveNet::kEthernet:
+      if (ip_from_ifkey("ETH_DEF", buf, len)) {
+        return true;
+      }
+      break;
+    case neon::ActiveNet::kWifi:
+      if (ip_from_ifkey("WIFI_STA_DEF", buf, len)) {
+        return true;
+      }
+      break;
+    default:
+      break;
+  }
+  // Fallbacks: try each interface even if preference lagged an event.
+  if (ip_from_ifkey("ETH_DEF", buf, len)) {
+    return true;
+  }
+  if (ip_from_ifkey("WIFI_STA_DEF", buf, len)) {
+    return true;
+  }
+  if (g_ap_up && ip_from_ifkey("WIFI_AP_DEF", buf, len)) {
+    return true;
+  }
+  if (g_ap_up) {
+    std::snprintf(buf, len, "192.168.4.1");
+    return true;
+  }
+  return false;
 }
 
 neon::NetPreference& preference() { return g_preference; }

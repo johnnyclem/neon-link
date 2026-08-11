@@ -58,6 +58,9 @@ void assemble_status(neon::UiStatus* s) {
                                                     : 0;
   s->peers = app_status_peers();
   s->ext_clock = app_status_ext_clock();
+  s->setup_ap = netman::ap_is_up();
+  s->ip[0] = '\0';
+  netman::primary_ip(s->ip, sizeof(s->ip));
 }
 
 void ui_task(void*) {

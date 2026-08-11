@@ -6,7 +6,10 @@
 
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
@@ -85,12 +88,17 @@ esp_err_t handle_status(httpd_req_t* req) {
       mpb_us != 0 ? static_cast<uint32_t>(60000000000ull / mpb_us) : 0;
   const neon::ActiveNet net = netman::preference().active();
 
+  char ip[16] = {};
+  netman::primary_ip(ip, sizeof(ip));
+  const bool setup_ap = netman::ap_is_up();
+
   const halesp::PulseStats ps = halesp::pulse_stats();
-  char buf[384];
+  char buf[512];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
       "\"ext_clock\":%s,\"uptime_s\":%lld,"
+      "\"hostname\":\"neon-link.local\",\"ip\":\"%s\",\"setup_ap\":%s,"
       "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
@@ -99,11 +107,26 @@ esp_err_t handle_status(httpd_req_t* req) {
       : net == neon::ActiveNet::kWifi   ? "wifi"
                                         : "none",
       app_status_ext_clock() ? "true" : "false",
-      static_cast<long long>(esp_timer_get_time() / 1000000),
-      static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),
+      static_cast<long long>(esp_timer_get_time() / 1000000), ip,
+      setup_ap ? "true" : "false", static_cast<unsigned>(ps.edges),
+      static_cast<unsigned>(ps.late_max_us),
       static_cast<unsigned>(ps.late_avg_us));
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, buf, n);
+}
+
+// POST /api/reboot — soft reset so WiFi STA creds take effect without
+// yanking the USB cable.
+void reboot_task(void*) {
+  vTaskDelay(pdMS_TO_TICKS(400));
+  esp_restart();
+}
+
+esp_err_t handle_reboot(httpd_req_t* req) {
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, "{\"ok\":true,\"rebooting\":true}", HTTPD_RESP_USE_STRLEN);
+  xTaskCreate(reboot_task, "reboot", 2048, nullptr, 5, nullptr);
+  return ESP_OK;
 }
 
 // POST /api/preset?op=save|recall&slot=0..3
@@ -164,10 +187,18 @@ void webui_start() {
                                   .method = HTTP_POST,
                                   .handler = handle_preset,
                                   .user_ctx = nullptr};
+  const httpd_uri_t reboot_uri = {.uri = "/api/reboot",
+                                  .method = HTTP_POST,
+                                  .handler = handle_reboot,
+                                  .user_ctx = nullptr};
   httpd_register_uri_handler(server, &index_uri);
   httpd_register_uri_handler(server, &get_cfg);
   httpd_register_uri_handler(server, &put_cfg);
   httpd_register_uri_handler(server, &status_uri);
   httpd_register_uri_handler(server, &preset_uri);
-  ESP_LOGI(kTag, "web editor up (http://neon-link.local/)");
+  httpd_register_uri_handler(server, &reboot_uri);
+  char ip[16] = {};
+  netman::primary_ip(ip, sizeof(ip));
+  ESP_LOGI(kTag, "web editor up (http://neon-link.local/ / http://%s/)",
+           ip[0] ? ip : "…");
 }

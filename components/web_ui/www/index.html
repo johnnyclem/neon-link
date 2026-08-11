@@ -10,7 +10,11 @@
 body{background:var(--bg);color:var(--ink);font:14px/1.5 "Courier New",monospace;padding:16px;max-width:880px;margin:0 auto}
 h1{font-size:26px;letter-spacing:4px;color:var(--pink);text-shadow:0 0 8px var(--pink);margin-bottom:2px}
 h1 span{color:var(--teal);text-shadow:0 0 8px var(--teal)}
-#status{color:var(--yellow);margin-bottom:16px;min-height:1.4em}
+#status{color:var(--yellow);margin-bottom:8px;min-height:1.4em}
+#reach{color:#9a86c8;margin-bottom:12px;font-size:12px;min-height:1.2em}
+#reach a{color:var(--teal)}
+#banner{display:none;border:2px solid var(--yellow);background:#2a1840;color:var(--yellow);padding:10px 12px;margin-bottom:14px;line-height:1.45}
+#banner strong{color:var(--pink)}
 fieldset{border:2px solid var(--teal);background:var(--panel);margin:0 0 14px;padding:10px 12px}
 legend{color:var(--teal);padding:0 8px;letter-spacing:2px}
 label{display:inline-block;margin:4px 10px 4px 0}
@@ -22,13 +26,17 @@ input[type=text],input[type=password]{width:14em}
 .clk b{color:var(--yellow)}
 button{background:var(--pink);color:#fff;border:0;padding:8px 22px;font:inherit;letter-spacing:2px;cursor:pointer;box-shadow:0 0 10px var(--pink)}
 button:hover{background:var(--teal);box-shadow:0 0 10px var(--teal)}
-.bar{display:flex;gap:12px;align-items:center;margin-top:10px}
+button.secondary{background:transparent;color:var(--teal);border:1px solid var(--teal);box-shadow:none}
+button.secondary:hover{background:var(--teal);color:#12081f}
+.bar{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
 small{color:#9a86c8}
 </style>
 </head>
 <body>
 <h1>NEON <span>LINK</span></h1>
 <div id="status">connecting…</div>
+<div id="reach"></div>
+<div id="banner"></div>
 
 <form id="f">
 <fieldset><legend>CLOCK OUTPUTS</legend><div id="clocks"></div></fieldset>
@@ -67,7 +75,7 @@ small{color:#9a86c8}
 <fieldset><legend>WIFI</legend>
 <label>SSID <input name="ssid" type="text" maxlength="32"></label>
 <label>Password <input name="pass" type="password" maxlength="64" placeholder="(unchanged)"></label>
-<br><small>WiFi changes apply after a power cycle.</small>
+<br><small>After saving WiFi, hit <b>REBOOT</b> (or power-cycle) so the module joins your network. Then open <b>http://neon-link.local/</b> from a device on the same LAN.</small>
 </fieldset>
 
 <fieldset><legend>PRESETS</legend>
@@ -75,7 +83,11 @@ small{color:#9a86c8}
 <small>Recall also via MIDI Program Change 1–4.</small>
 </fieldset>
 
-<div class="bar"><button type="submit">SAVE</button><span id="msg"></span></div>
+<div class="bar">
+  <button type="submit">SAVE</button>
+  <button type="button" class="secondary" id="reboot">REBOOT</button>
+  <span id="msg"></span>
+</div>
 </form>
 
 <script>
@@ -167,16 +179,54 @@ document.getElementById("f").addEventListener("submit",async e=>{
   try{
     const r=await fetch("/api/config",{method:"PUT",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(buildConfig())});
-    msg.textContent=r.ok?"saved ✔":"error "+r.status;
+    msg.textContent=r.ok?"saved ✔ — reboot if you changed WiFi":"error "+r.status;
     if(r.ok){$("pass").value="";await loadConfig();}
   }catch(err){msg.textContent="failed: "+err;}
 });
+
+document.getElementById("reboot").addEventListener("click",async ()=>{
+  const msg=document.getElementById("msg");
+  if(!confirm("Reboot NEON LINK now?"))return;
+  msg.textContent="rebooting…";
+  try{
+    await fetch("/api/reboot",{method:"POST"});
+  }catch(e){/* connection drops mid-reboot */}
+  setTimeout(()=>{msg.textContent="rebooted — reload this page (use neon-link.local if on home WiFi)";},4000);
+});
+
+function updateReach(s){
+  const reach=document.getElementById("reach");
+  const banner=document.getElementById("banner");
+  const host=s.hostname||"neon-link.local";
+  const ip=s.ip||"";
+  const parts=[];
+  parts.push(`<a href="http://${host}/">${host}</a>`);
+  if(ip) parts.push(`<a href="http://${ip}/">${ip}</a>`);
+  reach.innerHTML="Open from this LAN: "+parts.join(" · ");
+
+  if(s.setup_ap || s.network==="none"){
+    banner.style.display="block";
+    banner.innerHTML=
+      "<strong>Setup mode.</strong> You are on the module’s open AP (or it has no home WiFi yet). "+
+      "Enter your home SSID + password under WIFI, press <strong>SAVE</strong>, then <strong>REBOOT</strong>. "+
+      "Rejoin your home network and open <strong>http://neon-link.local/</strong>"+
+      (ip?` (or http://${ip}/ while still on the AP).`:".");
+  }else{
+    banner.style.display="none";
+    banner.textContent="";
+  }
+}
+
 async function poll(){
   try{
     const s=await (await fetch("/api/status")).json();
     document.getElementById("status").textContent=
       `${s.bpm.toFixed(1)} BPM · ${s.playing?"PLAY":"STOP"} · ${s.network.toUpperCase()} · ${s.peers} peer${s.peers==1?"":"s"}${s.ext_clock?" · EXT CLK":""}`;
-  }catch(e){document.getElementById("status").textContent="offline";}
+    updateReach(s);
+  }catch(e){
+    document.getElementById("status").textContent="offline";
+    document.getElementById("reach").textContent="";
+  }
   setTimeout(poll,2000);
 }
 loadConfig().then(poll).catch(()=>{document.getElementById("status").textContent="failed to load config";});

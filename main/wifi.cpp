@@ -18,7 +18,7 @@ constexpr EventBits_t kGotIpBit = BIT0;
 
 EventGroupHandle_t g_events;
 
-void on_wifi_event(void*, esp_event_base_t base, int32_t id, void*) {
+void on_wifi_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -27,7 +27,10 @@ void on_wifi_event(void*, esp_event_base_t base, int32_t id, void*) {
     ESP_LOGW(kTag, "disconnected, retrying");
     esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-    ESP_LOGI(kTag, "got IP");
+    auto* event = static_cast<ip_event_got_ip_t*>(event_data);
+    ESP_LOGI(kTag, "got IP " IPSTR " — http://neon-link.local/ or http://" IPSTR
+                   "/",
+             IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.ip));
     netman::preference().wifi_ip(true);
     xEventGroupSetBits(g_events, kGotIpBit);
   }

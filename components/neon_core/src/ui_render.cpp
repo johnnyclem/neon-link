@@ -31,13 +31,24 @@ void render_home(const UiStatus& s, Framebuffer& fb) {
   // Source · transport · net.
   const char* src = s.ext_clock ? "EXT" : "LINK";
   const char* tr = s.playing ? "PLAY" : "STOP";
-  const char* net = s.active_net == 1 ? "ETH"
-                   : s.active_net == 2 ? "WIFI"
-                                       : "OFF";
+  const char* net = s.setup_ap                  ? "AP"
+                   : s.active_net == 1          ? "ETH"
+                   : s.active_net == 2          ? "WIFI"
+                                                : "OFF";
   char line[24];
   std::snprintf(line, sizeof(line), "%s  %s  %s", src, tr, net);
   const int lw = Framebuffer::text_width(line, Font::kSmall);
   fb.draw_text((Framebuffer::kWidth - lw) / 2, 78, line, Font::kSmall);
+
+  // Editor address so you can open the page without mDNS if needed.
+  if (s.ip[0] != '\0') {
+    const int iw = Framebuffer::text_width(s.ip, Font::kSmall);
+    fb.draw_text((Framebuffer::kWidth - iw) / 2, 90, s.ip, Font::kSmall);
+  } else if (s.setup_ap) {
+    const char* ap = "192.168.4.1";
+    const int iw = Framebuffer::text_width(ap, Font::kSmall);
+    fb.draw_text((Framebuffer::kWidth - iw) / 2, 90, ap, Font::kSmall);
+  }
 
   // Phase bar with beat ticks.
   const int bar_y = 104;

@@ -69,15 +69,22 @@ or the rolling `amyboard` GitHub release.
 ### First boot without WiFi credentials
 
 1. Power the module (USB-C or Eurorack +12 V).
-2. After ~60 s with no network, it raises open AP `NEON-LINK-XXXX`.
-3. Join the AP, open `http://192.168.4.1/`, enter home WiFi SSID/password.
-4. Reboot; the module joins STA, serves the editor at `http://neon-link.local/`.
+2. After ~10 s with no credentials (or ~60 s if credentials fail), it raises
+   open AP `NEON-LINK-XXXX`.
+3. Join the AP, open `http://192.168.4.1/` (also shown on the OLED).
+4. Enter home WiFi SSID/password → **SAVE** → **REBOOT** in the editor.
+5. Rejoin your home network; open **`http://neon-link.local/`**
+   (mDNS hostname + `_http._tcp`). If `.local` fails on your OS, use the
+   IP shown on the OLED / serial log (`got IP a.b.c.d`).
 
 Or bake credentials at build time:
 
 ```
 idf.py menuconfig   # NEON LINK configuration → WiFi SSID / password
 ```
+
+**API extras:** `GET /api/status` includes `hostname`, `ip`, `setup_ap`;
+`POST /api/reboot` soft-resets so WiFi changes take effect.
 
 ## Timing notes
 

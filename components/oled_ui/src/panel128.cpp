@@ -129,15 +129,14 @@ bool ssd1327_flush(const neon::Framebuffer& fb) {
 // rotate=90 show() path (page addressing + VLSB), so we stay in page mode.
 //
 // Do NOT software-rotate and do NOT switch to vertical/HMSB — both blanked
-// this panel.  Orientation on the AMYboard cutout is already correct; the
-// only known glitch is a circular X shift (~30 px): FB (0,y) lands near
-// screen (30,y) and (100,y) wraps to ~(2,y).  Correct with kXShift below.
+// this panel.  Orientation on the AMYboard cutout is already correct.
 
 constexpr uint8_t kSh1107Addr = 0x3c;
 
-// Screen shows FB x at (x + kXShift) mod 128.  Compensate by rotating each
-// page's bytes so FB x ends up at screen x.  Tune if a given module differs.
-constexpr int kXShift = 30;
+// Optional circular column compensate for odd SH1107 modules.  Leave at 0
+// for a correctly wired panel — a non-zero value wraps left-edge glyphs
+// (e.g. the "1" in centered "120.0") onto the far right of the screen.
+constexpr int kXShift = 0;
 
 bool sh1107_init_i2c() {
   // Page addressing + 128×128 flip(False) defaults from sh1107.py (the

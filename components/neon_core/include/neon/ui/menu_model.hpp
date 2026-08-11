@@ -18,6 +18,9 @@ struct UiStatus {
   // and beat LED).
   uint32_t phase_milli_beats = 0;
   uint32_t quantum_beats = 4;
+  // Best editor IPv4 ("192.168.x.x") or empty; setup_ap when open AP is up.
+  char ip[16] = {};
+  bool setup_ap = false;
 };
 
 // Encoder-driven menu state machine (pure logic; host-tested).
