@@ -67,7 +67,10 @@ void render_home(const UiStatus& s, Framebuffer& fb) {
   // the web UI uses for its chips.
   char peers[8] = {};
   if (s.peers != 0) {
-    std::snprintf(peers, sizeof(peers), "%uP", static_cast<unsigned>(s.peers));
+    // Two digits is what the status row has room for, and a session with
+    // more peers than that has stopped being a number you read at a glance.
+    const unsigned n = s.peers > 99 ? 99u : static_cast<unsigned>(s.peers);
+    std::snprintf(peers, sizeof(peers), "%uP", n);
   }
   const char* words[4] = {source_word(s), transport_word(s), net_word(s),
                           peers};
@@ -105,7 +108,9 @@ void render_list(const MenuModel& menu, const char* title, Framebuffer& fb) {
 void render_network(const UiStatus& s, Framebuffer& fb) {
   draw_header(fb, kTitleNetwork);
 
-  char peers[8];
+  // Wide enough for any uint32_t: this screen is a readout, so it shows the
+  // real count rather than the live screen's abbreviated one.
+  char peers[12];
   std::snprintf(peers, sizeof(peers), "%u", static_cast<unsigned>(s.peers));
 
   draw_list_row(fb, 0, "MODE", net_word(s), false, false);

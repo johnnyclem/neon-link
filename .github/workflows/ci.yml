@@ -84,6 +84,12 @@ jobs:
       # the style guide would be showing screens the device no longer draws.
       - name: Configure
         run: cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Release -DNEON_SANITIZERS=OFF
+      # Target-scoped on purpose: this job exists to check the fixtures, and
+      # it doubles as the only optimized build of neon_core we have — several
+      # -Werror analyses (format-truncation, stringop-overflow) only run with
+      # optimization on, so a Debug-only loop misses them. Do not widen it to
+      # the whole project: neon_tests trips a GCC 13 false positive on
+      # std::string under -O2 that predates this job.
       - name: Build renderer
         run: cmake --build build-host --target neon_screens -j
       - name: Screens are up to date
