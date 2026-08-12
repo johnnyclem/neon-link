@@ -1,0 +1,84 @@
+/*
+ * GENERATED FILE - do not edit.
+ * Source: design/tokens.json, design/strings.json, design/icons.txt, design/fonts/hero.json
+ * Regenerate: python3 scripts/gen_design.py
+ */
+
+:root {
+  /* colour */
+  --bg: #0B0C0F; /* Page background */
+  --surface: #14161A; /* Cards, panels */
+  --surface-2: #1C1F26; /* Elevated / selected */
+  --border: #2A2E38; /* Hairlines, dividers */
+  --text: #E8EAED; /* Primary text */
+  --text-muted: #8B909A; /* Secondary labels */
+  --neon: #00F0FF; /* Primary accent — Link active, focus, key actions */
+  --neon-dim: #00A8B3; /* Secondary accent / hover */
+  --magenta: #FF2D95; /* Alerts, BLE active, special states */
+  --yellow: #F5C518; /* Warnings, attention */
+  --success: #3DFF9A; /* Connected / running */
+  --danger: #FF4D4D; /* Errors, disconnect */
+
+  /* spacing - 4px grid, shared with the device layout */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* geometry */
+  --radius: 0px;
+  --border-hair: 1px;
+  --border-solid: 2px;
+  --touch-min: 44px;
+
+  /* type */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'NEON Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+  --text-hero: 64px;
+  --text-title: 24px;
+  --text-subtitle: 18px;
+  --text-body: 15px;
+  --text-label: 13px;
+  --text-caption: 11px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-hero: -0.02em;
+  --tracking-token: 0.12em;
+  --leading-tight: 1.15;
+  --leading-normal: 1.5;
+
+  /* motion */
+  --motion-fast: 150ms;
+  --motion-normal: 200ms;
+  --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+
+  /* device geometry - lets the web draw the panel's real proportions */
+  --device-width: 128;
+  --device-height: 128;
+  --device-margin: 4;
+  --device-header-text-y: 2;
+  --device-header-rule-y: 12;
+  --device-hero-y: 22;
+  --device-unit-y: 52;
+  --device-status-y: 66;
+  --device-ident-y: 78;
+  --device-bar-y: 104;
+  --device-bar-h: 16;
+  --device-bar-inset: 3;
+  --device-bar-tick-h: 3;
+  --device-list-top: 16;
+  --device-list-row-h: 12;
+  --device-list-rows: 9;
+  --device-list-gutter: 10;
+  --device-icon-size: 8;
+  --device-focus-inset: 1;
+  --phase-bar-aspect: 8.0;
+  --phase-bar-inset-ratio: 0.1875;
+  --phase-bar-tick-ratio: 0.1875;
+}

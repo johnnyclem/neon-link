@@ -1,0 +1,39 @@
+{
+  "$comment": "NEON LINK hero numerals — the tempo readout on the 128x128 panel. DESIGN_SYSTEM.md §4 asks for 24-32px tall digits and open decision §15.1 asked which font. Answer: a purpose-built seven-segment set. The 5x7 UI font scaled 3x tops out at 21px and reads as blown-up text; a segment readout reads as an instrument, is crisp by construction at 1-bit, and only needs the 13 glyphs a tempo can contain.",
+  "$source_of_truth": "A segment font's real source is its segment map, not a pixel grid. Edit the geometry or the per-glyph segment lists here and run scripts/gen_design.py; review the result in design/fonts/hero_preview.txt, which is regenerated alongside the packed header and checked in.",
+  "version": "1.0.0",
+
+  "cell": { "width": 16, "height": 26 },
+  "stroke": 4,
+
+  "segments": {
+    "$comment": "Standard seven-segment naming. Vertical segments overlap the horizontal ones by the stroke width so the joins are square and solid with no notch at the corners.",
+    "A": { "x": 0,  "y": 0,  "w": 16, "h": 4  },
+    "B": { "x": 12, "y": 0,  "w": 4,  "h": 15 },
+    "C": { "x": 12, "y": 11, "w": 4,  "h": 15 },
+    "D": { "x": 0,  "y": 22, "w": 16, "h": 4  },
+    "E": { "x": 0,  "y": 11, "w": 4,  "h": 15 },
+    "F": { "x": 0,  "y": 0,  "w": 4,  "h": 15 },
+    "G": { "x": 0,  "y": 11, "w": 16, "h": 4  }
+  },
+
+  "glyphs": {
+    "0": { "on": ["A", "B", "C", "D", "E", "F"] },
+    "1": { "on": ["B", "C"] },
+    "2": { "on": ["A", "B", "G", "E", "D"] },
+    "3": { "on": ["A", "B", "G", "C", "D"] },
+    "4": { "on": ["F", "G", "B", "C"] },
+    "5": { "on": ["A", "F", "G", "C", "D"] },
+    "6": { "on": ["A", "F", "G", "E", "C", "D"] },
+    "7": { "on": ["A", "B", "C"] },
+    "8": { "on": ["A", "B", "C", "D", "E", "F", "G"] },
+    "9": { "on": ["A", "B", "C", "D", "F", "G"] },
+    "-": { "on": ["G"] },
+    ".": { "width": 6, "rects": [{ "x": 1, "y": 22, "w": 4, "h": 4 }] },
+    ":": { "width": 6, "rects": [{ "x": 1, "y": 6, "w": 4, "h": 4 }, { "x": 1, "y": 16, "w": 4, "h": 4 }] },
+    " ": { "width": 8, "rects": [] }
+  },
+
+  "tracking": 2,
+  "$tracking_comment": "Pixels between glyph cells. '120.0' measures 16+2+16+2+16+2+6+2+16 = 78px, which centres on 128 with room to spare, and '--.-' during startup keeps the same optical weight."
+}

@@ -12,6 +12,7 @@ int g_count_rem = 0;
 int g_pin_sw = -1;
 bool g_sw_last = true;  // active-low, idle high
 int64_t g_sw_change_us = 0;
+bool g_long_fired = false;
 }  // namespace
 
 bool encoder_init(int pin_a, int pin_b, int pin_sw) {
@@ -84,18 +85,34 @@ int encoder_take_detents() {
   return detents;
 }
 
-bool encoder_clicked() {
+EncoderPress encoder_take_press() {
   if (g_pin_sw < 0) {
-    return false;
+    return EncoderPress::kNone;
   }
+  constexpr int64_t kDebounceUs = 20000;
+  constexpr int64_t kLongUs = 600000;
+
   const bool level = gpio_get_level(static_cast<gpio_num_t>(g_pin_sw)) != 0;
   const int64_t now = esp_timer_get_time();
-  if (level != g_sw_last && now - g_sw_change_us > 20000) {
+
+  if (level != g_sw_last && now - g_sw_change_us > kDebounceUs) {
+    const bool pressed = !level;  // active-low
     g_sw_last = level;
     g_sw_change_us = now;
-    return !level;  // active-low: report on press
+    if (pressed) {
+      g_long_fired = false;
+      return EncoderPress::kNone;  // decided on release, or on the timeout
+    }
+    // Released: a short press only counts if the long one never fired.
+    return g_long_fired ? EncoderPress::kNone : EncoderPress::kShort;
   }
-  return false;
+
+  // Still held past the threshold: fire once, under the finger.
+  if (!g_sw_last && !g_long_fired && now - g_sw_change_us > kLongUs) {
+    g_long_fired = true;
+    return EncoderPress::kLong;
+  }
+  return EncoderPress::kNone;
 }
 
 }  // namespace halesp

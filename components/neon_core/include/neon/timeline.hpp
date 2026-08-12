@@ -23,6 +23,28 @@ struct TimelineSnapshot {
   int32_t latency_us = 0;  // reserved until milestone 3
 };
 
+// Position within the current bar, in milli-beats (0..quantum*1000).
+//
+// Both UIs derive the phase from this one function so the panel's bar and
+// the web strip's mirror of it cannot disagree about where the bar is —
+// which would be the most obvious possible way for the two surfaces to stop
+// feeling like one instrument.
+inline uint32_t phase_milli_beats(const TimelineSnapshot& tl, int64_t now_us) {
+  if (tl.tempo_mpb_q32 == 0) {
+    return 0;
+  }
+  const double mpb_us = static_cast<double>(tl.tempo_mpb_q32) / 4294967296.0;
+  const double beat = static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0 +
+                      static_cast<double>(now_us - tl.origin_us) / mpb_us;
+  const double q =
+      static_cast<double>(tl.quantum_beats != 0 ? tl.quantum_beats : 4);
+  double bar_pos = beat - static_cast<double>(static_cast<int64_t>(beat / q)) * q;
+  if (bar_pos < 0) {
+    bar_pos += q;
+  }
+  return static_cast<uint32_t>(bar_pos * 1000.0);
+}
+
 // Single-writer / single-reader seqlock. The payload is stored as relaxed
 // atomic words (data-race-free by construction) and the protocol is fenced
 // with seq_cst barriers on both sides — conservative and cheap at the call
