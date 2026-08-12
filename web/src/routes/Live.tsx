@@ -6,13 +6,14 @@ import { HeroTempo } from "../components/HeroTempo";
 import { PhaseBar } from "../components/PhaseBar";
 import { StatusChip } from "../components/StatusChip";
 import { networkState } from "../components/StatusStrip";
+import { BeatStage, beatFromStatus } from "../components/BeatStage";
 import { Button, Card, Readout } from "../components/controls";
 
 /**
- * The expanded live screen — the same five facts the panel shows, with room
- * to breathe and the things a panel cannot offer (presets, reachability).
+ * The expanded live screen — a one-handed remote when the module is in
+ * a case, and the same five facts the panel shows when you have a desk.
  */
-export function Live({ status }: PageProps) {
+export function Live({ status, cfg }: PageProps) {
   const [presetMsg, setPresetMsg] = useState("");
   const [bpmDraft, setBpmDraft] = useState("");
 
@@ -31,21 +32,34 @@ export function Live({ status }: PageProps) {
     }
   };
 
-  const phase = status ? status.phase_milli / (status.quantum * 1000) : 0;
+  const quantum = status?.quantum ?? 4;
+  const phase = status ? status.phase_milli / (quantum * 1000) : 0;
+  const beat = status ? beatFromStatus(status.phase_milli, quantum) : 1;
+  const playing = status?.playing === true;
+  const showBeat = playing && cfg.big_beat_display !== false;
 
   return (
     <>
-      <h1 class="page-title">{strings.screens.live.web}</h1>
+      <h1 class="page-title page-title--live">{strings.screens.live.web}</h1>
 
-      <Card title="Tempo">
-        <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={72} />
+      <Card title={showBeat ? `Beat ${beat}` : "Tempo"}>
+        {showBeat ? (
+          <BeatStage beat={beat} playing />
+        ) : (
+          <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={72} />
+        )}
+        {showBeat && status?.tempo_valid ? (
+          <div class="beat-stage__bpm">
+            <HeroTempo bpm={status.bpm} size={28} />
+          </div>
+        ) : null}
 
-        <div class="btn-row">
+        <div class="transport">
           <Button
-            variant={status?.playing ? "secondary" : "primary"}
+            variant={playing ? "secondary" : "primary"}
             onClick={() => send(() => api.transport("toggle"))}
           >
-            {status?.playing ? "Stop" : "Play"}
+            {playing ? "Stop" : "Play"}
           </Button>
           <Button variant="secondary" onClick={() => send(() => api.tempoOp("tap"))}>
             Tap
@@ -76,7 +90,8 @@ export function Live({ status }: PageProps) {
             min={20}
             max={999}
             step={0.5}
-            style="width:7em"
+            inputMode="decimal"
+            class="tempo-input"
             aria-label="Set tempo"
             placeholder={status ? status.set_bpm.toFixed(1) : "120.0"}
             value={bpmDraft}
@@ -97,11 +112,11 @@ export function Live({ status }: PageProps) {
           </Button>
         </div>
 
-        <div style="margin-top:var(--space-3)">
+        <div class="live-phase">
           <PhaseBar
             phase={phase}
-            quantum={status?.quantum ?? 4}
-            running={status?.playing ?? false}
+            quantum={quantum}
+            running={playing}
             height={44}
           />
         </div>
@@ -109,7 +124,7 @@ export function Live({ status }: PageProps) {
           {status ? (
             <>
               <StatusChip state={status.ext_clock ? "source_ext" : "source_link"} />
-              <StatusChip state={status.playing ? "transport_run" : "transport_stop"} />
+              <StatusChip state={playing ? "transport_run" : "transport_stop"} />
               <StatusChip state={networkState(status)} detail={`${status.peers}P`} />
             </>
           ) : null}

@@ -93,6 +93,7 @@ let config = {
 
 const setupAp = process.env.MOCK_SETUP === "1";
 const bpm = 128;
+let playing = true;
 
 const status = () => {
   const elapsed = (Date.now() - started) / 1000;
@@ -101,7 +102,7 @@ const status = () => {
   return {
     bpm,
     peers: setupAp ? 0 : 2,
-    playing: true,
+    playing,
     network: setupAp ? "none" : "wifi",
     ext_clock: false,
     uptime_s: Math.floor(elapsed),
@@ -156,10 +157,16 @@ createServer((req, res) => {
       { ssid: "Venue Guest", rssi: -78, open: true },
     ]);
   }
+  if (url.pathname === "/api/transport") {
+    const op = url.searchParams.get("op");
+    if (op === "toggle") playing = !playing;
+    else if (op === "play" || op === "play_now") playing = true;
+    else if (op === "stop" || op === "stop_now") playing = false;
+    return json(res, { ok: true });
+  }
   if (
     url.pathname === "/api/preset" ||
     url.pathname === "/api/reboot" ||
-    url.pathname === "/api/transport" ||
     url.pathname === "/api/tempo" ||
     url.pathname === "/api/resync" ||
     url.pathname === "/api/factory_reset" ||

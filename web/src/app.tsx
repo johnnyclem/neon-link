@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { api, type Config, type Status } from "./api";
 import { strings } from "./design/strings";
 import { StatusStrip } from "./components/StatusStrip";
+import { TabBar } from "./components/TabBar";
+import { NAV } from "./nav";
 import { useHashRoute, useStatus } from "./useStatus";
 import { Live } from "./routes/Live";
 import { Outputs } from "./routes/Outputs";
@@ -19,14 +21,6 @@ export interface PageProps {
   saving: boolean;
   message: { text: string; kind: "ok" | "err" } | null;
 }
-
-const ROUTES = [
-  { id: "live", label: strings.screens.live.web },
-  { id: "outputs", label: strings.screens.outputs.web },
-  { id: "network", label: strings.screens.network.web },
-  { id: "midi", label: strings.screens.midi.web },
-  { id: "system", label: strings.screens.system.web },
-] as const;
 
 export function App() {
   const { status, offline } = useStatus();
@@ -113,9 +107,9 @@ export function App() {
   return (
     <>
       <StatusStrip status={status} offline={offline} />
-      <nav class="nav" aria-label="Sections">
+      <nav class="nav nav--top" aria-label="Sections">
         <div class="nav__inner">
-          {ROUTES.map((r) => (
+          {NAV.map((r) => (
             <a
               key={r.id}
               class="nav__item"
@@ -136,6 +130,7 @@ export function App() {
         {route === "midi" ? <Midi {...props} /> : null}
         {route === "system" ? <System {...props} /> : null}
       </main>
+      <TabBar route={inSetup ? "live" : route} />
     </>
   );
 }
