@@ -450,9 +450,11 @@ bool panel_set_brightness(uint8_t level) {
     case PanelKind::kSsd1306I2c:
       return i2c_cmd(kSh1107Addr, 0x81) && i2c_cmd(kSh1107Addr, level) &&
              i2c_cmd(kSh1107Addr, level != 0 ? 0xAF : 0xAE);
+#if CONFIG_NEON_BOARD_AMYBOARD
     case PanelKind::kSh1107Spi:
       return spi_sh1107_cmd(0x81) && spi_sh1107_cmd(level) &&
              spi_sh1107_cmd(level != 0 ? 0xAF : 0xAE);
+#endif
     default:
       return false;
   }
