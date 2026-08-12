@@ -149,8 +149,11 @@ sdkconfig.old
 managed_components/
 dependencies.lock.old
 
-# Host-native builds
+# Host-native builds. The pattern covers the extra out-of-tree directories
+# that come up when you need a second configuration alongside the usual
+# Debug one — e.g. a Release tree to mirror the screens-fixture CI job.
 build-host/
+build-*/
 
 # The web bundle is committed on purpose: `idf.py build` must work from a
 # bare checkout with no Node toolchain, which is what CI and anyone flashing
