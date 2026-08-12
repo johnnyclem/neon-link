@@ -142,6 +142,22 @@ bool ethernet_start() {
 
 bool g_ap_up = false;
 
+// Truncating copy into a fixed field. Deliberately not snprintf("%s"):
+// with an unbounded source GCC's -Wformat-truncation cannot prove the
+// result fits, and ESP-IDF promotes that to an error.
+static void copy_str(char* dst, size_t cap, const char* src) {
+  if (dst == nullptr || cap == 0) {
+    return;
+  }
+  if (src == nullptr) {
+    dst[0] = '\0';
+    return;
+  }
+  std::strncpy(dst, src, cap - 1);
+  dst[cap - 1] = '\0';
+}
+
+
 bool ip_from_ifkey(const char* ifkey, char* buf, size_t len) {
   if (buf == nullptr || len == 0) {
     return false;
@@ -166,7 +182,7 @@ void mdns_set_hostname(const char* hostname) {
   if (hostname == nullptr || hostname[0] == '\0') {
     return;
   }
-  std::snprintf(g_hostname, sizeof(g_hostname), "%s", hostname);
+  copy_str(g_hostname, sizeof(g_hostname), hostname);
   if (!g_mdns_up) {
     return;
   }
@@ -176,7 +192,7 @@ void mdns_set_hostname(const char* hostname) {
 
 void mdns_start(const char* hostname) {
   if (hostname != nullptr && hostname[0] != '\0') {
-    std::snprintf(g_hostname, sizeof(g_hostname), "%s", hostname);
+    copy_str(g_hostname, sizeof(g_hostname), hostname);
   }
   if (mdns_init() != ESP_OK) {
     ESP_LOGW(kTag, "mDNS init failed");
@@ -214,8 +230,7 @@ bool ap_start(const ApParams& params) {
   const char* ssid = (params.ssid != nullptr && params.ssid[0] != '\0')
                          ? params.ssid
                          : "NEON-LINK";
-  std::snprintf(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid), "%s",
-                ssid);
+  copy_str(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid), ssid);
   cfg.ap.ssid_len = 0;  // derive from string
   cfg.ap.channel = params.channel != 0 ? params.channel : 1;
   cfg.ap.max_connection = 4;
@@ -225,8 +240,8 @@ bool ap_start(const ApParams& params) {
   const bool secured = params.require_pass && params.pass != nullptr &&
                        std::strlen(params.pass) >= 8;
   if (secured) {
-    std::snprintf(reinterpret_cast<char*>(cfg.ap.password),
-                  sizeof(cfg.ap.password), "%s", params.pass);
+    copy_str(reinterpret_cast<char*>(cfg.ap.password),
+             sizeof(cfg.ap.password), params.pass);
     cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
   } else {
     cfg.ap.authmode = WIFI_AUTH_OPEN;
@@ -245,7 +260,7 @@ bool ap_start(const ApParams& params) {
     }
   }
   g_ap_up = true;
-  std::snprintf(g_ap_ssid, sizeof(g_ap_ssid), "%s", ssid);
+  copy_str(g_ap_ssid, sizeof(g_ap_ssid), ssid);
   ESP_LOGI(kTag, "setup AP up: %s (%s%s) at 192.168.4.1", g_ap_ssid,
            secured ? "WPA2" : "open", params.hidden ? ", hidden" : "");
   return true;

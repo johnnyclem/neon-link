@@ -369,6 +369,8 @@ esp_err_t handle_status(httpd_req_t* req) {
   const auto& cfg = neon_config();
   char ssid[68] = {};
   char ap_ssid[68] = {};
+  char fw[40] = {};
+  std::strncpy(fw, firmware_version(), sizeof(fw) - 1);
   json_escape(neon_wifi_current_ssid(), ssid, sizeof(ssid));
   json_escape(netman::ap_ssid(), ap_ssid, sizeof(ap_ssid));
   const unsigned disc = neon_wifi_last_disconnect_reason();
@@ -408,7 +410,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<long long>(esp_timer_get_time() / 1000000), cfg.device_name,
       cfg.device_name, ip, setup_ap ? "true" : "false", ap_ssid, ssid,
       static_cast<unsigned>(std::strlen(cfg.wifi[0].pass)), disc,
-      firmware_version(), static_cast<unsigned>(quantum),
+      fw, static_cast<unsigned>(quantum),
       static_cast<unsigned>(phase_milli),
       static_cast<unsigned>(cfg.tempo_milli_bpm / 1000),
       static_cast<unsigned>(cfg.tempo_milli_bpm % 1000),
