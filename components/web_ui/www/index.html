@@ -2,123 +2,338 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>NEON LINK</title>
 <style>
-:root{--pink:#ff2e97;--teal:#19e6d9;--yellow:#ffe33d;--bg:#12081f;--panel:#1c1030;--ink:#f4efff}
+:root{
+  --bg:#0a0a0a;
+  --panel:#111;
+  --line:#2a2a2a;
+  --ink:#e8e8e8;
+  --dim:#6e6e6e;
+  --mute:#3a3a3a;
+  --accent:#b8d4f0;
+  --fill:#d8d8d8;
+  --danger:#c44;
+  --radius:3px;
+  --font:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);font:14px/1.5 "Courier New",monospace;padding:16px;max-width:880px;margin:0 auto}
-h1{font-size:26px;letter-spacing:4px;color:var(--pink);text-shadow:0 0 8px var(--pink);margin-bottom:2px}
-h1 span{color:var(--teal);text-shadow:0 0 8px var(--teal)}
-#status{color:var(--yellow);margin-bottom:8px;min-height:1.4em}
-#reach{color:#9a86c8;margin-bottom:12px;font-size:12px;min-height:1.2em}
-#reach a{color:var(--teal)}
-#banner{display:none;border:2px solid var(--yellow);background:#2a1840;color:var(--yellow);padding:10px 12px;margin-bottom:14px;line-height:1.45}
-#banner strong{color:var(--pink)}
-fieldset{border:2px solid var(--teal);background:var(--panel);margin:0 0 14px;padding:10px 12px}
-legend{color:var(--teal);padding:0 8px;letter-spacing:2px}
-label{display:inline-block;margin:4px 10px 4px 0}
-input,select{background:#0c0618;color:var(--ink);border:1px solid var(--pink);padding:3px 6px;font:inherit;width:6em}
-input[type=checkbox]{width:auto}
-select{width:auto}
-input[type=text],input[type=password]{width:14em}
-.clk{border-top:1px dashed #5a3f8a;padding-top:6px;margin-top:6px}
-.clk b{color:var(--yellow)}
-button{background:var(--pink);color:#fff;border:0;padding:8px 22px;font:inherit;letter-spacing:2px;cursor:pointer;box-shadow:0 0 10px var(--pink)}
-button:hover{background:var(--teal);box-shadow:0 0 10px var(--teal)}
-button.secondary{background:transparent;color:var(--teal);border:1px solid var(--teal);box-shadow:none}
-button.secondary:hover{background:var(--teal);color:#12081f}
-.bar{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
-small{color:#9a86c8}
+html,body{background:var(--bg);color:var(--ink);font:13px/1.45 var(--font);-webkit-font-smoothing:antialiased}
+body{max-width:480px;margin:0 auto;padding:20px 16px 48px;min-height:100dvh}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* —— header / home (mirrors OLED) —— */
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px}
+.brand{font-size:11px;letter-spacing:.28em;color:var(--dim);text-transform:uppercase}
+.peers{font-size:11px;color:var(--dim);letter-spacing:.08em}
+
+.home{text-align:center;padding:8px 0 22px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.bpm{font-size:56px;font-weight:500;letter-spacing:.02em;line-height:1;font-variant-numeric:tabular-nums}
+.bpm-unit{font-size:11px;letter-spacing:.35em;color:var(--dim);margin-top:6px}
+.meta{margin-top:14px;font-size:11px;letter-spacing:.14em;color:var(--ink);text-transform:uppercase}
+.meta span{color:var(--dim);margin:0 .35em}
+.addr{margin-top:8px;font-size:11px;color:var(--dim);letter-spacing:.04em;word-break:break-all}
+.addr a{color:var(--dim)}
+.addr a:hover{color:var(--accent)}
+.phase{margin:16px auto 0;height:8px;max-width:220px;border:1px solid var(--ink);position:relative}
+.phase>i{display:block;height:100%;background:var(--fill);width:0%;transition:width .4s linear}
+
+.banner{display:none;border:1px solid var(--line);background:var(--panel);color:var(--dim);padding:10px 12px;margin:0 0 16px;font-size:12px;line-height:1.5}
+.banner strong{color:var(--ink);font-weight:500}
+.banner.show{display:block}
+
+/* —— sections —— */
+details.sec{border:1px solid var(--line);background:var(--panel);margin:0 0 8px}
+details.sec>summary{
+  list-style:none;cursor:pointer;padding:10px 12px;
+  font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+  display:flex;justify-content:space-between;align-items:center;user-select:none;
+}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:"+";color:var(--mute);font-size:14px;line-height:1}
+details.sec[open]>summary::after{content:"−"}
+details.sec[open]>summary{border-bottom:1px solid var(--line);color:var(--ink)}
+.sec-body{padding:12px}
+
+.row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 8px}
+.row:last-child{margin-bottom:0}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+label.f.inline{flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink)}
+label.f.check{flex-direction:row;align-items:center;gap:6px;margin-top:4px}
+
+input,select{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  border-radius:var(--radius);padding:6px 8px;font:inherit;min-width:0;
+}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+input[type=number]{width:5.5em}
+input[type=text],input[type=password]{width:11em}
+input[type=checkbox]{width:auto;accent-color:var(--fill)}
+select{width:auto;max-width:100%}
+
+/* clock cards */
+.clk{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.clk:first-child{border-top:0;padding-top:0;margin-top:0}
+.clk-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.clk-head b{font-weight:500;letter-spacing:.12em;font-size:12px}
+.clk-sum{font-size:11px;color:var(--dim);margin-left:auto}
+
+.hint{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.45}
+.hint code{color:var(--ink)}
+
+/* actions */
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+button{
+  font:inherit;cursor:pointer;border-radius:var(--radius);
+  padding:9px 18px;letter-spacing:.14em;text-transform:uppercase;font-size:11px;
+  border:1px solid var(--fill);background:var(--fill);color:var(--bg);
+}
+button:hover{background:var(--ink);border-color:var(--ink)}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+button.ghost:hover{border-color:var(--ink)}
+button.tiny{padding:5px 10px;font-size:10px;letter-spacing:.1em}
+#msg{font-size:11px;color:var(--dim);margin-left:4px}
+
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.preset{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.preset span{min-width:2.5em}
+
+@media (max-width:380px){
+  .bpm{font-size:48px}
+  input[type=text],input[type=password]{width:100%}
+}
 </style>
 </head>
 <body>
-<h1>NEON <span>LINK</span></h1>
-<div id="status">connecting…</div>
-<div id="reach"></div>
-<div id="banner"></div>
+
+<header class="top">
+  <div class="brand">Neon Link</div>
+  <div class="peers" id="peers">—</div>
+</header>
+
+<section class="home" id="home">
+  <div class="bpm" id="bpm">—</div>
+  <div class="bpm-unit">BPM</div>
+  <div class="meta" id="meta">…</div>
+  <div class="addr" id="addr"></div>
+  <div class="phase" title="beat phase" aria-hidden="true"><i id="phaseFill"></i></div>
+</section>
+
+<div class="banner" id="banner"></div>
 
 <form id="f">
-<fieldset><legend>CLOCK OUTPUTS</legend><div id="clocks"></div></fieldset>
 
-<fieldset><legend>ENGINE</legend>
-<label>Reset <select name="reset_mode"><option value="start">start of play</option><option value="bar">every bar</option><option value="off">off</option></select></label>
-<label>Reset len (µs) <input name="reset_trig_len_us" type="number" min="100" max="100000"></label>
-<label>Latency (µs) <input name="latency_us" type="number" min="-50000" max="50000"></label>
-<label><input name="transport_gating" type="checkbox"> gate clocks with transport</label>
-</fieldset>
+<details class="sec" open>
+  <summary>Outputs</summary>
+  <div class="sec-body" id="clocks"></div>
+</details>
 
-<fieldset><legend>CLOCK SOURCE</legend>
-<label>Source <select name="clock_source"><option value="auto">auto</option><option value="link">link master</option><option value="external">external master</option></select></label>
-<label>CLK IN PPQN <input name="clock_in_ppqn" type="number" min="1" max="96"></label>
-<label>Quantum <input name="quantum" type="number" min="1" max="16"></label>
-</fieldset>
+<details class="sec">
+  <summary>Engine</summary>
+  <div class="sec-body">
+    <div class="row">
+      <label class="f">Reset
+        <select name="reset_mode">
+          <option value="start">start of play</option>
+          <option value="bar">every bar</option>
+          <option value="off">off</option>
+        </select>
+      </label>
+      <label class="f">Reset µs
+        <input name="reset_trig_len_us" type="number" min="100" max="100000">
+      </label>
+      <label class="f">Latency µs
+        <input name="latency_us" type="number" min="-50000" max="50000">
+      </label>
+    </div>
+    <label class="f check"><input name="transport_gating" type="checkbox"> Gate clocks with transport</label>
+  </div>
+</details>
 
-<fieldset><legend>TEMPO CV</legend>
-<label>Min BPM <input name="cv_min" type="number" min="1" max="998"></label>
-<label>Max BPM <input name="cv_max" type="number" min="2" max="999"></label>
-</fieldset>
+<details class="sec">
+  <summary>Clock source</summary>
+  <div class="sec-body">
+    <div class="row">
+      <label class="f">Source
+        <select name="clock_source">
+          <option value="auto">auto</option>
+          <option value="link">link master</option>
+          <option value="external">external master</option>
+        </select>
+      </label>
+      <label class="f">CLK IN PPQN
+        <input name="clock_in_ppqn" type="number" min="1" max="96">
+      </label>
+      <label class="f">Quantum
+        <input name="quantum" type="number" min="1" max="16">
+      </label>
+    </div>
+  </div>
+</details>
 
-<fieldset><legend>BLE MIDI</legend>
-<label><input name="ble_enabled" type="checkbox"> BLE enabled</label>
-<label><input name="midi_clock_out" type="checkbox"> TRS MIDI clock</label>
-<label>Channel <select name="channel"><option value="255">omni</option></select></label>
-<label>Gate → <select name="gate_target"><option value="255">none</option><option value="0">CLK1</option><option value="1">CLK2</option><option value="2">CLK3</option><option value="3">CLK4</option><option value="4">RUN</option></select></label>
-<label><input name="pitch_cv" type="checkbox"> pitch → CV (1V/oct)</label>
-<label>CC latency <input name="cc_latency" type="number" min="0" max="255"></label>
-<label>CC shuffle base <input name="cc_shuffle_base" type="number" min="0" max="255"></label>
-<label>Clock <select name="clock_policy"><option value="ignore">ignore</option><option value="replace">replace</option><option value="merge">merge</option></select></label>
-<label><input name="transport_enabled" type="checkbox"> BLE transport</label>
-<br><small>255 = disabled/omni</small>
-</fieldset>
+<details class="sec">
+  <summary>Tempo CV</summary>
+  <div class="sec-body">
+    <div class="row">
+      <label class="f">Min BPM
+        <input name="cv_min" type="number" min="1" max="998">
+      </label>
+      <label class="f">Max BPM
+        <input name="cv_max" type="number" min="2" max="999">
+      </label>
+    </div>
+  </div>
+</details>
 
-<fieldset><legend>WIFI</legend>
-<label>SSID <input name="ssid" type="text" maxlength="32"></label>
-<label>Password <input name="pass" type="password" maxlength="64" placeholder="(unchanged)"></label>
-<br><small>SAVE applies WiFi live (joins your network while this page stays up on the setup AP when possible). Then open <b>http://neon-link.local/</b> from a device on the same LAN. Use <b>REBOOT</b> if association gets stuck.</small>
-</fieldset>
+<details class="sec">
+  <summary>BLE MIDI</summary>
+  <div class="sec-body">
+    <div class="row">
+      <label class="f check"><input name="ble_enabled" type="checkbox"> BLE enabled</label>
+      <label class="f check"><input name="midi_clock_out" type="checkbox"> TRS MIDI clock</label>
+      <label class="f check"><input name="transport_enabled" type="checkbox"> BLE transport</label>
+      <label class="f check"><input name="pitch_cv" type="checkbox"> Pitch → CV (1V/oct)</label>
+    </div>
+    <div class="row">
+      <label class="f">Channel
+        <select name="channel"><option value="255">omni</option></select>
+      </label>
+      <label class="f">Gate →
+        <select name="gate_target">
+          <option value="255">none</option>
+          <option value="0">CLK1</option>
+          <option value="1">CLK2</option>
+          <option value="2">CLK3</option>
+          <option value="3">CLK4</option>
+          <option value="4">RUN</option>
+        </select>
+      </label>
+      <label class="f">Clock policy
+        <select name="clock_policy">
+          <option value="ignore">ignore</option>
+          <option value="replace">replace</option>
+          <option value="merge">merge</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="f">CC latency
+        <input name="cc_latency" type="number" min="0" max="255">
+      </label>
+      <label class="f">CC shuffle base
+        <input name="cc_shuffle_base" type="number" min="0" max="255">
+      </label>
+    </div>
+    <p class="hint">255 = disabled / omni</p>
+  </div>
+</details>
 
-<fieldset><legend>PRESETS</legend>
-<div id="presets"></div>
-<small>Recall also via MIDI Program Change 1–4.</small>
-</fieldset>
+<details class="sec">
+  <summary>Wi‑Fi</summary>
+  <div class="sec-body">
+    <div class="row">
+      <label class="f">SSID
+        <input name="ssid" type="text" maxlength="32" autocomplete="off">
+      </label>
+      <label class="f">Password
+        <input name="pass" type="password" maxlength="64" placeholder="unchanged" autocomplete="new-password">
+      </label>
+    </div>
+    <p class="hint">ESP32 is <strong>2.4&nbsp;GHz only</strong>. Save joins live; open <code>http://neon-link.local/</code> on your home LAN. Reboot only if stuck.</p>
+  </div>
+</details>
 
-<div class="bar">
-  <button type="submit">SAVE</button>
-  <button type="button" class="secondary" id="reboot">REBOOT</button>
+<details class="sec">
+  <summary>Presets</summary>
+  <div class="sec-body">
+    <div class="presets" id="presets"></div>
+    <p class="hint">Also via MIDI Program Change 1–4</p>
+  </div>
+</details>
+
+<div class="actions">
+  <button type="submit">Save</button>
+  <button type="button" class="ghost" id="reboot">Reboot</button>
   <span id="msg"></span>
 </div>
 </form>
 
 <script>
 "use strict";
-const $=n=>document.querySelector(`[name=${n}]`);
-const chsel=$("channel");for(let i=0;i<16;i++){const o=document.createElement("option");o.value=i;o.textContent="ch "+(i+1);chsel.appendChild(o);}
+const $=n=>document.querySelector(`[name="${n}"]`);
+const chsel=$("channel");
+for(let i=0;i<16;i++){
+  const o=document.createElement("option");
+  o.value=i;o.textContent=String(i+1);
+  chsel.appendChild(o);
+}
+
 const clocksDiv=document.getElementById("clocks");
 for(let i=0;i<4;i++){
-  clocksDiv.insertAdjacentHTML("beforeend",`<div class="clk"><b>CLK ${i+1}</b>
-  <label><input data-c="${i}" data-k="enabled" type="checkbox"> on</label>
-  <label>PPQN <input data-c="${i}" data-k="ppqn" type="number" min="1" max="192"></label>
-  <label>×<input data-c="${i}" data-k="mult" type="number" min="1" max="16"></label>
-  <label>÷<input data-c="${i}" data-k="div" type="number" min="1" max="16"></label>
-  <label>Mode <select data-c="${i}" data-k="mode"><option value="trig">trig</option><option value="square">square</option></select></label>
-  <label>Trig µs <input data-c="${i}" data-k="trig_len_us" type="number" min="1000" max="100000" step="1000"></label>
-  <label>Duty % <input data-c="${i}" data-k="duty_pct" type="number" min="1" max="99"></label>
-  <label>Shuffle % <input data-c="${i}" data-k="shuffle_pct" type="number" min="0" max="75"></label>
-  <br>
-  <label>Rhythm <select data-c="${i}" data-k="rhythm"><option value="all">all</option><option value="euclid">euclid</option><option value="probability">probability</option></select></label>
-  <label>Steps <input data-c="${i}" data-k="euclid_steps" type="number" min="1" max="64"></label>
-  <label>Fills <input data-c="${i}" data-k="euclid_fills" type="number" min="0" max="64"></label>
-  <label>Rot <input data-c="${i}" data-k="euclid_rot" type="number" min="0" max="63"></label>
-  <label>Prob % <input data-c="${i}" data-k="probability_pct" type="number" min="0" max="100"></label>
-  <label>Humanize % <input data-c="${i}" data-k="humanize_pct" type="number" min="0" max="50"></label></div>`);
+  clocksDiv.insertAdjacentHTML("beforeend",`
+  <div class="clk" data-clk="${i}">
+    <div class="clk-head">
+      <b>CLK ${i+1}</b>
+      <label class="f inline"><input data-c="${i}" data-k="enabled" type="checkbox"> on</label>
+      <span class="clk-sum" id="csum${i}"></span>
+    </div>
+    <div class="row">
+      <label class="f">PPQN<input data-c="${i}" data-k="ppqn" type="number" min="1" max="192"></label>
+      <label class="f">×<input data-c="${i}" data-k="mult" type="number" min="1" max="16"></label>
+      <label class="f">÷<input data-c="${i}" data-k="div" type="number" min="1" max="16"></label>
+      <label class="f">Mode
+        <select data-c="${i}" data-k="mode">
+          <option value="trig">trig</option>
+          <option value="square">square</option>
+        </select>
+      </label>
+      <label class="f">Trig µs<input data-c="${i}" data-k="trig_len_us" type="number" min="1000" max="100000" step="1000"></label>
+      <label class="f">Duty %<input data-c="${i}" data-k="duty_pct" type="number" min="1" max="99"></label>
+      <label class="f">Shuffle %<input data-c="${i}" data-k="shuffle_pct" type="number" min="0" max="75"></label>
+    </div>
+    <div class="row">
+      <label class="f">Rhythm
+        <select data-c="${i}" data-k="rhythm">
+          <option value="all">all</option>
+          <option value="euclid">euclid</option>
+          <option value="probability">probability</option>
+        </select>
+      </label>
+      <label class="f">Steps<input data-c="${i}" data-k="euclid_steps" type="number" min="1" max="64"></label>
+      <label class="f">Fills<input data-c="${i}" data-k="euclid_fills" type="number" min="0" max="64"></label>
+      <label class="f">Rot<input data-c="${i}" data-k="euclid_rot" type="number" min="0" max="63"></label>
+      <label class="f">Prob %<input data-c="${i}" data-k="probability_pct" type="number" min="0" max="100"></label>
+      <label class="f">Humanize %<input data-c="${i}" data-k="humanize_pct" type="number" min="0" max="50"></label>
+    </div>
+  </div>`);
 }
 const cinp=(c,k)=>document.querySelector(`[data-c="${c}"][data-k="${k}"]`);
 
+function refreshClockSums(){
+  for(let i=0;i<4;i++){
+    const on=cinp(i,"enabled").checked;
+    const ppqn=cinp(i,"ppqn").value;
+    const mult=cinp(i,"mult").value;
+    const div=cinp(i,"div").value;
+    const mode=cinp(i,"mode").value;
+    document.getElementById("csum"+i).textContent=
+      on?`${ppqn} ppqn · ×${mult} ÷${div} · ${mode}`:"off";
+  }
+}
+clocksDiv.addEventListener("input",refreshClockSums);
+clocksDiv.addEventListener("change",refreshClockSums);
+
 async function loadConfig(){
   const cfg=await (await fetch("/api/config")).json();
-  cfg.engine.clocks.forEach((c,i)=>{for(const k in c){const el=cinp(i,k);if(!el)continue;
-    if(el.type==="checkbox")el.checked=c[k];else el.value=c[k];}});
+  cfg.engine.clocks.forEach((c,i)=>{
+    for(const k in c){
+      const el=cinp(i,k);if(!el)continue;
+      if(el.type==="checkbox")el.checked=!!c[k];else el.value=c[k];
+    }
+  });
   $("reset_mode").value=cfg.engine.reset_mode;
   $("reset_trig_len_us").value=cfg.engine.reset_trig_len_us;
   $("latency_us").value=cfg.engine.latency_us;
@@ -126,107 +341,155 @@ async function loadConfig(){
   $("clock_source").value=cfg.clock_source;
   $("clock_in_ppqn").value=cfg.clock_in_ppqn;
   $("quantum").value=cfg.quantum;
-  $("cv_min").value=cfg.tempo_cv.min_bpm;$("cv_max").value=cfg.tempo_cv.max_bpm;
-  $("ble_enabled").checked=cfg.ble.enabled;$("midi_clock_out").checked=cfg.ble.midi_clock_out;
-  $("channel").value=cfg.ble.channel;$("gate_target").value=cfg.ble.gate_target;
-  $("pitch_cv").checked=cfg.ble.pitch_cv;$("cc_latency").value=cfg.ble.cc_latency;
-  $("cc_shuffle_base").value=cfg.ble.cc_shuffle_base;$("clock_policy").value=cfg.ble.clock_policy;
+  $("cv_min").value=cfg.tempo_cv.min_bpm;
+  $("cv_max").value=cfg.tempo_cv.max_bpm;
+  $("ble_enabled").checked=cfg.ble.enabled;
+  $("midi_clock_out").checked=cfg.ble.midi_clock_out;
+  $("channel").value=cfg.ble.channel;
+  $("gate_target").value=cfg.ble.gate_target;
+  $("pitch_cv").checked=cfg.ble.pitch_cv;
+  $("cc_latency").value=cfg.ble.cc_latency;
+  $("cc_shuffle_base").value=cfg.ble.cc_shuffle_base;
+  $("clock_policy").value=cfg.ble.clock_policy;
   $("transport_enabled").checked=cfg.ble.transport_enabled;
   $("ssid").value=cfg.wifi.ssid;
+  refreshClockSums();
 }
+
 function buildConfig(){
   const clocks=[];
-  for(let i=0;i<4;i++)clocks.push({enabled:cinp(i,"enabled").checked,ppqn:+cinp(i,"ppqn").value,
-    mult:+cinp(i,"mult").value,div:+cinp(i,"div").value,mode:cinp(i,"mode").value,
-    trig_len_us:+cinp(i,"trig_len_us").value,duty_pct:+cinp(i,"duty_pct").value,
-    shuffle_pct:+cinp(i,"shuffle_pct").value,rhythm:cinp(i,"rhythm").value,
-    euclid_steps:+cinp(i,"euclid_steps").value,euclid_fills:+cinp(i,"euclid_fills").value,
-    euclid_rot:+cinp(i,"euclid_rot").value,probability_pct:+cinp(i,"probability_pct").value,
-    humanize_pct:+cinp(i,"humanize_pct").value});
-  const cfg={engine:{clocks,reset_mode:$("reset_mode").value,
-      reset_trig_len_us:+$("reset_trig_len_us").value,latency_us:+$("latency_us").value,
-      transport_gating:$("transport_gating").checked},
+  for(let i=0;i<4;i++){
+    clocks.push({
+      enabled:cinp(i,"enabled").checked,
+      ppqn:+cinp(i,"ppqn").value,
+      mult:+cinp(i,"mult").value,
+      div:+cinp(i,"div").value,
+      mode:cinp(i,"mode").value,
+      trig_len_us:+cinp(i,"trig_len_us").value,
+      duty_pct:+cinp(i,"duty_pct").value,
+      shuffle_pct:+cinp(i,"shuffle_pct").value,
+      rhythm:cinp(i,"rhythm").value,
+      euclid_steps:+cinp(i,"euclid_steps").value,
+      euclid_fills:+cinp(i,"euclid_fills").value,
+      euclid_rot:+cinp(i,"euclid_rot").value,
+      probability_pct:+cinp(i,"probability_pct").value,
+      humanize_pct:+cinp(i,"humanize_pct").value
+    });
+  }
+  return {
+    engine:{
+      clocks,
+      reset_mode:$("reset_mode").value,
+      reset_trig_len_us:+$("reset_trig_len_us").value,
+      latency_us:+$("latency_us").value,
+      transport_gating:$("transport_gating").checked
+    },
     tempo_cv:{min_bpm:+$("cv_min").value,max_bpm:+$("cv_max").value},
-    quantum:+$("quantum").value,clock_source:$("clock_source").value,
+    quantum:+$("quantum").value,
+    clock_source:$("clock_source").value,
     clock_in_ppqn:+$("clock_in_ppqn").value,
-    ble:{enabled:$("ble_enabled").checked,midi_clock_out:$("midi_clock_out").checked,
-      channel:+$("channel").value,gate_target:+$("gate_target").value,
-      pitch_cv:$("pitch_cv").checked,cc_latency:+$("cc_latency").value,
-      cc_shuffle_base:+$("cc_shuffle_base").value,clock_policy:$("clock_policy").value,
-      transport_enabled:$("transport_enabled").checked},
-    wifi:{ssid:$("ssid").value,pass:$("pass").value}};
-  return cfg;
+    ble:{
+      enabled:$("ble_enabled").checked,
+      midi_clock_out:$("midi_clock_out").checked,
+      channel:+$("channel").value,
+      gate_target:+$("gate_target").value,
+      pitch_cv:$("pitch_cv").checked,
+      cc_latency:+$("cc_latency").value,
+      cc_shuffle_base:+$("cc_shuffle_base").value,
+      clock_policy:$("clock_policy").value,
+      transport_enabled:$("transport_enabled").checked
+    },
+    wifi:{ssid:$("ssid").value,pass:$("pass").value}
+  };
 }
+
 const presetsDiv=document.getElementById("presets");
 for(let s=0;s<4;s++){
   presetsDiv.insertAdjacentHTML("beforeend",
-    `<label>Slot ${s+1} <button type="button" data-p="save" data-s="${s}">save</button>
-     <button type="button" data-p="recall" data-s="${s}">recall</button></label>`);
+    `<div class="preset"><span>Slot ${s+1}</span>
+      <button type="button" class="tiny ghost" data-p="save" data-s="${s}">Save</button>
+      <button type="button" class="tiny ghost" data-p="recall" data-s="${s}">Recall</button>
+    </div>`);
 }
 presetsDiv.addEventListener("click",async e=>{
   const b=e.target.closest("button[data-p]");if(!b)return;
   const msg=document.getElementById("msg");
   try{
     const r=await fetch(`/api/preset?op=${b.dataset.p}&slot=${b.dataset.s}`,{method:"POST"});
-    msg.textContent=r.ok?`preset ${+b.dataset.s+1} ${b.dataset.p} ✔`:"preset error";
+    msg.textContent=r.ok?`preset ${+b.dataset.s+1} ${b.dataset.p}`:"preset error";
     if(r.ok&&b.dataset.p==="recall")await loadConfig();
-  }catch(err){msg.textContent="failed: "+err;}
+  }catch(err){msg.textContent="failed";}
 });
 
 document.getElementById("f").addEventListener("submit",async e=>{
   e.preventDefault();
   const msg=document.getElementById("msg");
   try{
-    const r=await fetch("/api/config",{method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(buildConfig())});
-    msg.textContent=r.ok?"saved ✔ — WiFi applying…":"error "+r.status;
+    const r=await fetch("/api/config",{
+      method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(buildConfig())
+    });
+    msg.textContent=r.ok?"saved":"error "+r.status;
     if(r.ok){$("pass").value="";await loadConfig();}
-  }catch(err){msg.textContent="failed: "+err;}
+  }catch(err){msg.textContent="failed";}
 });
 
 document.getElementById("reboot").addEventListener("click",async ()=>{
   const msg=document.getElementById("msg");
-  if(!confirm("Reboot NEON LINK now?"))return;
+  if(!confirm("Reboot NEON LINK?"))return;
   msg.textContent="rebooting…";
-  try{
-    await fetch("/api/reboot",{method:"POST"});
-  }catch(e){/* connection drops mid-reboot */}
-  setTimeout(()=>{msg.textContent="rebooted — reload this page (use neon-link.local if on home WiFi)";},4000);
+  try{await fetch("/api/reboot",{method:"POST"});}catch(e){}
+  setTimeout(()=>{msg.textContent="reload when ready";},4000);
 });
 
 function wifiFailHint(r){
-  if(!r) return "";
-  if(r===15) return " (4-way handshake timeout — usually wrong password)";
-  if(r===201) return " (AP not found — check 2.4 GHz SSID spelling)";
-  if(r===2||r===202||r===204) return " (auth/handshake failed — check password / WPA mode)";
-  return " (disconnect reason "+r+")";
+  if(!r)return"";
+  if(r===15)return" — wrong password?";
+  if(r===201)return" — AP not found (2.4 GHz?)";
+  if(r===2||r===202||r===204)return" — auth failed";
+  return" — fail "+r;
 }
-function updateReach(s){
-  const reach=document.getElementById("reach");
-  const banner=document.getElementById("banner");
+
+function updateHome(s){
+  const bpm=typeof s.bpm==="number"?s.bpm:0;
+  document.getElementById("bpm").textContent=bpm.toFixed(1);
+  document.getElementById("peers").textContent=
+    `${s.peers||0} peer${s.peers===1?"":"s"}`;
+
+  const src=s.ext_clock?"EXT":"LINK";
+  const tr=s.playing?"PLAY":"STOP";
+  let net=(s.network||"none").toUpperCase();
+  if(s.setup_ap&&net==="NONE")net="AP";
+  document.getElementById("meta").innerHTML=
+    `${src}<span>·</span>${tr}<span>·</span>${net}`;
+
   const host=s.hostname||"neon-link.local";
   const ip=s.ip||"";
-  const parts=[];
-  parts.push(`<a href="http://${host}/">${host}</a>`);
-  if(ip) parts.push(`<a href="http://${ip}/">${ip}</a>`);
-  let extra="";
-  if(s.wifi_ssid){
-    extra=` · STA “${s.wifi_ssid}” pass_len=${s.wifi_pass_len||0}`;
-    if(s.network!=="wifi" && s.wifi_fail_reason) extra+=wifiFailHint(s.wifi_fail_reason);
-  }
-  reach.innerHTML="Open from this LAN: "+parts.join(" · ")+extra;
+  const bits=[];
+  if(ip)bits.push(`<a href="http://${ip}/">${ip}</a>`);
+  bits.push(`<a href="http://${host}/">${host}</a>`);
+  document.getElementById("addr").innerHTML=bits.join(" · ");
 
-  if(s.setup_ap || s.network==="none"){
-    banner.style.display="block";
+  // Approximate phase from uptime if no dedicated field — keep bar calm.
+  // Prefer pulse activity as a soft life indicator when playing.
+  const fill=document.getElementById("phaseFill");
+  if(s.playing){
+    const t=(Date.now()/1000)%4;
+    fill.style.width=((t/4)*100).toFixed(1)+"%";
+  }else{
+    fill.style.width="0%";
+  }
+
+  const banner=document.getElementById("banner");
+  if(s.setup_ap||s.network==="none"){
+    banner.classList.add("show");
     const fail=s.wifi_fail_reason?wifiFailHint(s.wifi_fail_reason):"";
     banner.innerHTML=
-      "<strong>Setup / no home WiFi.</strong> ESP32 is <strong>2.4 GHz only</strong>. "+
-      "Enter SSID + password under WIFI, press <strong>SAVE</strong> (persists immediately), wait for the unit to show WIFI + an IP. "+
-      "Use <strong>REBOOT</strong> only if stuck."+
-      (s.wifi_ssid?` Trying <strong>${s.wifi_ssid}</strong> (pass length ${s.wifi_pass_len||0})${fail}.`:"")+
-      " Then open <strong>http://neon-link.local/</strong> from your home LAN.";
+      "<strong>No home Wi‑Fi yet.</strong> 2.4&nbsp;GHz only. Open <strong>Wi‑Fi</strong> below, enter SSID + password, <strong>Save</strong>."+
+      (s.wifi_ssid?` Trying <strong>${s.wifi_ssid}</strong> (len ${s.wifi_pass_len||0})${fail}.`:"");
   }else{
-    banner.style.display="none";
+    banner.classList.remove("show");
     banner.textContent="";
   }
 }
@@ -234,16 +497,18 @@ function updateReach(s){
 async function poll(){
   try{
     const s=await (await fetch("/api/status")).json();
-    document.getElementById("status").textContent=
-      `${s.bpm.toFixed(1)} BPM · ${s.playing?"PLAY":"STOP"} · ${s.network.toUpperCase()} · ${s.peers} peer${s.peers==1?"":"s"}${s.ext_clock?" · EXT CLK":""}`;
-    updateReach(s);
+    updateHome(s);
   }catch(e){
-    document.getElementById("status").textContent="offline";
-    document.getElementById("reach").textContent="";
+    document.getElementById("bpm").textContent="—";
+    document.getElementById("meta").textContent="OFFLINE";
+    document.getElementById("addr").textContent="";
   }
-  setTimeout(poll,2000);
+  setTimeout(poll,1000);
 }
-loadConfig().then(poll).catch(()=>{document.getElementById("status").textContent="failed to load config";});
+
+loadConfig().then(poll).catch(()=>{
+  document.getElementById("meta").textContent="CONFIG ERROR";
+});
 </script>
 </body>
 </html>
