@@ -119,6 +119,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 
 | Document | Audience | Description |
 |----------|----------|-------------|
+| **[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)** | Design / Firmware / Web | **Authoritative design system** for both UI surfaces — tokens, status vocabulary, icons, the 128×128 layout, encoder interaction, and the `design/` → generator pipeline that keeps the two in step |
 | **[HARDWARE.md](HARDWARE.md)** | Hardware Engineer | Exhaustive hardware PRD — mechanical, electrical, power, I/O specs, BOM targets, prototype phases, acceptance criteria |
 | **[SOFTWARE.md](SOFTWARE.md)** | Software / Firmware Architect | Full software architecture handoff — dual-core strategy, Link integration, BLE MIDI routing matrix, UI requirements, milestones, risks |
 | **[FEATURES.md](FEATURES.md)** | Everyone | **Authoritative feature priority list** (Must / Should / Nice / Deferred) after AMYboard pivot |
@@ -157,13 +158,28 @@ For the Bela Gem platform variant, see `docs/BELA_GEM_SPEC.md`.
 
 ## Aesthetic Direction
 
-**Saved by the Bell / early-90s cool.**
+**Saved by the Bell / early-90s cool — as attitude, not pastiche.**
 
 - Neon pink/magenta, electric teal/cyan, hot yellow accents
 - Black or deep purple panel base
 - Bold geometric shapes, grids, abstract motifs
 - Highly legible but playful typography
 - The module should look like it belongs in a 1993 locker while remaining fully professional in use
+
+This section describes the **physical panel**. For the two software surfaces —
+the web configuration interface and the 128×128 display — the authority is
+**[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)**, which narrows the same palette to a
+dark-first, near-black ground with cyan as the "system is alive" accent and
+magenta reserved for wireless. Both surfaces are generated from one set of
+tokens in `design/`, so they cannot drift apart:
+
+```bash
+python3 scripts/gen_design.py          # tokens, strings, icons, numerals -> both surfaces
+python3 scripts/check_contrast.py      # every text/background pair meets its target
+
+cd web && npm ci && npm run build      # the page the module serves, gzipped into flash
+npm run build:styleguide               # review both surfaces side by side, no hardware needed
+```
 
 ---
 

@@ -21,14 +21,27 @@ struct UiStatus {
   // Best editor IPv4 ("192.168.x.x") or empty; setup_ap when open AP is up.
   char ip[16] = {};
   bool setup_ap = false;
+  // False until the first Link sync, so the hero readout can show its
+  // placeholder instead of a misleading tempo.
+  bool tempo_valid = true;
+  bool ble_on = false;
 };
 
 // Encoder-driven menu state machine (pure logic; host-tested).
 //
-// Home --click--> Menu [Outputs, Settings, Back]
-//   Outputs [CLK1..4, Back] --click--> OutputEdit (param list; click
-//     toggles edit mode, rotation adjusts the value in edit mode)
-//   Settings (param list, same editing pattern)
+// The tree is deliberately shallow (DESIGN_SYSTEM.md §11): one menu with
+// five destinations, at most one level below it, and long-press as the
+// universal way back.
+//
+//   Home --click--> Menu [Live, Outputs, Network, MIDI, System]
+//     Outputs [CLK1..4] --click--> OutputEdit (param list)
+//     Network              read-only; credentials are the web UI's job
+//     MIDI, System         param lists
+//     System > REBOOT   --click--> Confirm
+//
+// Interaction (§11): rotate moves focus or changes the focused value,
+// short press enters/confirms/toggles, long press cancels an edit or goes
+// back one level.
 //
 // The model mutates a Config in place; take_dirty() reports one-shot when
 // a value changed so the owner can apply + persist (debounced).
@@ -39,26 +52,46 @@ class MenuModel {
     kMenu,
     kOutputs,
     kOutputEdit,
-    kSettings,
+    kNetwork,
+    kMidi,
+    kSystem,
+    kConfirm,
   };
 
-  static constexpr int kMenuItems = 3;     // Outputs, Settings, Back
-  static constexpr int kOutputsItems = 5;  // CLK1..4, Back
-  static constexpr int kOutputEditItems = 9;
-  static constexpr int kSettingsItems = 6;
+  // Requests the model cannot carry out itself. The owner polls
+  // take_action() and performs the platform-specific part.
+  enum class Action : uint8_t {
+    kNone,
+    kReboot,
+  };
+
+  static constexpr int kMenuItems = 5;     // Live, Outputs, Network, MIDI, System
+  static constexpr int kOutputsItems = 4;  // CLK1..4
+  static constexpr int kOutputEditItems = 8;
+  static constexpr int kMidiItems = 5;
+  static constexpr int kSystemItems = 7;   // last item is REBOOT
+  static constexpr int kSystemRebootItem = kSystemItems - 1;
 
   explicit MenuModel(Config* cfg) : cfg_(cfg) {}
 
   void on_rotate(int detents);
   void on_click();
+  // Cancels an in-progress edit if there is one, otherwise goes back one
+  // level. From the menu this returns to the live screen.
+  void on_long_press();
 
   bool take_dirty();
+  Action take_action();
 
   Screen screen() const { return screen_; }
   int cursor() const { return cursor_; }
   bool editing() const { return editing_; }
   int output_index() const { return output_; }
+  bool confirm_yes() const { return confirm_yes_; }
   int item_count() const;
+
+  // Device title for the active screen, from the shared vocabulary.
+  const char* screen_title() const;
 
   // Label and current value string for a list row on the active screen.
   const char* item_label(int index) const;
@@ -66,7 +99,8 @@ class MenuModel {
 
  private:
   void adjust_output_param(int index, int delta);
-  void adjust_setting(int index, int delta);
+  void adjust_midi(int index, int delta);
+  void adjust_system(int index, int delta);
   void mark_dirty() { dirty_ = true; }
 
   Config* cfg_;
@@ -75,6 +109,8 @@ class MenuModel {
   int output_ = 0;
   bool editing_ = false;
   bool dirty_ = false;
+  bool confirm_yes_ = false;
+  Action action_ = Action::kNone;
 };
 
 }  // namespace neon

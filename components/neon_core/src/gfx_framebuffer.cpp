@@ -141,6 +141,50 @@ void Framebuffer::fill_rect(int x, int y, int w, int h, bool on) {
   }
 }
 
+void Framebuffer::fill_rect_dither(int x, int y, int w, int h,
+                                   Dither pattern) {
+  for (int yy = y; yy < y + h; ++yy) {
+    for (int xx = x; xx < x + w; ++xx) {
+      bool on = true;
+      switch (pattern) {
+        case Dither::kSolid:
+          break;
+        case Dither::kHalf:
+          on = ((xx + yy) & 1) == 0;
+          break;
+        case Dither::kQuarter:
+          on = (xx & 1) == 0 && (yy & 1) == 0;
+          break;
+      }
+      if (on) {
+        set_pixel(xx, yy, true);
+      }
+    }
+  }
+}
+
+void Framebuffer::invert_rect(int x, int y, int w, int h) {
+  for (int yy = y; yy < y + h; ++yy) {
+    for (int xx = x; xx < x + w; ++xx) {
+      if (xx < 0 || xx >= kWidth || yy < 0 || yy >= kHeight) {
+        continue;
+      }
+      set_pixel(xx, yy, !pixel(xx, yy));
+    }
+  }
+}
+
+void Framebuffer::blit(int x, int y, const uint8_t* rows, int w, int h) {
+  for (int row = 0; row < h; ++row) {
+    const uint8_t bits = rows[row];
+    for (int col = 0; col < w; ++col) {
+      if ((bits >> (7 - col)) & 1u) {
+        set_pixel(x + col, y + row, true);
+      }
+    }
+  }
+}
+
 void Framebuffer::rect(int x, int y, int w, int h, bool on) {
   fill_rect(x, y, w, 1, on);
   fill_rect(x, y + h - 1, w, 1, on);

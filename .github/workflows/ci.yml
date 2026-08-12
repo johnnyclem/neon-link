@@ -20,6 +20,88 @@ jobs:
       - name: Test
         run: ctest --test-dir build-host --output-on-failure
 
+  design-system:
+    name: Design system (generated files, contrast, web bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Colours, layout constants, status words, icons and the hero numerals
+      # all live in design/ and are generated into both surfaces. If a
+      # generated file has drifted from its source, the two surfaces have
+      # started disagreeing — fail before that reaches hardware.
+      - name: Generated files are in sync
+        run: python3 scripts/gen_design.py --check
+
+      # High contrast is non-negotiable on both surfaces (DESIGN_SYSTEM.md
+      # §12), and palettes drift when they are only checked by eye.
+      - name: Palette meets its contrast targets
+        run: python3 scripts/check_contrast.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      # Rebuilds the bundle and checks the committed .gz matches. The
+      # artifact is committed so `idf.py build` needs no Node toolchain;
+      # this step is what stops "committed" turning into "stale".
+      - name: Web bundle is built and committed
+        run: |
+          npm run build
+          cd ..
+          if ! git diff --quiet -- components/web_ui/www/dist/index.html.gz; then
+            echo "::error::The committed web bundle is out of date."
+            echo "Run 'npm run build' in web/ and commit components/web_ui/www/dist/index.html.gz."
+            exit 1
+          fi
+        working-directory: web
+
+      - name: Style guide builds
+        run: npm run build:styleguide
+        working-directory: web
+
+  device-screens:
+    name: Device screens match the renderer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # design/screens.json is rendered by the firmware's own render_ui().
+      # If the panel's design changed without the fixtures being refreshed,
+      # the style guide would be showing screens the device no longer draws.
+      - name: Configure
+        run: cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Release -DNEON_SANITIZERS=OFF
+      # Target-scoped on purpose: this job exists to check the fixtures, and
+      # it doubles as the only optimized build of neon_core we have — several
+      # -Werror analyses (format-truncation, stringop-overflow) only run with
+      # optimization on, so a Debug-only loop misses them. Do not widen it to
+      # the whole project: neon_tests trips a GCC 13 false positive on
+      # std::string under -O2 that predates this job.
+      - name: Build renderer
+        run: cmake --build build-host --target neon_screens -j
+      - name: Screens are up to date
+        run: |
+          ./build-host/neon_screens > design/screens.json
+          if ! git diff --quiet -- design/screens.json; then
+            echo "::error::design/screens.json is stale."
+            echo "Run './build-host/neon_screens > design/screens.json' and commit it."
+            git diff --stat -- design/screens.json
+            exit 1
+          fi
+
   firmware-build:
     name: ESP-IDF build (esp32s3, ${{ matrix.variant }})
     runs-on: ubuntu-latest

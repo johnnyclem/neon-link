@@ -26,16 +26,22 @@ namespace {
 
 const char* kTag = "web_ui";
 
+// The single-file web app, pre-compressed at build time (see web/). Served
+// straight out of flash with Content-Encoding: gzip — no decompression on
+// the module, and roughly a third of the bytes over a 2.4 GHz link the user
+// is very likely standing on mid-setup.
 extern "C" {
-extern const uint8_t index_html_start[] asm("_binary_index_html_start");
-extern const uint8_t index_html_end[] asm("_binary_index_html_end");
+extern const uint8_t index_gz_start[] asm("_binary_index_html_gz_start");
+extern const uint8_t index_gz_end[] asm("_binary_index_html_gz_end");
 }
 
 esp_err_t handle_index(httpd_req_t* req) {
   httpd_resp_set_type(req, "text/html");
-  const size_t len =
-      static_cast<size_t>(index_html_end - index_html_start) - 1;  // NUL
-  return httpd_resp_send(req, reinterpret_cast<const char*>(index_html_start),
+  httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+  // EMBED_FILES is byte-exact (unlike EMBED_TXTFILES, which appends a NUL),
+  // so the whole range is payload.
+  const size_t len = static_cast<size_t>(index_gz_end - index_gz_start);
+  return httpd_resp_send(req, reinterpret_cast<const char*>(index_gz_start),
                          len);
 }
 
@@ -106,11 +112,17 @@ esp_err_t handle_status(httpd_req_t* req) {
   const unsigned disc = neon_wifi_last_disconnect_reason();
 
   const halesp::PulseStats ps = halesp::pulse_stats();
-  char buf[640];
+  // Phase and quantum let the web strip draw the same bar the panel does,
+  // from the same numbers (neon::phase_milli_beats).
+  const uint32_t phase = neon::phase_milli_beats(tl, esp_timer_get_time());
+  const uint32_t quantum = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
+
+  char buf[704];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
       "\"ext_clock\":%s,\"uptime_s\":%lld,"
+      "\"phase_milli\":%u,\"quantum\":%u,\"tempo_valid\":%s,"
       "\"hostname\":\"neon-link.local\",\"ip\":\"%s\",\"setup_ap\":%s,"
       "\"wifi_ssid\":\"%s\",\"wifi_pass_len\":%u,\"wifi_fail_reason\":%u,"
       "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u}}",
@@ -121,12 +133,22 @@ esp_err_t handle_status(httpd_req_t* req) {
       : net == neon::ActiveNet::kWifi   ? "wifi"
                                         : "none",
       app_status_ext_clock() ? "true" : "false",
-      static_cast<long long>(esp_timer_get_time() / 1000000), ip,
+      static_cast<long long>(esp_timer_get_time() / 1000000),
+      static_cast<unsigned>(phase), static_cast<unsigned>(quantum),
+      tl.tempo_mpb_q32 != 0 ? "true" : "false", ip,
       setup_ap ? "true" : "false", ssid, pass_len, disc,
       static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),
       static_cast<unsigned>(ps.late_avg_us));
+  if (n < 0) {
+    return httpd_resp_send_500(req);
+  }
+  // snprintf returns the length it *would* have written, so an oversized
+  // payload (a long SSID, say) would otherwise send past the end of buf.
+  const size_t len = static_cast<size_t>(n) < sizeof(buf)
+                         ? static_cast<size_t>(n)
+                         : sizeof(buf) - 1;
   httpd_resp_set_type(req, "application/json");
-  return httpd_resp_send(req, buf, n);
+  return httpd_resp_send(req, buf, len);
 }
 
 // POST /api/reboot — soft reset so WiFi STA creds take effect without
