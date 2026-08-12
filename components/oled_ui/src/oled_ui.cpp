@@ -4,6 +4,7 @@
 // pulse path on core 1.
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,22 +36,14 @@ void assemble_status(neon::UiStatus* s) {
   const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
   s->milli_bpm =
       mpb_us != 0 ? static_cast<uint32_t>(60000000000ull / mpb_us) : 120000;
+  // Before the first sync the hero readout shows its placeholder rather
+  // than a default tempo the module is not actually running at.
+  s->tempo_valid = tl.tempo_mpb_q32 != 0;
+  s->ble_on = neon_config().ble_enabled != 0;
   s->playing = tl.playing != 0;
   s->quantum_beats = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
 
-  const int64_t now = esp_timer_get_time();
-  if (tl.tempo_mpb_q32 != 0) {
-    const double mpb_us =
-        static_cast<double>(tl.tempo_mpb_q32) / 4294967296.0;
-    double beat = static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0 +
-                  static_cast<double>(now - tl.origin_us) / mpb_us;
-    const double q = static_cast<double>(s->quantum_beats);
-    double bar_pos = beat - static_cast<int64_t>(beat / q) * q;
-    if (bar_pos < 0) {
-      bar_pos += q;
-    }
-    s->phase_milli_beats = static_cast<uint32_t>(bar_pos * 1000.0);
-  }
+  s->phase_milli_beats = neon::phase_milli_beats(tl, esp_timer_get_time());
 
   const neon::ActiveNet net = netman::preference().active();
   s->active_net = net == neon::ActiveNet::kEthernet ? 1
@@ -89,8 +82,15 @@ void ui_task(void*) {
     if (detents != 0) {
       menu.on_rotate(detents);
     }
-    if (halesp::encoder_clicked()) {
-      menu.on_click();
+    switch (halesp::encoder_take_press()) {
+      case halesp::EncoderPress::kShort:
+        menu.on_click();
+        break;
+      case halesp::EncoderPress::kLong:
+        menu.on_long_press();
+        break;
+      case halesp::EncoderPress::kNone:
+        break;
     }
     if (menu.take_dirty()) {
       // Merge rather than write the whole struct back: the menu holds a
@@ -118,6 +118,11 @@ void ui_task(void*) {
       oledui::panel_set_brightness(want_brightness);
       applied_brightness = want_brightness;
       brightness_applied = true;
+    }
+    if (menu.take_action() == neon::MenuModel::Action::kReboot) {
+      // Never restart with a debounced config write still only in RAM.
+      neon_config_flush_now();
+      esp_restart();
     }
 
     neon::UiStatus status;

@@ -22,11 +22,29 @@ class Framebuffer {
     kLarge = 3,   // 15×21 (3× scale)
   };
 
+  // Ordered fills for depth on a 1-bit panel. DESIGN_SYSTEM.md §3.2 keeps
+  // the core UI pure black and white; these are for progress and meter
+  // fills only, and must never sit behind text.
+  enum class Dither : uint8_t {
+    kSolid,    // every pixel
+    kHalf,     // 50% checkerboard
+    kQuarter,  // 25%
+  };
+
   void clear();
   void set_pixel(int x, int y, bool on);
   bool pixel(int x, int y) const;
   void fill_rect(int x, int y, int w, int h, bool on);
+  void fill_rect_dither(int x, int y, int w, int h, Dither pattern);
   void rect(int x, int y, int w, int h, bool on);
+
+  // Flips every pixel in the region. This is how selection and focus are
+  // shown on the panel — there is no colour to fall back on.
+  void invert_rect(int x, int y, int w, int h);
+
+  // Draws a 1-bit bitmap stored one byte per row, bit 7 = leftmost pixel
+  // (the packing scripts/gen_design.py emits for the icon masters).
+  void blit(int x, int y, const uint8_t* rows, int w, int h);
 
   // Draws text with its top-left at (x, y); returns the advance width.
   // Glyphs are 5(+1) columns wide at scale 1.

@@ -109,7 +109,7 @@ Delivered in that pass:
 | WiFi | Four stored networks walked in order with a per-network retry count, in-editor scan, hidden-network entry |
 | Access point | Policy (fallback / always / off), SSID, password, require-password, hidden, channel |
 | Identity | Device name driving the mDNS hostname and default AP SSID, applied without a reboot |
-| Panel | Display brightness, 0 blanks the screen |
+| Panel | Display brightness, 0 blanks the screen; every parity parameter reachable from the encoder menu |
 | Maintenance | OTA firmware update from the editor, and factory reset |
 
 These are **shipped**, not planned. Anything added below this line is new

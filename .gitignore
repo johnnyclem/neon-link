@@ -151,3 +151,13 @@ dependencies.lock.old
 
 # Host-native builds
 build-host/
+
+# The web bundle is committed on purpose: `idf.py build` must work from a
+# bare checkout with no Node toolchain, which is what CI and anyone flashing
+# the module does. CI rebuilds it and fails on drift, so this never goes
+# stale. The `dist` rule above would otherwise swallow it.
+!components/web_ui/www/dist/
+!components/web_ui/www/dist/index.html.gz
+
+# The style guide is a review artifact, rebuilt on demand — not shipped.
+web/dist-styleguide/

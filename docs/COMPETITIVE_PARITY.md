@@ -102,7 +102,7 @@ Legend: ✅ match · 🔼 beat (we do more) · ⬜ not applicable
 
 | Capability | ML:2m · Junior | NEON LINK | |
 |---|---|---|---|
-| Web editor | yes | yes | ✅ |
+| Web editor | yes | yes — the React app under `web/`, served pre-gzipped | ✅ |
 | Firmware version display | yes | status line + FIRMWARE panel | ✅ |
 | Firmware update | download from vendor server | `POST /api/ota`, upload a `.bin` | ✅ |
 | Rollback on a bad image | not stated | inactive slot + `esp_ota_mark_app_valid` once the editor serves | 🔼 |
@@ -134,6 +134,12 @@ Legend: ✅ match · 🔼 beat (we do more) · ⬜ not applicable
 ---
 
 ## Verification
+
+The web editor exposes all of this through the design-system app in
+`web/` (Live carries transport, Outputs carries roles and the step grid,
+Network carries the stored list and access point, System carries the
+remaining settings, the firmware upload and factory reset). The panel
+reaches the same parameters through the encoder menu.
 
 Everything in the "Playback", "Outputs", and "Rhythm Explorer" sections is
 covered by host unit tests in `host/tests/` — `test_multi_engine.cpp`

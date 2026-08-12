@@ -1,0 +1,631 @@
+/*
+ * NEON LINK web surface.
+ *
+ * Every colour, size and duration below resolves to a custom property from
+ * tokens.css, which is generated from design/tokens.json. If a value here is
+ * a literal, it is a structural constant (a border width the token system
+ * already fixes at 0 radius, say), not a design decision made locally.
+ *
+ * Structure carried over from the panel study: radius 0, hard rules, nothing
+ * soft. The device is a machined face; the page should feel like the same
+ * object opened up, not an app that happens to configure it.
+ */
+
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  /* Safe area for phones with a notch — this gets used one-handed next to a
+     rack, often in a case with the phone half out of a pocket. */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:focus-visible {
+  outline: var(--border-solid) solid var(--neon);
+  outline-offset: 2px;
+}
+
+/* Everything that can be interacted with clears the touch target minimum. */
+button,
+input,
+select,
+a.button {
+  min-height: var(--touch-min);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* ---- layout ------------------------------------------------------------ */
+
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 var(--space-3) var(--space-7);
+}
+
+.page-title {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-hero);
+  margin: var(--space-5) 0 var(--space-3);
+}
+
+.page-intro {
+  color: var(--text-muted);
+  margin: calc(var(--space-3) * -1) 0 var(--space-4);
+  max-width: 60ch;
+}
+
+/* ---- brand + status strip ---------------------------------------------- */
+
+/*
+ * The strip is always visible: tempo, transport, network. It is the web's
+ * echo of the device's live screen, and the reason moving between the two
+ * feels like one instrument.
+ */
+.strip {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: var(--border-solid) solid var(--border);
+}
+
+.strip__inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-token);
+  font-size: var(--text-label);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.brand__mark {
+  color: var(--neon);
+}
+
+.strip__chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.strip__offline {
+  color: var(--danger);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  font-size: var(--text-caption);
+}
+
+/* ---- navigation -------------------------------------------------------- */
+
+.nav {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  border-bottom: var(--border-solid) solid var(--border);
+  background: var(--bg);
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav__inner {
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+}
+
+.nav__item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-easing);
+}
+
+.nav__item:hover {
+  color: var(--text);
+}
+
+.nav__item[aria-current="page"] {
+  color: var(--neon);
+  border-bottom-color: var(--neon);
+}
+
+/* ---- cards ------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: var(--border-solid) solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-hair) solid var(--border);
+}
+
+.card__title {
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.card__body {
+  padding: var(--space-3);
+}
+
+.card__note {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  padding: 0 var(--space-3) var(--space-3);
+  margin: 0;
+  max-width: 66ch;
+}
+
+/* ---- fields ------------------------------------------------------------ */
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field__label {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.field__hint {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.field input[type="text"],
+.field input[type="password"],
+.field input[type="number"],
+.field select {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: var(--border-solid) solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 var(--space-2);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  transition: border-color var(--motion-fast) var(--motion-easing);
+}
+
+.field input:hover,
+.field select:hover {
+  border-color: var(--neon-dim);
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--neon);
+}
+
+.field input[type="number"] {
+  font-family: var(--font-mono);
+}
+
+/* Toggle: a switch would be softer than this system allows, so it is a hard
+   two-state block that says what state it is in rather than relying on
+   position and colour alone (DESIGN_SYSTEM.md §12). */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-min);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle__box {
+  width: 44px;
+  height: 24px;
+  flex: none;
+  border: var(--border-solid) solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  position: relative;
+  transition: border-color var(--motion-fast) var(--motion-easing);
+}
+
+.toggle__knob {
+  width: 16px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--text-muted);
+  transform: translateX(0);
+  transition:
+    transform var(--motion-fast) var(--motion-easing),
+    background var(--motion-fast) var(--motion-easing);
+}
+
+.toggle input:checked + .toggle__box {
+  border-color: var(--neon);
+}
+
+.toggle input:checked + .toggle__box .toggle__knob {
+  transform: translateX(20px);
+  background: var(--neon);
+}
+
+.toggle input:focus-visible + .toggle__box {
+  outline: var(--border-solid) solid var(--neon);
+  outline-offset: 2px;
+}
+
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  min-height: 0;
+}
+
+.toggle__state {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: var(--tracking-token);
+  color: var(--text-muted);
+  min-width: 3ch;
+}
+
+.toggle input:checked ~ .toggle__state {
+  color: var(--neon);
+}
+
+/* ---- chips ------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px var(--space-2);
+  border: var(--border-hair) solid currentColor;
+  border-radius: var(--radius);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Colour is never the only carrier: every chip pairs it with an icon and
+     a word (DESIGN_SYSTEM.md §12). */
+}
+
+.chip--neon { color: var(--neon); }
+.chip--success { color: var(--success); }
+.chip--magenta { color: var(--magenta); }
+.chip--yellow { color: var(--yellow); }
+.chip--danger { color: var(--danger); }
+.chip--text-muted { color: var(--text-muted); }
+
+/* ---- buttons ----------------------------------------------------------- */
+
+.btn {
+  appearance: none;
+  border: var(--border-solid) solid var(--neon);
+  border-radius: var(--radius);
+  background: var(--neon);
+  color: var(--bg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-easing),
+    border-color var(--motion-fast) var(--motion-easing);
+}
+
+.btn:hover {
+  background: var(--neon-dim);
+  border-color: var(--neon-dim);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--neon);
+}
+
+.btn--secondary:hover {
+  background: transparent;
+  border-color: var(--neon-dim);
+  color: var(--neon-dim);
+}
+
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--danger:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--bg);
+}
+
+.btn-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.btn-row__msg {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.btn-row__msg--ok { color: var(--success); }
+.btn-row__msg--err { color: var(--danger); }
+
+/* The save bar follows you down a long form; on a phone, the SAVE button
+   being off-screen is how settings get lost. */
+.savebar {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border-top: var(--border-solid) solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-4) calc(var(--space-3) * -1) 0;
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+}
+
+/* ---- hero tempo -------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.hero__digits {
+  display: block;
+  height: auto;
+}
+
+.hero__unit {
+  font-size: var(--text-caption);
+  letter-spacing: var(--tracking-token);
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+/* ---- phase bar --------------------------------------------------------- */
+
+/* Sized by its height attribute at the panel's own aspect ratio — never
+   stretched to fill, which would distort the proportions it exists to
+   mirror. */
+.phasebar {
+  display: block;
+  max-width: 100%;
+}
+
+/* ---- banner ------------------------------------------------------------ */
+
+.banner {
+  border: var(--border-solid) solid var(--yellow);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.banner__body { min-width: 0; }
+
+.banner__title {
+  color: var(--yellow);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  font-size: var(--text-label);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.banner--danger { border-color: var(--danger); }
+.banner--danger .banner__title { color: var(--danger); }
+
+.banner code {
+  font-family: var(--font-mono);
+  color: var(--neon);
+}
+
+/* ---- modal ------------------------------------------------------------- */
+
+.modal__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  z-index: 100;
+}
+
+.modal {
+  background: var(--surface);
+  border: var(--border-solid) solid var(--border);
+  border-radius: var(--radius);
+  max-width: 420px;
+  width: 100%;
+}
+
+.modal__body { padding: var(--space-3); }
+
+.modal__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-subtitle);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+}
+
+/* ---- misc -------------------------------------------------------------- */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.readout {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-hair) solid var(--border);
+}
+
+.readout:last-child { border-bottom: 0; }
+
+.readout__label {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+}
+
+.readout__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.clock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+
+.icon {
+  display: inline-block;
+  vertical-align: -0.15em;
+  flex: none;
+}
+
+/* Free-assignment step grid. Cells are square, hard-cornered and big
+   enough to hit on a phone; every fourth one carries a beat marker so the
+   downbeat is findable without counting. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.steps__cell {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: var(--border-hair) solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background var(--motion-fast) linear;
+}
+
+.steps__cell.is-beat {
+  border-color: var(--yellow);
+}
+
+.steps__cell.is-on {
+  background: var(--neon);
+  border-color: var(--neon);
+}
+
+.steps__cell:focus-visible {
+  outline: var(--border-solid) solid var(--neon);
+  outline-offset: 2px;
+}
+
+/* One stored network's fields, separated so four of them stay readable. */
+.net-slot + .net-slot {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--border-hair) solid var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

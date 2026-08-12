@@ -52,3 +52,8 @@ add_test(NAME neon_tests COMMAND neon_tests)
 # Debug aid: prints the edge timeline for a tempo/PPQN/duration.
 add_executable(neon_sim sim/neon_sim.cpp)
 target_link_libraries(neon_sim PRIVATE neon_core)
+
+# Renders every device screen through the firmware's own render_ui() and
+# writes design/screens.json, which the style guide's simulator displays.
+add_executable(neon_screens sim/neon_screens.cpp)
+target_link_libraries(neon_screens PRIVATE neon_core)
