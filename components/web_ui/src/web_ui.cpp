@@ -18,6 +18,10 @@
 #include "neon/net/preference.hpp"
 #include "netman/net_manager.h"
 
+// Provided by main/wifi.cpp (linked into the final app image).
+extern "C" void neon_wifi_apply_credentials(void);
+extern "C" uint8_t neon_wifi_last_disconnect_reason(void);
+
 namespace {
 
 const char* kTag = "web_ui";
@@ -75,8 +79,13 @@ esp_err_t handle_put_config(httpd_req_t* req) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
     return ESP_OK;
   }
-  neon_config_apply(cfg);
-  ESP_LOGI(kTag, "config updated from web editor");
+  // Immediate NVS write — debounced apply alone lost WiFi on quick REBOOT.
+  if (!neon_config_save(cfg)) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS save failed");
+    return ESP_OK;
+  }
+  neon_wifi_apply_credentials();
+  ESP_LOGI(kTag, "config updated from web editor (persisted)");
   return handle_get_config(req);  // respond with the sanitized result
 }
 
@@ -91,14 +100,19 @@ esp_err_t handle_status(httpd_req_t* req) {
   char ip[16] = {};
   netman::primary_ip(ip, sizeof(ip));
   const bool setup_ap = netman::ap_is_up();
+  const char* ssid = neon_config().wifi_ssid;
+  const unsigned pass_len =
+      static_cast<unsigned>(std::strlen(neon_config().wifi_pass));
+  const unsigned disc = neon_wifi_last_disconnect_reason();
 
   const halesp::PulseStats ps = halesp::pulse_stats();
-  char buf[512];
+  char buf[640];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
       "\"ext_clock\":%s,\"uptime_s\":%lld,"
       "\"hostname\":\"neon-link.local\",\"ip\":\"%s\",\"setup_ap\":%s,"
+      "\"wifi_ssid\":\"%s\",\"wifi_pass_len\":%u,\"wifi_fail_reason\":%u,"
       "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
@@ -108,8 +122,8 @@ esp_err_t handle_status(httpd_req_t* req) {
                                         : "none",
       app_status_ext_clock() ? "true" : "false",
       static_cast<long long>(esp_timer_get_time() / 1000000), ip,
-      setup_ap ? "true" : "false", static_cast<unsigned>(ps.edges),
-      static_cast<unsigned>(ps.late_max_us),
+      setup_ap ? "true" : "false", ssid, pass_len, disc,
+      static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),
       static_cast<unsigned>(ps.late_avg_us));
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, buf, n);
@@ -123,6 +137,8 @@ void reboot_task(void*) {
 }
 
 esp_err_t handle_reboot(httpd_req_t* req) {
+  // Never reboot with a pending debounced write still in RAM only.
+  neon_config_flush_now();
   httpd_resp_set_type(req, "application/json");
   httpd_resp_send(req, "{\"ok\":true,\"rebooting\":true}", HTTPD_RESP_USE_STRLEN);
   xTaskCreate(reboot_task, "reboot", 2048, nullptr, 5, nullptr);

@@ -71,6 +71,20 @@ void neon_config_flush(int64_t now_us) {
   }
 }
 
+bool neon_config_flush_now() {
+  if (!g_save_pending) {
+    return true;
+  }
+  g_save_pending = false;
+  g_last_change_us = 0;
+  if (persist(g_config)) {
+    ESP_LOGI(kTag, "config saved (immediate)");
+    return true;
+  }
+  ESP_LOGE(kTag, "config save failed");
+  return false;
+}
+
 bool neon_config_save(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
@@ -80,6 +94,9 @@ bool neon_config_save(const neon::Config& cfg) {
   g_config = clean;
   engine_config_bus().publish(g_config.engine);
   g_save_pending = false;
+  g_last_change_us = 0;
+  ESP_LOGI(kTag, "config saved (ssid=\"%s\" pass_len=%u)", g_config.wifi_ssid,
+           static_cast<unsigned>(std::strlen(g_config.wifi_pass)));
   return true;
 }
 

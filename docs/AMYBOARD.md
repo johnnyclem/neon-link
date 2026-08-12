@@ -72,7 +72,8 @@ or the rolling `amyboard` GitHub release.
 2. After ~10 s with no credentials (or ~60 s if credentials fail), it raises
    open AP `NEON-LINK-XXXX`.
 3. Join the AP, open `http://192.168.4.1/` (also shown on the OLED).
-4. Enter home WiFi SSID/password → **SAVE** → **REBOOT** in the editor.
+4. Enter home WiFi SSID/password → **SAVE** (STA joins live; **REBOOT**
+   only if association sticks).
 5. Rejoin your home network; open **`http://neon-link.local/`**
    (mDNS hostname + `_http._tcp`). If `.local` fails on your OS, use the
    IP shown on the OLED / serial log (`got IP a.b.c.d`).

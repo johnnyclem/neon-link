@@ -75,7 +75,7 @@ small{color:#9a86c8}
 <fieldset><legend>WIFI</legend>
 <label>SSID <input name="ssid" type="text" maxlength="32"></label>
 <label>Password <input name="pass" type="password" maxlength="64" placeholder="(unchanged)"></label>
-<br><small>After saving WiFi, hit <b>REBOOT</b> (or power-cycle) so the module joins your network. Then open <b>http://neon-link.local/</b> from a device on the same LAN.</small>
+<br><small>SAVE applies WiFi live (joins your network while this page stays up on the setup AP when possible). Then open <b>http://neon-link.local/</b> from a device on the same LAN. Use <b>REBOOT</b> if association gets stuck.</small>
 </fieldset>
 
 <fieldset><legend>PRESETS</legend>
@@ -179,7 +179,7 @@ document.getElementById("f").addEventListener("submit",async e=>{
   try{
     const r=await fetch("/api/config",{method:"PUT",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(buildConfig())});
-    msg.textContent=r.ok?"saved ✔ — reboot if you changed WiFi":"error "+r.status;
+    msg.textContent=r.ok?"saved ✔ — WiFi applying…":"error "+r.status;
     if(r.ok){$("pass").value="";await loadConfig();}
   }catch(err){msg.textContent="failed: "+err;}
 });
@@ -194,6 +194,13 @@ document.getElementById("reboot").addEventListener("click",async ()=>{
   setTimeout(()=>{msg.textContent="rebooted — reload this page (use neon-link.local if on home WiFi)";},4000);
 });
 
+function wifiFailHint(r){
+  if(!r) return "";
+  if(r===15) return " (4-way handshake timeout — usually wrong password)";
+  if(r===201) return " (AP not found — check 2.4 GHz SSID spelling)";
+  if(r===2||r===202||r===204) return " (auth/handshake failed — check password / WPA mode)";
+  return " (disconnect reason "+r+")";
+}
 function updateReach(s){
   const reach=document.getElementById("reach");
   const banner=document.getElementById("banner");
@@ -202,15 +209,22 @@ function updateReach(s){
   const parts=[];
   parts.push(`<a href="http://${host}/">${host}</a>`);
   if(ip) parts.push(`<a href="http://${ip}/">${ip}</a>`);
-  reach.innerHTML="Open from this LAN: "+parts.join(" · ");
+  let extra="";
+  if(s.wifi_ssid){
+    extra=` · STA “${s.wifi_ssid}” pass_len=${s.wifi_pass_len||0}`;
+    if(s.network!=="wifi" && s.wifi_fail_reason) extra+=wifiFailHint(s.wifi_fail_reason);
+  }
+  reach.innerHTML="Open from this LAN: "+parts.join(" · ")+extra;
 
   if(s.setup_ap || s.network==="none"){
     banner.style.display="block";
+    const fail=s.wifi_fail_reason?wifiFailHint(s.wifi_fail_reason):"";
     banner.innerHTML=
-      "<strong>Setup mode.</strong> You are on the module’s open AP (or it has no home WiFi yet). "+
-      "Enter your home SSID + password under WIFI, press <strong>SAVE</strong>, then <strong>REBOOT</strong>. "+
-      "Rejoin your home network and open <strong>http://neon-link.local/</strong>"+
-      (ip?` (or http://${ip}/ while still on the AP).`:".");
+      "<strong>Setup / no home WiFi.</strong> ESP32 is <strong>2.4 GHz only</strong>. "+
+      "Enter SSID + password under WIFI, press <strong>SAVE</strong> (persists immediately), wait for the unit to show WIFI + an IP. "+
+      "Use <strong>REBOOT</strong> only if stuck."+
+      (s.wifi_ssid?` Trying <strong>${s.wifi_ssid}</strong> (pass length ${s.wifi_pass_len||0})${fail}.`:"")+
+      " Then open <strong>http://neon-link.local/</strong> from your home LAN.";
   }else{
     banner.style.display="none";
     banner.textContent="";

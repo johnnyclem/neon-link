@@ -20,6 +20,9 @@ void neon_config_apply(const neon::Config& cfg);
 // config has been quiet for 2 s after a change.
 void neon_config_flush(int64_t now_us);
 
+// Write any debounced pending config to NVS immediately (e.g. before reboot).
+bool neon_config_flush_now();
+
 // Immediate persist + adopt (used at explicit save points).
 bool neon_config_save(const neon::Config& cfg);
 
