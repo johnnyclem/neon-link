@@ -44,8 +44,12 @@ class MenuModel {
 
   static constexpr int kMenuItems = 3;     // Outputs, Settings, Back
   static constexpr int kOutputsItems = 5;  // CLK1..4, Back
-  static constexpr int kOutputEditItems = 9;
-  static constexpr int kSettingsItems = 6;
+  // ENABLED, ROLE, FREE RUN, PPQN, MULT, DIV, MODE, TRIG MS, DUTY, SHUF,
+  // RHYTHM, STEPS, FILLS, ROT, CHANCE, JITTER, PER LOOP, BACK
+  static constexpr int kOutputEditItems = 18;
+  // LATENCY, RESET, RST EDGE, SOURCE, IN PPQN, GATE CLK, LOOP, MIDI NDG,
+  // SS SYNC, BRIGHT, BACK
+  static constexpr int kSettingsItems = 11;
 
   explicit MenuModel(Config* cfg) : cfg_(cfg) {}
 

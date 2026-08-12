@@ -10,6 +10,9 @@ class StorageNvs final : public hal::IStorage {
  public:
   bool read_blob(const char* key, void* buf, size_t cap, size_t* len) override;
   bool write_blob(const char* key, const void* data, size_t len) override;
+
+  // Drop every key in the namespace (factory reset).
+  bool erase_all();
 };
 
 }  // namespace halesp

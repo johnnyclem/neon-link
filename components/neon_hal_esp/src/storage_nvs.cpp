@@ -26,6 +26,26 @@ bool StorageNvs::read_blob(const char* key, void* buf, size_t cap,
   return true;
 }
 
+bool StorageNvs::erase_all() {
+  nvs_handle_t h;
+  esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "nvs_open failed: %d", err);
+    return false;
+  }
+  err = nvs_erase_all(h);
+  if (err == ESP_OK) {
+    err = nvs_commit(h);
+  }
+  nvs_close(h);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "nvs erase failed: %d", err);
+    return false;
+  }
+  ESP_LOGW(kTag, "namespace \"%s\" erased (factory reset)", kNamespace);
+  return true;
+}
+
 bool StorageNvs::write_blob(const char* key, const void* data, size_t len) {
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);

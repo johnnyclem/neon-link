@@ -210,3 +210,175 @@ TEST_CASE("humanize: bounded, deterministic, never reorders") {
   }
   CHECK(any_offset);
 }
+
+// --- Free-assignment step patterns -----------------------------------
+
+TEST_CASE("pattern mode fires exactly the steps set in the mask") {
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;  // 4 pulses per beat -> 125 ms apart at 120 BPM
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kPattern;
+  cfg.euclid_steps = 8;
+  cfg.step_mask = 0b10010001;  // steps 0, 4, 7 of every 8
+  neon::PulseChannel ch;
+  ch.configure(cfg);
+  ch.retime(snapshot_120(0), 0, true);
+
+  std::vector<int> steps;
+  const auto edges = drain(ch, 2000000);  // 16 grid ticks
+  for (const auto& e : edges) {
+    if (e.high) {
+      steps.push_back(static_cast<int>(e.t_us / 125000) % 8);
+    }
+  }
+  REQUIRE(steps.size() == 6);  // two full cycles of three hits
+  CHECK(steps[0] == 0);
+  CHECK(steps[1] == 4);
+  CHECK(steps[2] == 7);
+  CHECK(steps[3] == 0);
+  CHECK(steps[4] == 4);
+  CHECK(steps[5] == 7);
+}
+
+TEST_CASE("an empty pattern mask parks the output silently") {
+  neon::ClockOutputConfig cfg;
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kPattern;
+  cfg.euclid_steps = 8;
+  cfg.step_mask = 0;
+  neon::PulseChannel ch;
+  ch.configure(cfg);
+  ch.retime(snapshot_120(0), 0, true);
+  CHECK(drain(ch, 4000000).empty());
+}
+
+TEST_CASE("mask bits above the step count are ignored") {
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kPattern;
+  cfg.euclid_steps = 4;
+  // Only the low 4 bits should matter; the high ones must not leak in.
+  cfg.step_mask = 0xfffffffffffffff1ull;
+  neon::PulseChannel ch;
+  ch.configure(cfg);
+  ch.retime(snapshot_120(0), 0, true);
+
+  size_t rises = 0;
+  for (const auto& e : drain(ch, 1000000)) {  // 8 ticks
+    if (e.high) {
+      CHECK((e.t_us / 125000) % 4 == 0);
+      ++rises;
+    }
+  }
+  CHECK(rises == 2);
+}
+
+// --- Chance across every pattern mode --------------------------------
+
+TEST_CASE("chance thins a Euclidean pattern without adding steps") {
+  neon::ClockOutputConfig base;
+  base.ppqn = 4;
+  base.rhythm = neon::ClockOutputConfig::RhythmMode::kEuclid;
+  base.euclid_steps = 16;
+  base.euclid_fills = 8;
+
+  neon::PulseChannel full;
+  full.configure(base);
+  full.retime(snapshot_120(0), 0, true);
+  std::vector<int64_t> full_rises;
+  for (const auto& e : drain(full, 8000000)) {
+    if (e.high) full_rises.push_back(e.t_us);
+  }
+
+  neon::ClockOutputConfig diced = base;
+  diced.probability_pct = 50;
+  neon::PulseChannel thin;
+  thin.configure(diced);
+  thin.retime(snapshot_120(0), 0, true);
+  std::vector<int64_t> thin_rises;
+  for (const auto& e : drain(thin, 8000000)) {
+    if (e.high) thin_rises.push_back(e.t_us);
+  }
+
+  REQUIRE(!full_rises.empty());
+  CHECK(thin_rises.size() < full_rises.size());
+  // Every surviving pulse must still sit on a Euclidean step.
+  for (int64_t t : thin_rises) {
+    bool found = false;
+    for (int64_t f : full_rises) {
+      if (f == t) {
+        found = true;
+        break;
+      }
+    }
+    CHECK(found);
+  }
+}
+
+TEST_CASE("chance of 100 leaves a pattern untouched") {
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kEuclid;
+  cfg.euclid_steps = 8;
+  cfg.euclid_fills = 3;
+  cfg.probability_pct = 100;
+  neon::PulseChannel ch;
+  ch.configure(cfg);
+  ch.retime(snapshot_120(0), 0, true);
+
+  size_t rises = 0;
+  for (const auto& e : drain(ch, 2000000)) {
+    if (e.high) ++rises;
+  }
+  CHECK(rises == 6);  // 3 hits per 8 steps, 16 ticks
+}
+
+TEST_CASE("a plain clock ignores chance entirely") {
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kAll;
+  cfg.probability_pct = 1;  // must not thin a straight clock
+  neon::PulseChannel ch;
+  ch.configure(cfg);
+  ch.retime(snapshot_120(0), 0, true);
+
+  size_t rises = 0;
+  for (const auto& e : drain(ch, 2000000)) {
+    if (e.high) ++rises;
+  }
+  CHECK(rises == 16);
+}
+
+TEST_CASE("patterns are reproducible across a re-anchor") {
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;
+  cfg.rhythm = neon::ClockOutputConfig::RhythmMode::kPattern;
+  cfg.euclid_steps = 16;
+  cfg.step_mask = 0x9249;
+  cfg.probability_pct = 60;
+
+  neon::PulseChannel a;
+  a.configure(cfg);
+  a.retime(snapshot_120(0), 0, true);
+  std::vector<int64_t> first;
+  for (const auto& e : drain(a, 4000000)) {
+    if (e.high) first.push_back(e.t_us);
+  }
+
+  // Re-anchor mid-flight; the tail must match what the first run produced.
+  neon::PulseChannel b;
+  b.configure(cfg);
+  b.retime(snapshot_120(0), 0, true);
+  b.retime(snapshot_120(0), 2000000, true);
+  std::vector<int64_t> second;
+  for (const auto& e : drain(b, 4000000)) {
+    if (e.high) second.push_back(e.t_us);
+  }
+
+  std::vector<int64_t> tail;
+  for (int64_t t : first) {
+    if (t >= 2000000) tail.push_back(t);
+  }
+  REQUIRE(tail.size() == second.size());
+  for (size_t i = 0; i < tail.size(); ++i) {
+    CHECK(tail[i] == second[i]);
+  }
+}

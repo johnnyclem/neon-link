@@ -39,6 +39,7 @@ add_executable(neon_tests
   tests/test_midi.cpp
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
+  tests/test_transport.cpp
 )
 target_include_directories(neon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest

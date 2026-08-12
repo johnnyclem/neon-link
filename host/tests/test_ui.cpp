@@ -159,7 +159,7 @@ TEST_CASE("editing mutates config with clamping and marks dirty") {
   m.on_click();      // Menu
   m.on_click();      // Outputs
   m.on_click();      // CLK 1 edit
-  m.on_rotate(1);    // cursor -> PPQN
+  m.on_rotate(3);    // cursor -> PPQN (after ENABLED, ROLE, FREE RUN)
   CHECK_FALSE(m.take_dirty());
   m.on_click();      // enter edit
   CHECK(m.editing());
@@ -174,7 +174,7 @@ TEST_CASE("editing mutates config with clamping and marks dirty") {
   // Rotation now moves the cursor again, not the value.
   m.on_rotate(1);
   CHECK(cfg.engine.clocks[0].ppqn == 192);
-  CHECK(m.cursor() == 2);
+  CHECK(m.cursor() == 4);
 }
 
 TEST_CASE("settings edit covers latency and enums") {
@@ -192,9 +192,78 @@ TEST_CASE("settings edit covers latency and enums") {
   m.on_rotate(1);
   CHECK(cfg.engine.reset_mode == neon::ResetMode::kEveryBar);
   m.on_click();
-  m.on_rotate(1);  // SOURCE
+  m.on_rotate(2);  // past RST EDGE to SOURCE
   m.on_click();
   m.on_rotate(1);
   CHECK(cfg.clock_source == neon::ClockSource::kLinkMaster);
   CHECK(m.take_dirty());
+}
+
+TEST_CASE("output roles and rhythm modes cycle through every option") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_click();    // Outputs
+  m.on_click();    // CLK 1 edit
+
+  m.on_rotate(1);  // ROLE
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kGate);
+  m.on_rotate(3);
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kResetStop);
+  m.on_rotate(1);  // wraps back to the start
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kClock);
+  m.on_rotate(-1);  // and wraps the other way
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kResetStop);
+  m.on_click();
+
+  m.on_rotate(1);  // FREE RUN
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.engine.clocks[0].free_run);
+  m.on_click();
+
+  m.on_rotate(8);  // RHYTHM (index 10)
+  m.on_click();
+  m.on_rotate(3);
+  CHECK(cfg.engine.clocks[0].rhythm ==
+        neon::ClockOutputConfig::RhythmMode::kPattern);
+  m.on_rotate(1);
+  CHECK(cfg.engine.clocks[0].rhythm ==
+        neon::ClockOutputConfig::RhythmMode::kAll);
+}
+
+TEST_CASE("settings screen reaches loop size, MIDI nudge, and brightness") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(1);  // Settings
+  m.on_click();
+
+  m.on_rotate(6);  // LOOP
+  m.on_click();
+  m.on_rotate(4);
+  CHECK(cfg.quantum_beats == 8);
+  CHECK(cfg.engine.quantum_beats == 8);
+  m.on_click();
+
+  m.on_rotate(1);  // MIDI NDG
+  m.on_click();
+  m.on_rotate(-4);
+  CHECK(cfg.midi_nudge_us == -2000);
+  m.on_click();
+
+  m.on_rotate(1);  // SS SYNC
+  m.on_click();
+  m.on_rotate(-1);
+  CHECK(cfg.start_stop_sync == 0);
+  m.on_click();
+
+  m.on_rotate(1);  // BRIGHT
+  m.on_click();
+  m.on_rotate(-8);
+  CHECK(cfg.display_brightness == 191);
+  m.on_rotate(-1000);
+  CHECK(cfg.display_brightness == 0);  // clamped, not wrapped
 }

@@ -178,3 +178,143 @@ TEST_CASE("window continuity holds for the merged stream") {
     CHECK(big[i].high == pieces[i].high);
   }
 }
+
+// --- Legacy-parity output roles --------------------------------------
+
+TEST_CASE("Gate role holds an output high for the duration of playback") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.clocks[1].role = neon::OutputRole::kGate;
+  eng.set_config(cfg);
+
+  eng.retime(snapshot_at(120000, 0.0, 0, false), 0);
+  auto edges = collect(eng, 0, 500000);
+  // A gate output never emits clock pulses, playing or not.
+  CHECK(count_channel(edges, neon::kChClk2, true) == 0);
+
+  eng.retime(snapshot_at(120000, 2.0, 1000000, true), 1000000);
+  edges = collect(eng, 500000, 1500000);
+  REQUIRE(count_channel(edges, neon::kChClk2, true) == 1);
+  CHECK(count_channel(edges, neon::kChClk2, false) == 0);
+
+  eng.retime(snapshot_at(120000, 6.0, 3000000, false), 3000000);
+  edges = collect(eng, 1500000, 3500000);
+  CHECK(count_channel(edges, neon::kChClk2, false) == 1);
+  CHECK(count_channel(edges, neon::kChClk2, true) == 0);
+}
+
+TEST_CASE("ResetLoop role triggers once per loop, ResetStop only on stop") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.clocks[0].role = neon::OutputRole::kResetLoop;
+  cfg.clocks[0].trig_len_us = 5000;
+  cfg.clocks[1].role = neon::OutputRole::kResetStart;
+  cfg.clocks[2].role = neon::OutputRole::kResetStop;
+  eng.set_config(cfg);
+
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+  auto edges = collect(eng, 0, 4000001);
+  // Quantum 4 at 120 BPM = one loop every 2 s: beats 0, 4, 8.
+  CHECK(count_channel(edges, neon::kChClk1, true) == 3);
+  for (const auto& e : edges) {
+    if (e.channel == neon::kChClk1 && e.high) {
+      CHECK(e.t_us % 2000000 == 0);
+    }
+  }
+  // Start fired at the first retime (stopped -> playing is the transition
+  // the engine sees), stop has not happened yet.
+  CHECK(count_channel(edges, neon::kChClk2, true) == 1);
+  CHECK(count_channel(edges, neon::kChClk3, true) == 0);
+
+  eng.retime(snapshot_at(120000, 10.0, 5000000, false), 5000000);
+  edges = collect(eng, 4000001, 6000000);
+  CHECK(count_channel(edges, neon::kChClk3, true) == 1);
+  CHECK(count_channel(edges, neon::kChClk3, false) == 1);
+  // Reset-at-loop stops with the transport.
+  CHECK(count_channel(edges, neon::kChClk1, true) == 0);
+}
+
+TEST_CASE("reset at stop fires on the dedicated RESET jack") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.reset_mode = neon::ResetMode::kAtStop;
+  cfg.reset_trig_len_us = 3000;
+  eng.set_config(cfg);
+
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+  auto edges = collect(eng, 0, 1000000);
+  CHECK(count_channel(edges, neon::kChReset, true) == 0);  // not on start
+
+  eng.retime(snapshot_at(120000, 4.0, 2000000, false), 2000000);
+  edges = collect(eng, 1000000, 3000000);
+  REQUIRE(count_channel(edges, neon::kChReset, true) == 1);
+  for (const auto& e : edges) {
+    if (e.channel == neon::kChReset && e.high) CHECK(e.t_us == 2000000);
+    if (e.channel == neon::kChReset && !e.high) CHECK(e.t_us == 2003000);
+  }
+}
+
+TEST_CASE("reset_before_edge leads the reset without moving the clocks") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.reset_mode = neon::ResetMode::kEveryBar;
+  cfg.reset_before_edge = true;
+  cfg.reset_lead_us = 1500;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+
+  const auto edges = collect(eng, -10000, 4000001);
+  size_t rises = 0;
+  for (const auto& e : edges) {
+    if (e.channel == neon::kChReset && e.high) {
+      // Bars land on 0 / 2 s / 4 s; the reset now leads each by 1.5 ms.
+      CHECK((e.t_us + 1500) % 2000000 == 0);
+      ++rises;
+    }
+    if (e.channel == neon::kChClk1 && e.high) {
+      CHECK(e.t_us % 125000 == 0);  // 4 PPQN at 120 BPM, unshifted
+    }
+  }
+  CHECK(rises == 3);
+}
+
+TEST_CASE("free_run keeps one output pulsing while gating mutes the rest") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.transport_gating = true;
+  cfg.clocks[0].free_run = true;  // "Clock (Always On)"
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 0.0, 0, false), 0);
+
+  const auto edges = collect(eng, 0, 1000000);
+  CHECK(count_channel(edges, neon::kChClk1, true) > 0);
+  CHECK(count_channel(edges, neon::kChClk2, true) == 0);
+}
+
+TEST_CASE("rhythm_over_loop spreads the pattern across the loop, not the grid") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.clocks[0].ppqn = 4;  // ignored once rhythm_over_loop is on
+  cfg.clocks[0].rhythm = neon::ClockOutputConfig::RhythmMode::kPattern;
+  cfg.clocks[0].euclid_steps = 16;
+  cfg.clocks[0].step_mask = ~0ull;
+  cfg.clocks[0].rhythm_over_loop = true;
+  cfg.clocks[1].enabled = false;
+  cfg.clocks[2].enabled = false;
+  cfg.clocks[3].enabled = false;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+
+  // 16 steps across a 4-beat loop at 120 BPM = 16 pulses per 2 s.
+  auto edges = collect(eng, 0, 2000000);
+  CHECK(count_channel(edges, neon::kChClk1, true) == 16);
+
+  // Halving the loop packs the same 16 steps into half the time.
+  neon::MultiClockEngine eng2;
+  eng2.set_config(cfg);
+  neon::TimelineSnapshot tl = snapshot_at(120000, 0.0, 0, true);
+  tl.quantum_beats = 2;
+  eng2.retime(tl, 0);
+  edges = collect(eng2, 0, 2000000);
+  CHECK(count_channel(edges, neon::kChClk1, true) == 32);
+}
