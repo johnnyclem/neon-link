@@ -34,6 +34,14 @@ class ILinkSession {
   // Ask the session to place a quantum boundary (beat 0 mod quantum) at
   // the given time — used when RST IN provides an external downbeat.
   virtual void request_beat_at_time(int64_t t_us) = 0;
+
+  // Link 3 start/stop sync: follow (and broadcast) transport changes from
+  // other peers. Users turn this off to keep a local transport private.
+  virtual void set_start_stop_sync(bool enable) = 0;
+
+  // Loop size in beats. Drives phase quantization and the beat the module
+  // reports, so the editor's "Loop Size" reaches the session itself.
+  virtual void set_quantum(double beats) = 0;
 };
 
 }  // namespace hal

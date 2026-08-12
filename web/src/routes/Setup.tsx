@@ -33,22 +33,29 @@ export function Setup(props: PageProps) {
         <div class="fields">
           <TextField
             label="Network name"
-            value={cfg.wifi.ssid}
+            value={cfg.wifi.networks[0].ssid}
             maxLength={32}
-            onChange={(v) => patch((d) => (d.wifi.ssid = v))}
+            onChange={(v) =>
+              patch((d) => {
+                if (d.wifi.networks[0].ssid !== v) {
+                  d.wifi.networks[0].pass = "";
+                }
+                d.wifi.networks[0].ssid = v;
+              })
+            }
             hint="2.4 GHz only — the radio cannot see 5 GHz networks"
           />
           <TextField
             label="Password"
             type="password"
-            value={cfg.wifi.pass}
+            value={cfg.wifi.networks[0].pass}
             maxLength={64}
             placeholder="None"
-            onChange={(v) => patch((d) => (d.wifi.pass = v))}
+            onChange={(v) => patch((d) => (d.wifi.networks[0].pass = v))}
           />
         </div>
         <div class="btn-row">
-          <Button onClick={() => void save()} disabled={saving || cfg.wifi.ssid === ""}>
+          <Button onClick={() => void save()} disabled={saving || cfg.wifi.networks[0].ssid === ""}>
             {saving ? "Applying…" : "Join network"}
           </Button>
           {message ? (

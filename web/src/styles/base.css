@@ -582,6 +582,47 @@ a.button {
   flex: none;
 }
 
+/* Free-assignment step grid. Cells are square, hard-cornered and big
+   enough to hit on a phone; every fourth one carries a beat marker so the
+   downbeat is findable without counting. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.steps__cell {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: var(--border-hair) solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background var(--motion-fast) linear;
+}
+
+.steps__cell.is-beat {
+  border-color: var(--yellow);
+}
+
+.steps__cell.is-on {
+  background: var(--neon);
+  border-color: var(--neon);
+}
+
+.steps__cell:focus-visible {
+  outline: var(--border-solid) solid var(--neon);
+  outline-offset: 2px;
+}
+
+/* One stored network's fields, separated so four of them stay readable. */
+.net-slot + .net-slot {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--border-hair) solid var(--border);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;

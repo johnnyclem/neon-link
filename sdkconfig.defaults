@@ -6,6 +6,12 @@ CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Two OTA app slots (see partitions.csv). Rollback arms a new image as
+# "pending verify"; web_ui confirms it with esp_ota_mark_app_valid_cancel_
+# rollback() once the editor is serving, so an image that cannot get that
+# far reverts to the previous slot instead of crash-looping.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # 1 ms tick so task-level scheduling stays fine-grained; actual pulse edges
 # come from the GPTimer alarm, never from the RTOS tick.
 CONFIG_FREERTOS_HZ=1000

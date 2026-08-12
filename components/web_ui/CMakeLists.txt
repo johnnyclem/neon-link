@@ -7,5 +7,6 @@ idf_component_register(
   EMBED_FILES www/dist/index.html.gz
   REQUIRES neon_core app_state
   PRIV_REQUIRES esp_http_server net_manager esp_timer neon_hal_esp freertos
+                app_update esp_app_format
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

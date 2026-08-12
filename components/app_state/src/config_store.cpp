@@ -19,7 +19,7 @@ bool g_save_pending = false;
 int64_t g_last_change_us = 0;
 
 bool persist(const neon::Config& cfg) {
-  uint8_t buf[512];
+  uint8_t buf[kConfigBlobBuf];
   const size_t n = neon::config_encode(cfg, buf, sizeof(buf));
   return n != 0 && g_storage.write_blob(kKey, buf, n);
 }
@@ -27,7 +27,7 @@ bool persist(const neon::Config& cfg) {
 }  // namespace
 
 void neon_config_load() {
-  uint8_t buf[512];
+  uint8_t buf[kConfigBlobBuf];
   size_t len = 0;
   if (g_storage.read_blob(kKey, buf, sizeof(buf), &len) &&
       neon::config_decode(buf, len, &g_config)) {
@@ -95,9 +95,20 @@ bool neon_config_save(const neon::Config& cfg) {
   engine_config_bus().publish(g_config.engine);
   g_save_pending = false;
   g_last_change_us = 0;
-  ESP_LOGI(kTag, "config saved (ssid=\"%s\" pass_len=%u)", g_config.wifi_ssid,
-           static_cast<unsigned>(std::strlen(g_config.wifi_pass)));
+  ESP_LOGI(kTag, "config saved (ssid=\"%s\" pass_len=%u)", g_config.wifi[0].ssid,
+           static_cast<unsigned>(std::strlen(g_config.wifi[0].pass)));
   return true;
+}
+
+bool neon_config_factory_reset() {
+  g_save_pending = false;
+  g_last_change_us = 0;
+  const bool ok = g_storage.erase_all();
+  g_config = neon::Config{};
+  neon::config_sanitize(&g_config);
+  engine_config_bus().publish(g_config.engine);
+  ESP_LOGW(kTag, "factory reset %s", ok ? "complete" : "FAILED (NVS error)");
+  return ok;
 }
 
 namespace {
@@ -111,7 +122,7 @@ bool neon_preset_save(int slot) {
   if (slot < 0 || slot >= kPresetSlots) {
     return false;
   }
-  uint8_t buf[512];
+  uint8_t buf[kConfigBlobBuf];
   const size_t n = neon::config_encode(g_config, buf, sizeof(buf));
   if (n == 0 || !g_storage.write_blob(preset_key(slot), buf, n)) {
     return false;
@@ -124,7 +135,7 @@ bool neon_preset_recall(int slot) {
   if (slot < 0 || slot >= kPresetSlots) {
     return false;
   }
-  uint8_t buf[512];
+  uint8_t buf[kConfigBlobBuf];
   size_t len = 0;
   neon::Config preset;
   if (!g_storage.read_blob(preset_key(slot), buf, sizeof(buf), &len) ||
@@ -132,9 +143,18 @@ bool neon_preset_recall(int slot) {
     ESP_LOGW(kTag, "preset %d empty or invalid", slot);
     return false;
   }
-  // Presets are performance snapshots: keep the current network identity.
-  std::memcpy(preset.wifi_ssid, g_config.wifi_ssid, sizeof(preset.wifi_ssid));
-  std::memcpy(preset.wifi_pass, g_config.wifi_pass, sizeof(preset.wifi_pass));
+  // Presets are performance snapshots: keep the current network identity
+  // (stored networks, access point, and device name) exactly as it is.
+  std::memcpy(preset.wifi, g_config.wifi, sizeof(preset.wifi));
+  preset.wifi_retries = g_config.wifi_retries;
+  preset.ap_policy = g_config.ap_policy;
+  preset.ap_require_pass = g_config.ap_require_pass;
+  preset.ap_hidden = g_config.ap_hidden;
+  preset.ap_channel = g_config.ap_channel;
+  std::memcpy(preset.ap_ssid, g_config.ap_ssid, sizeof(preset.ap_ssid));
+  std::memcpy(preset.ap_pass, g_config.ap_pass, sizeof(preset.ap_pass));
+  std::memcpy(preset.device_name, g_config.device_name,
+              sizeof(preset.device_name));
   neon_config_apply(preset);
   ESP_LOGI(kTag, "preset %d recalled", slot);
   return true;

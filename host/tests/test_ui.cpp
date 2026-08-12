@@ -607,3 +607,113 @@ TEST_CASE("focus is shown by inversion, not by colour we do not have") {
   CHECK(lit_pixels(edit_fb) > lit_pixels(browse_fb));
   CHECK(dump(edit_fb) != dump(browse_fb));
 }
+
+// --- Parity parameters on the merged screens -------------------------
+
+TEST_CASE("output roles and rhythm modes cycle through every option") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(1);  // Outputs
+  m.on_click();
+  m.on_click();    // CLK 1 edit
+
+  m.on_rotate(8);  // ROLE
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kGate);
+  m.on_rotate(3);
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kResetStop);
+  m.on_rotate(1);  // wraps back to the start
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kClock);
+  m.on_rotate(-1);  // and wraps the other way
+  CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kResetStop);
+  m.on_click();
+
+  m.on_rotate(1);  // FREE RUN
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.engine.clocks[0].free_run);
+  m.on_click();
+
+  m.on_rotate(1);  // RHYTHM
+  m.on_click();
+  m.on_rotate(3);
+  CHECK(cfg.engine.clocks[0].rhythm ==
+        neon::ClockOutputConfig::RhythmMode::kPattern);
+  m.on_rotate(1);  // wraps back to a plain clock
+  CHECK(cfg.engine.clocks[0].rhythm ==
+        neon::ClockOutputConfig::RhythmMode::kAll);
+  m.on_click();
+
+  m.on_rotate(4);  // CHANCE
+  m.on_click();
+  m.on_rotate(-30);
+  CHECK(cfg.engine.clocks[0].probability_pct == 70);
+  CHECK(m.take_dirty());
+}
+
+TEST_CASE("system screen reaches reset edge, MIDI nudge, sync, brightness") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(4);  // System
+  m.on_click();
+
+  m.on_rotate(6);  // RST EDGE
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.engine.reset_before_edge);
+  m.on_click();
+
+  m.on_rotate(1);  // MIDI NDG
+  m.on_click();
+  m.on_rotate(-4);
+  CHECK(cfg.midi_nudge_us == -2000);
+  m.on_click();
+
+  m.on_rotate(1);  // SS SYNC
+  m.on_click();
+  m.on_rotate(-1);
+  CHECK(cfg.start_stop_sync == 0);
+  m.on_click();
+
+  m.on_rotate(1);  // BRIGHT
+  m.on_click();
+  m.on_rotate(-8);
+  CHECK(cfg.display_brightness == 191);
+  m.on_rotate(-1000);
+  CHECK(cfg.display_brightness == 0);  // clamped, not wrapped
+  CHECK(m.take_dirty());
+}
+
+TEST_CASE("reset mode cycles through the at-stop option") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(4);  // System
+  m.on_click();
+  m.on_rotate(1);  // RESET
+  m.on_click();
+
+  m.on_rotate(1);
+  CHECK(cfg.engine.reset_mode == neon::ResetMode::kEveryBar);
+  m.on_rotate(1);
+  CHECK(cfg.engine.reset_mode == neon::ResetMode::kOff);
+  m.on_rotate(1);
+  CHECK(cfg.engine.reset_mode == neon::ResetMode::kAtStop);
+  m.on_rotate(1);  // wraps
+  CHECK(cfg.engine.reset_mode == neon::ResetMode::kStartOfPlay);
+}
+
+TEST_CASE("REBOOT stays the last system row after the parity additions") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(4);  // System
+  m.on_click();
+  m.on_rotate(neon::MenuModel::kSystemRebootItem);
+  CHECK(std::string(m.item_label(m.cursor())) == "REBOOT");
+  m.on_click();
+  CHECK(m.screen() == neon::MenuModel::Screen::kConfirm);
+}

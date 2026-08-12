@@ -9,8 +9,6 @@
 namespace ablink {
 namespace {
 
-constexpr double kQuantum = 4.0;
-
 class LinkStub final : public hal::ILinkSession {
  public:
   void start(double initial_bpm) override {
@@ -29,7 +27,7 @@ class LinkStub final : public hal::ILinkSession {
     out.origin_us = now;
     out.tempo_bpm = tempo_bpm_;
     out.beat_at_origin = beat_at(now);
-    out.quantum = kQuantum;
+    out.quantum = quantum_;
     out.playing = playing_;
     out.num_peers = 0;
     return true;
@@ -57,6 +55,14 @@ class LinkStub final : public hal::ILinkSession {
     beat0_ = 0.0;
   }
 
+  void set_start_stop_sync(bool enable) override { start_stop_sync_ = enable; }
+
+  void set_quantum(double beats) override {
+    if (beats >= 1.0 && beats <= 16.0) {
+      quantum_ = beats;
+    }
+  }
+
  private:
   double beat_at(int64_t t_us) const {
     const double mpb = 60000000.0 / tempo_bpm_;
@@ -68,6 +74,8 @@ class LinkStub final : public hal::ILinkSession {
   double tempo_bpm_ = 120.0;
   double beat0_ = 0.0;
   int64_t t0_us_ = 0;
+  bool start_stop_sync_ = true;
+  double quantum_ = 4.0;
 };
 
 LinkStub g_session;

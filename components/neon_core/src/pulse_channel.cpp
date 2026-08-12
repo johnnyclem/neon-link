@@ -29,21 +29,32 @@ void PulseChannel::configure(const ClockOutputConfig& cfg) {
 }
 
 bool PulseChannel::tick_emits(int64_t tick) const {
-  switch (cfg_.rhythm) {
-    case ClockOutputConfig::RhythmMode::kEuclid: {
-      const uint32_t steps = cfg_.euclid_steps;
-      const uint64_t step =
-          tick >= 0 ? static_cast<uint64_t>(tick) % steps
-                    : (steps - (static_cast<uint64_t>(-tick) % steps)) % steps;
-      return euclid_hit(static_cast<uint32_t>(step), steps, cfg_.euclid_fills,
-                        cfg_.euclid_rot);
-    }
-    case ClockOutputConfig::RhythmMode::kProbability:
-      return probability_hit(static_cast<uint64_t>(tick),
-                             cfg_.probability_pct);
-    default:
-      return true;
+  // A plain clock is never patterned and never diced.
+  if (cfg_.rhythm == ClockOutputConfig::RhythmMode::kAll) {
+    return true;
   }
+  const uint32_t steps = cfg_.euclid_steps;
+  const uint64_t step =
+      tick >= 0 ? static_cast<uint64_t>(tick) % steps
+                : (steps - (static_cast<uint64_t>(-tick) % steps)) % steps;
+
+  bool step_on = true;
+  switch (cfg_.rhythm) {
+    case ClockOutputConfig::RhythmMode::kEuclid:
+      step_on = euclid_hit(static_cast<uint32_t>(step), steps,
+                           cfg_.euclid_fills, cfg_.euclid_rot);
+      break;
+    case ClockOutputConfig::RhythmMode::kPattern:
+      step_on = ((cfg_.step_mask >> step) & 1ull) != 0;
+      break;
+    default:  // kProbability: every step is live, chance decides
+      break;
+  }
+  if (!step_on) {
+    return false;
+  }
+  // Chance thins whatever the pattern left enabled.
+  return probability_hit(static_cast<uint64_t>(tick), cfg_.probability_pct);
 }
 
 int64_t PulseChannel::humanize_us() const {
@@ -134,12 +145,12 @@ void PulseChannel::retime(const TimelineSnapshot& tl, int64_t from_us,
     return;  // pending fall (if any) still drains
   }
 
-  // Session beat at from_us, Q32.32 signed.
+  // Session beat at from_us, Q32.32 signed. beats = dt / mpb with both
+  // sides scaled by 2^32, so the numerator is dt << 64 ({abs_dt, 0}).
   const int64_t dt_us = from_us - tl.origin_us;
   const uint64_t abs_dt = dt_us < 0 ? static_cast<uint64_t>(-dt_us)
                                     : static_cast<uint64_t>(dt_us);
-  const uint64_t dbeat_q32 =
-      div_u128_u64(U128{abs_dt >> 32, abs_dt << 32}, mpb_q32_);
+  const uint64_t dbeat_q32 = div_u128_u64(U128{abs_dt, 0}, mpb_q32_);
   const int64_t beat_q32 =
       tl.beat_at_origin_q32 +
       (dt_us < 0 ? -static_cast<int64_t>(dbeat_q32)

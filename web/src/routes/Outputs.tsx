@@ -1,8 +1,41 @@
 import type { PageProps } from "../app";
 import type { ClockConfig } from "../api";
+import { stepIsOn, toggleStep } from "../api";
 import { strings } from "../design/strings";
 import { Card, NumberField, SelectField, Toggle } from "../components/controls";
 import { SaveBar } from "./SaveBar";
+
+/**
+ * The free-assignment step grid. Clicking a cell flips one bit of the
+ * 64-step mask; every fourth cell is marked so the beat is findable
+ * without counting.
+ */
+function StepGrid({
+  steps,
+  mask,
+  onToggle,
+}: {
+  steps: number;
+  mask: string;
+  onToggle: (step: number) => void;
+}) {
+  return (
+    <div class="steps" role="group" aria-label="Pattern steps">
+      {Array.from({ length: steps }, (_, s) => (
+        <button
+          key={s}
+          type="button"
+          class={`steps__cell${stepIsOn(mask, s) ? " is-on" : ""}${
+            s % 4 === 0 ? " is-beat" : ""
+          }`}
+          aria-pressed={stepIsOn(mask, s)}
+          aria-label={`Step ${s + 1}`}
+          onClick={() => onToggle(s)}
+        />
+      ))}
+    </div>
+  );
+}
 
 /**
  * The four clock outputs.
@@ -39,6 +72,23 @@ export function Outputs(props: PageProps) {
               />
             </div>
 
+            <div class="fields">
+              <SelectField
+                label="Role"
+                value={c.role}
+                options={[
+                  { value: "clock", label: "Clock" },
+                  { value: "gate", label: "Gate while playing" },
+                  { value: "reset_loop", label: "Reset every loop" },
+                  { value: "reset_start", label: "Reset at start" },
+                  { value: "reset_stop", label: "Reset at stop" },
+                ]}
+                onChange={(v) => setClock(i, "role", v)}
+                hint="Any output can take any role"
+              />
+            </div>
+
+            {c.role === "clock" ? (
             <div class="fields">
               <NumberField
                 label="PPQN"
@@ -97,7 +147,24 @@ export function Outputs(props: PageProps) {
                 hint="%"
               />
             </div>
+            ) : null}
 
+            {c.role === "clock" ? (
+            <div style="margin-top:var(--space-3)">
+              <Toggle
+                label="Free run"
+                checked={c.free_run}
+                onChange={(v) => setClock(i, "free_run", v)}
+              />
+              <p class="card__note">
+                Keeps pulsing while the transport is stopped, even with clock
+                gating on. Pair with a gate output for DIN-Sync style clocking.
+              </p>
+            </div>
+            ) : null}
+
+            {c.role === "clock" ? (
+            <>
             <h3 class="field__label" style="margin:var(--space-4) 0 var(--space-2)">
               Rhythm
             </h3>
@@ -108,19 +175,22 @@ export function Outputs(props: PageProps) {
                 options={[
                   { value: "all", label: "Every pulse" },
                   { value: "euclid", label: "Euclidean" },
-                  { value: "probability", label: "Probability" },
+                  { value: "probability", label: "Chance only" },
+                  { value: "pattern", label: "Free steps" },
                 ]}
                 onChange={(v) => setClock(i, "rhythm", v)}
               />
+              {c.rhythm === "euclid" || c.rhythm === "pattern" ? (
+                <NumberField
+                  label="Steps"
+                  value={c.euclid_steps}
+                  min={1}
+                  max={64}
+                  onChange={(v) => setClock(i, "euclid_steps", v)}
+                />
+              ) : null}
               {c.rhythm === "euclid" ? (
                 <>
-                  <NumberField
-                    label="Steps"
-                    value={c.euclid_steps}
-                    min={1}
-                    max={64}
-                    onChange={(v) => setClock(i, "euclid_steps", v)}
-                  />
                   <NumberField
                     label="Fills"
                     value={c.euclid_fills}
@@ -137,18 +207,18 @@ export function Outputs(props: PageProps) {
                   />
                 </>
               ) : null}
-              {c.rhythm === "probability" ? (
+              {c.rhythm !== "all" ? (
                 <NumberField
-                  label="Probability"
+                  label="Chance"
                   value={c.probability_pct}
                   min={0}
                   max={100}
                   onChange={(v) => setClock(i, "probability_pct", v)}
-                  hint="%"
+                  hint="% that an enabled step fires"
                 />
               ) : null}
               <NumberField
-                label="Humanize"
+                label="Jitter"
                 value={c.humanize_pct}
                 min={0}
                 max={50}
@@ -156,6 +226,32 @@ export function Outputs(props: PageProps) {
                 hint="%"
               />
             </div>
+
+            {c.rhythm === "pattern" ? (
+              <StepGrid
+                steps={c.euclid_steps}
+                mask={c.step_mask}
+                onToggle={(step) =>
+                  setClock(i, "step_mask", toggleStep(c.step_mask, step))
+                }
+              />
+            ) : null}
+
+            {c.rhythm !== "all" ? (
+              <div style="margin-top:var(--space-3)">
+                <Toggle
+                  label="Steps span the loop"
+                  checked={c.rhythm_over_loop}
+                  onChange={(v) => setClock(i, "rhythm_over_loop", v)}
+                />
+                <p class="card__note">
+                  Distributes the steps across one loop instead of the PPQN
+                  grid — 16 steps across a 4-beat loop is four per beat.
+                </p>
+              </div>
+            ) : null}
+            </>
+            ) : null}
           </Card>
         ))}
       </div>

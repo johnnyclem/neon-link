@@ -17,14 +17,12 @@ extern "C" char* if_indextoname(unsigned int /*ifIndex*/, char* /*ifName*/) {
 namespace ablink {
 namespace {
 
-constexpr double kQuantum = 4.0;
-
 class LinkSessionEsp final : public hal::ILinkSession {
  public:
   void start(double initial_bpm) override {
     if (link_ == nullptr) {
       link_ = new ableton::Link(initial_bpm);
-      link_->enableStartStopSync(true);
+      link_->enableStartStopSync(start_stop_sync_);
     }
     link_->enable(true);
   }
@@ -37,8 +35,8 @@ class LinkSessionEsp final : public hal::ILinkSession {
     const auto now = link_->clock().micros();  // esp_timer domain
     out.origin_us = now.count();
     out.tempo_bpm = state.tempo();
-    out.beat_at_origin = state.beatAtTime(now, kQuantum);
-    out.quantum = kQuantum;
+    out.beat_at_origin = state.beatAtTime(now, quantum_);
+    out.quantum = quantum_;
     out.playing = state.isPlaying();
     out.num_peers = static_cast<uint32_t>(link_->numPeers());
     return true;
@@ -60,7 +58,7 @@ class LinkSessionEsp final : public hal::ILinkSession {
     auto state = link_->captureAppSessionState();
     if (playing) {
       state.setIsPlayingAndRequestBeatAtTime(true, link_->clock().micros(),
-                                             0.0, kQuantum);
+                                             0.0, quantum_);
     } else {
       state.setIsPlaying(false, link_->clock().micros());
     }
@@ -72,8 +70,21 @@ class LinkSessionEsp final : public hal::ILinkSession {
       return;
     }
     auto state = link_->captureAppSessionState();
-    state.requestBeatAtTime(0.0, std::chrono::microseconds(t_us), kQuantum);
+    state.requestBeatAtTime(0.0, std::chrono::microseconds(t_us), quantum_);
     link_->commitAppSessionState(state);
+  }
+
+  void set_start_stop_sync(bool enable) override {
+    start_stop_sync_ = enable;
+    if (link_ != nullptr) {
+      link_->enableStartStopSync(enable);
+    }
+  }
+
+  void set_quantum(double beats) override {
+    if (beats >= 1.0 && beats <= 16.0) {
+      quantum_ = beats;
+    }
   }
 
  private:
@@ -81,6 +92,8 @@ class LinkSessionEsp final : public hal::ILinkSession {
   // sockets and its asio service task, which must not happen from static
   // initialization order.
   ableton::Link* link_ = nullptr;
+  bool start_stop_sync_ = true;
+  double quantum_ = 4.0;
 };
 
 LinkSessionEsp g_session;

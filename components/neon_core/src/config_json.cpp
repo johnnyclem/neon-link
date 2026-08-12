@@ -14,8 +14,49 @@ const char* reset_mode_str(ResetMode m) {
       return "bar";
     case ResetMode::kOff:
       return "off";
+    case ResetMode::kAtStop:
+      return "stop";
     default:
       return "start";
+  }
+}
+
+const char* role_str(OutputRole r) {
+  switch (r) {
+    case OutputRole::kGate:
+      return "gate";
+    case OutputRole::kResetLoop:
+      return "reset_loop";
+    case OutputRole::kResetStart:
+      return "reset_start";
+    case OutputRole::kResetStop:
+      return "reset_stop";
+    default:
+      return "clock";
+  }
+}
+
+const char* rhythm_str(ClockOutputConfig::RhythmMode m) {
+  switch (m) {
+    case ClockOutputConfig::RhythmMode::kEuclid:
+      return "euclid";
+    case ClockOutputConfig::RhythmMode::kProbability:
+      return "probability";
+    case ClockOutputConfig::RhythmMode::kPattern:
+      return "pattern";
+    default:
+      return "all";
+  }
+}
+
+const char* ap_policy_str(ApPolicy p) {
+  switch (p) {
+    case ApPolicy::kAlways:
+      return "always";
+    case ApPolicy::kOff:
+      return "off";
+    default:
+      return "fallback";
   }
 }
 
@@ -88,9 +129,52 @@ void get_str(const cJSON* obj, const char* key, char* out, size_t cap) {
   }
 }
 
+// Write-only field: only a non-empty string replaces the stored secret,
+// so the editor can round-trip the "" placeholder without wiping it.
+void get_secret(const cJSON* obj, const char* key, char* out, size_t cap) {
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
+  if (cJSON_IsString(v) && v->valuestring != nullptr &&
+      v->valuestring[0] != '\0') {
+    std::strncpy(out, v->valuestring, cap - 1);
+    out[cap - 1] = '\0';
+  }
+}
+
 bool str_eq(const cJSON* v, const char* s) {
   return cJSON_IsString(v) && v->valuestring != nullptr &&
          std::strcmp(v->valuestring, s) == 0;
+}
+
+// The 64-step pattern mask travels as hex: JSON numbers are doubles and
+// would lose the top bits.
+void mask_to_hex(uint64_t mask, char* out) {
+  static const char kHex[] = "0123456789abcdef";
+  for (int i = 0; i < 16; ++i) {
+    out[i] = kHex[(mask >> ((15 - i) * 4)) & 0xf];
+  }
+  out[16] = '\0';
+}
+
+void get_mask(const cJSON* obj, const char* key, uint64_t* out) {
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
+  if (!cJSON_IsString(v) || v->valuestring == nullptr) {
+    return;
+  }
+  uint64_t mask = 0;
+  for (const char* p = v->valuestring; *p != '\0'; ++p) {
+    int digit;
+    if (*p >= '0' && *p <= '9') {
+      digit = *p - '0';
+    } else if (*p >= 'a' && *p <= 'f') {
+      digit = *p - 'a' + 10;
+    } else if (*p >= 'A' && *p <= 'F') {
+      digit = *p - 'A' + 10;
+    } else {
+      return;  // malformed: keep the current mask
+    }
+    mask = (mask << 4) | static_cast<uint64_t>(digit);
+  }
+  *out = mask;
 }
 
 }  // namespace
@@ -112,16 +196,17 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
     cJSON_AddNumberToObject(o, "trig_len_us", c.trig_len_us);
     cJSON_AddNumberToObject(o, "duty_pct", c.duty_pct);
     cJSON_AddNumberToObject(o, "shuffle_pct", c.shuffle_pct);
-    cJSON_AddStringToObject(
-        o, "rhythm",
-        c.rhythm == ClockOutputConfig::RhythmMode::kEuclid ? "euclid"
-        : c.rhythm == ClockOutputConfig::RhythmMode::kProbability
-            ? "probability"
-            : "all");
+    cJSON_AddStringToObject(o, "role", role_str(c.role));
+    cJSON_AddBoolToObject(o, "free_run", c.free_run);
+    cJSON_AddStringToObject(o, "rhythm", rhythm_str(c.rhythm));
     cJSON_AddNumberToObject(o, "euclid_steps", c.euclid_steps);
     cJSON_AddNumberToObject(o, "euclid_fills", c.euclid_fills);
     cJSON_AddNumberToObject(o, "euclid_rot", c.euclid_rot);
     cJSON_AddNumberToObject(o, "probability_pct", c.probability_pct);
+    char mask_hex[17];
+    mask_to_hex(c.step_mask, mask_hex);
+    cJSON_AddStringToObject(o, "step_mask", mask_hex);
+    cJSON_AddBoolToObject(o, "rhythm_over_loop", c.rhythm_over_loop);
     cJSON_AddNumberToObject(o, "humanize_pct", c.humanize_pct);
     cJSON_AddItemToArray(clocks, o);
   }
@@ -133,6 +218,9 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(engine, "transport_gating",
                         cfg.engine.transport_gating);
   cJSON_AddNumberToObject(engine, "latency_us", cfg.engine.latency_us);
+  cJSON_AddBoolToObject(engine, "reset_before_edge",
+                        cfg.engine.reset_before_edge);
+  cJSON_AddNumberToObject(engine, "reset_lead_us", cfg.engine.reset_lead_us);
 
   cJSON* cv = cJSON_AddObjectToObject(root, "tempo_cv");
   cJSON_AddNumberToObject(cv, "min_bpm", cfg.tempo_cv_min_bpm);
@@ -141,6 +229,11 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(root, "quantum", cfg.quantum_beats);
   cJSON_AddStringToObject(root, "clock_source", source_str(cfg.clock_source));
   cJSON_AddNumberToObject(root, "clock_in_ppqn", cfg.clock_in_ppqn);
+  cJSON_AddNumberToObject(root, "tempo_milli_bpm", cfg.tempo_milli_bpm);
+  cJSON_AddBoolToObject(root, "start_stop_sync", cfg.start_stop_sync != 0);
+  cJSON_AddNumberToObject(root, "midi_nudge_us", cfg.midi_nudge_us);
+  cJSON_AddStringToObject(root, "device_name", cfg.device_name);
+  cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -156,9 +249,31 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
                         cfg.midi.transport_enabled);
   cJSON_AddBoolToObject(ble, "pc_presets", cfg.midi.pc_presets);
 
+  // Stored station list. Passwords are write-only: the editor sees only
+  // whether one is set, and echoing "" back leaves it untouched.
   cJSON* wifi = cJSON_AddObjectToObject(root, "wifi");
-  cJSON_AddStringToObject(wifi, "ssid", cfg.wifi_ssid);
-  cJSON_AddStringToObject(wifi, "pass", "");  // write-only
+  cJSON* nets = cJSON_AddArrayToObject(wifi, "networks");
+  for (const auto& n : cfg.wifi) {
+    cJSON* o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "ssid", n.ssid);
+    cJSON_AddStringToObject(o, "pass", "");
+    cJSON_AddBoolToObject(o, "has_pass", n.pass[0] != '\0');
+    cJSON_AddBoolToObject(o, "hidden", n.hidden != 0);
+    cJSON_AddItemToArray(nets, o);
+  }
+  cJSON_AddNumberToObject(wifi, "retries", cfg.wifi_retries);
+  // Flat aliases for slot 0 keep older clients (and the OLED menu) working.
+  cJSON_AddStringToObject(wifi, "ssid", cfg.wifi[0].ssid);
+  cJSON_AddStringToObject(wifi, "pass", "");
+
+  cJSON* ap = cJSON_AddObjectToObject(root, "ap");
+  cJSON_AddStringToObject(ap, "policy", ap_policy_str(cfg.ap_policy));
+  cJSON_AddStringToObject(ap, "ssid", cfg.ap_ssid);
+  cJSON_AddStringToObject(ap, "pass", "");
+  cJSON_AddBoolToObject(ap, "has_pass", cfg.ap_pass[0] != '\0');
+  cJSON_AddBoolToObject(ap, "require_pass", cfg.ap_require_pass != 0);
+  cJSON_AddBoolToObject(ap, "hidden", cfg.ap_hidden != 0);
+  cJSON_AddNumberToObject(ap, "channel", cfg.ap_channel);
 
   const bool ok = cJSON_PrintPreallocated(root, buf, static_cast<int>(cap),
                                           /*fmt=*/false);
@@ -200,6 +315,19 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
         get_u32(o, "trig_len_us", &c.trig_len_us);
         get_u8(o, "duty_pct", &c.duty_pct);
         get_u8(o, "shuffle_pct", &c.shuffle_pct);
+        const cJSON* role = cJSON_GetObjectItemCaseSensitive(o, "role");
+        if (str_eq(role, "clock")) {
+          c.role = OutputRole::kClock;
+        } else if (str_eq(role, "gate")) {
+          c.role = OutputRole::kGate;
+        } else if (str_eq(role, "reset_loop")) {
+          c.role = OutputRole::kResetLoop;
+        } else if (str_eq(role, "reset_start")) {
+          c.role = OutputRole::kResetStart;
+        } else if (str_eq(role, "reset_stop")) {
+          c.role = OutputRole::kResetStop;
+        }
+        get_bool(o, "free_run", &c.free_run);
         const cJSON* rhythm = cJSON_GetObjectItemCaseSensitive(o, "rhythm");
         if (str_eq(rhythm, "all")) {
           c.rhythm = ClockOutputConfig::RhythmMode::kAll;
@@ -207,11 +335,15 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
           c.rhythm = ClockOutputConfig::RhythmMode::kEuclid;
         } else if (str_eq(rhythm, "probability")) {
           c.rhythm = ClockOutputConfig::RhythmMode::kProbability;
+        } else if (str_eq(rhythm, "pattern")) {
+          c.rhythm = ClockOutputConfig::RhythmMode::kPattern;
         }
         get_u8(o, "euclid_steps", &c.euclid_steps);
         get_u8(o, "euclid_fills", &c.euclid_fills);
         get_u8(o, "euclid_rot", &c.euclid_rot);
         get_u8(o, "probability_pct", &c.probability_pct);
+        get_mask(o, "step_mask", &c.step_mask);
+        get_bool(o, "rhythm_over_loop", &c.rhythm_over_loop);
         get_u8(o, "humanize_pct", &c.humanize_pct);
         ++i;
       }
@@ -223,11 +355,15 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       cfg->engine.reset_mode = ResetMode::kEveryBar;
     } else if (str_eq(rm, "off")) {
       cfg->engine.reset_mode = ResetMode::kOff;
+    } else if (str_eq(rm, "stop")) {
+      cfg->engine.reset_mode = ResetMode::kAtStop;
     }
     get_u32(engine, "reset_trig_len_us", &cfg->engine.reset_trig_len_us);
     get_bool(engine, "run_enabled", &cfg->engine.run_enabled);
     get_bool(engine, "transport_gating", &cfg->engine.transport_gating);
     get_i32(engine, "latency_us", &cfg->engine.latency_us);
+    get_bool(engine, "reset_before_edge", &cfg->engine.reset_before_edge);
+    get_u32(engine, "reset_lead_us", &cfg->engine.reset_lead_us);
   }
 
   const cJSON* cv = cJSON_GetObjectItemCaseSensitive(root, "tempo_cv");
@@ -246,6 +382,11 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     cfg->clock_source = ClockSource::kExternalMaster;
   }
   get_u32(root, "clock_in_ppqn", &cfg->clock_in_ppqn);
+  get_u32(root, "tempo_milli_bpm", &cfg->tempo_milli_bpm);
+  get_bool_u8(root, "start_stop_sync", &cfg->start_stop_sync);
+  get_i32(root, "midi_nudge_us", &cfg->midi_nudge_us);
+  get_str(root, "device_name", cfg->device_name, sizeof(cfg->device_name));
+  get_u8(root, "display_brightness", &cfg->display_brightness);
 
   const cJSON* ble = cJSON_GetObjectItemCaseSensitive(root, "ble");
   if (cJSON_IsObject(ble)) {
@@ -270,16 +411,54 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
 
   const cJSON* wifi = cJSON_GetObjectItemCaseSensitive(root, "wifi");
   if (cJSON_IsObject(wifi)) {
-    get_str(wifi, "ssid", cfg->wifi_ssid, sizeof(cfg->wifi_ssid));
-    // Only overwrite the stored password when a non-empty one is sent
-    // (the editor round-trips the write-only "" placeholder).
-    const cJSON* pass = cJSON_GetObjectItemCaseSensitive(wifi, "pass");
-    if (cJSON_IsString(pass) && pass->valuestring != nullptr &&
-        pass->valuestring[0] != '\0') {
-      std::strncpy(cfg->wifi_pass, pass->valuestring,
-                   sizeof(cfg->wifi_pass) - 1);
-      cfg->wifi_pass[sizeof(cfg->wifi_pass) - 1] = '\0';
+    const cJSON* nets = cJSON_GetObjectItemCaseSensitive(wifi, "networks");
+    if (cJSON_IsArray(nets)) {
+      int i = 0;
+      const cJSON* o = nullptr;
+      cJSON_ArrayForEach(o, nets) {
+        if (i >= kWifiSlots || !cJSON_IsObject(o)) {
+          break;
+        }
+        WifiNetwork& n = cfg->wifi[i];
+        // A slot whose SSID changed must not inherit the old password.
+        char prev_ssid[sizeof(n.ssid)];
+        std::memcpy(prev_ssid, n.ssid, sizeof(prev_ssid));
+        get_str(o, "ssid", n.ssid, sizeof(n.ssid));
+        if (std::strcmp(prev_ssid, n.ssid) != 0) {
+          n.pass[0] = '\0';
+        }
+        get_secret(o, "pass", n.pass, sizeof(n.pass));
+        get_bool_u8(o, "hidden", &n.hidden);
+        ++i;
+      }
+    } else {
+      // Flat single-network form (older clients): slot 0.
+      char prev_ssid[sizeof(cfg->wifi[0].ssid)];
+      std::memcpy(prev_ssid, cfg->wifi[0].ssid, sizeof(prev_ssid));
+      get_str(wifi, "ssid", cfg->wifi[0].ssid, sizeof(cfg->wifi[0].ssid));
+      if (std::strcmp(prev_ssid, cfg->wifi[0].ssid) != 0) {
+        cfg->wifi[0].pass[0] = '\0';
+      }
+      get_secret(wifi, "pass", cfg->wifi[0].pass, sizeof(cfg->wifi[0].pass));
     }
+    get_u8(wifi, "retries", &cfg->wifi_retries);
+  }
+
+  const cJSON* ap = cJSON_GetObjectItemCaseSensitive(root, "ap");
+  if (cJSON_IsObject(ap)) {
+    const cJSON* pol = cJSON_GetObjectItemCaseSensitive(ap, "policy");
+    if (str_eq(pol, "fallback")) {
+      cfg->ap_policy = ApPolicy::kFallback;
+    } else if (str_eq(pol, "always")) {
+      cfg->ap_policy = ApPolicy::kAlways;
+    } else if (str_eq(pol, "off")) {
+      cfg->ap_policy = ApPolicy::kOff;
+    }
+    get_str(ap, "ssid", cfg->ap_ssid, sizeof(cfg->ap_ssid));
+    get_secret(ap, "pass", cfg->ap_pass, sizeof(cfg->ap_pass));
+    get_bool_u8(ap, "require_pass", &cfg->ap_require_pass);
+    get_bool_u8(ap, "hidden", &cfg->ap_hidden);
+    get_u8(ap, "channel", &cfg->ap_channel);
   }
 
   cJSON_Delete(root);

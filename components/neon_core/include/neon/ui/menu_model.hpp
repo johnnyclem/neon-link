@@ -67,9 +67,15 @@ class MenuModel {
 
   static constexpr int kMenuItems = 5;     // Live, Outputs, Network, MIDI, System
   static constexpr int kOutputsItems = 4;  // CLK1..4
-  static constexpr int kOutputEditItems = 8;
+  // ENABLED, PPQN, MULT, DIV, MODE, TRIG MS, DUTY, SHUF, then the parity
+  // set: ROLE, FREE RUN, RHYTHM, STEPS, FILLS, ROT, CHANCE, JITTER,
+  // PER LOOP. The shape parameters stay first because they are what a
+  // user reaches for at the rack; the pattern editor lives in the web UI.
+  static constexpr int kOutputEditItems = 17;
   static constexpr int kMidiItems = 5;
-  static constexpr int kSystemItems = 7;   // last item is REBOOT
+  // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
+  // MIDI NDG, SS SYNC, BRIGHT, REBOOT — REBOOT stays last.
+  static constexpr int kSystemItems = 11;
   static constexpr int kSystemRebootItem = kSystemItems - 1;
 
   explicit MenuModel(Config* cfg) : cfg_(cfg) {}

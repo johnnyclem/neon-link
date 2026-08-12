@@ -142,6 +142,22 @@ bool ethernet_start() {
 
 bool g_ap_up = false;
 
+// Truncating copy into a fixed field. Deliberately not snprintf("%s"):
+// with an unbounded source GCC's -Wformat-truncation cannot prove the
+// result fits, and ESP-IDF promotes that to an error.
+static void copy_str(char* dst, size_t cap, const char* src) {
+  if (dst == nullptr || cap == 0) {
+    return;
+  }
+  if (src == nullptr) {
+    dst[0] = '\0';
+    return;
+  }
+  std::strncpy(dst, src, cap - 1);
+  dst[cap - 1] = '\0';
+}
+
+
 bool ip_from_ifkey(const char* ifkey, char* buf, size_t len) {
   if (buf == nullptr || len == 0) {
     return false;
@@ -159,12 +175,31 @@ bool ip_from_ifkey(const char* ifkey, char* buf, size_t len) {
   return true;
 }
 
-void mdns_start() {
+char g_hostname[32] = "neon-link";
+bool g_mdns_up = false;
+
+void mdns_set_hostname(const char* hostname) {
+  if (hostname == nullptr || hostname[0] == '\0') {
+    return;
+  }
+  copy_str(g_hostname, sizeof(g_hostname), hostname);
+  if (!g_mdns_up) {
+    return;
+  }
+  mdns_hostname_set(g_hostname);
+  ESP_LOGI(kTag, "mDNS hostname now %s.local", g_hostname);
+}
+
+void mdns_start(const char* hostname) {
+  if (hostname != nullptr && hostname[0] != '\0') {
+    copy_str(g_hostname, sizeof(g_hostname), hostname);
+  }
   if (mdns_init() != ESP_OK) {
     ESP_LOGW(kTag, "mDNS init failed");
     return;
   }
-  mdns_hostname_set("neon-link");
+  g_mdns_up = true;
+  mdns_hostname_set(g_hostname);
   mdns_instance_name_set("NEON LINK");
   // Advertise the web editor so Finder/Bonjour/Android discovery tools
   // can resolve more than a bare hostname probe.
@@ -172,14 +207,12 @@ void mdns_start() {
       ESP_OK) {
     ESP_LOGW(kTag, "mDNS HTTP service add failed (hostname still set)");
   }
-  ESP_LOGI(kTag, "mDNS: neon-link.local (_http._tcp:80)");
+  ESP_LOGI(kTag, "mDNS: %s.local (_http._tcp:80)", g_hostname);
 }
 
-bool ap_start() {
-  if (g_ap_up) {
-    return true;
-  }
+char g_ap_ssid[33] = {};
 
+bool ap_start(const ApParams& params) {
   wifi_mode_t mode = WIFI_MODE_NULL;
   const bool wifi_inited = esp_wifi_get_mode(&mode) == ESP_OK;
   if (!wifi_inited) {
@@ -189,17 +222,30 @@ bool ap_start() {
     }
     mode = WIFI_MODE_NULL;
   }
-  esp_netif_create_default_wifi_ap();
+  if (esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") == nullptr) {
+    esp_netif_create_default_wifi_ap();
+  }
 
-  uint8_t mac[6] = {};
-  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
   wifi_config_t cfg = {};
-  std::snprintf(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid),
-                "NEON-LINK-%02X%02X", mac[4], mac[5]);
+  const char* ssid = (params.ssid != nullptr && params.ssid[0] != '\0')
+                         ? params.ssid
+                         : "NEON-LINK";
+  copy_str(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid), ssid);
   cfg.ap.ssid_len = 0;  // derive from string
-  cfg.ap.channel = 1;
-  cfg.ap.authmode = WIFI_AUTH_OPEN;  // setup network; editor sets STA creds
-  cfg.ap.max_connection = 2;
+  cfg.ap.channel = params.channel != 0 ? params.channel : 1;
+  cfg.ap.max_connection = 4;
+  cfg.ap.ssid_hidden = params.hidden ? 1 : 0;
+  // WPA2 needs an 8-character key; anything shorter stays an open network
+  // rather than silently failing to start.
+  const bool secured = params.require_pass && params.pass != nullptr &&
+                       std::strlen(params.pass) >= 8;
+  if (secured) {
+    copy_str(reinterpret_cast<char*>(cfg.ap.password),
+             sizeof(cfg.ap.password), params.pass);
+    cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  } else {
+    cfg.ap.authmode = WIFI_AUTH_OPEN;
+  }
 
   const wifi_mode_t new_mode =
       (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) ? WIFI_MODE_APSTA
@@ -208,18 +254,21 @@ bool ap_start() {
       esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK) {
     return false;
   }
-  if (!wifi_inited || mode == WIFI_MODE_NULL) {
+  if (!g_ap_up && (!wifi_inited || mode == WIFI_MODE_NULL)) {
     if (esp_wifi_start() != ESP_OK) {
       return false;
     }
   }
   g_ap_up = true;
-  ESP_LOGI(kTag, "setup AP up: %s (192.168.4.1)",
-           reinterpret_cast<char*>(cfg.ap.ssid));
+  copy_str(g_ap_ssid, sizeof(g_ap_ssid), ssid);
+  ESP_LOGI(kTag, "setup AP up: %s (%s%s) at 192.168.4.1", g_ap_ssid,
+           secured ? "WPA2" : "open", params.hidden ? ", hidden" : "");
   return true;
 }
 
 bool ap_is_up() { return g_ap_up; }
+
+const char* ap_ssid() { return g_ap_up ? g_ap_ssid : ""; }
 
 bool primary_ip(char* buf, size_t len) {
   if (buf == nullptr || len == 0) {

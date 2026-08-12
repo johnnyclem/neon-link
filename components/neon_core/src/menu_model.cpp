@@ -20,8 +20,38 @@ const char* reset_mode_name(ResetMode m) {
       return "START";
     case ResetMode::kEveryBar:
       return "BAR";
+    case ResetMode::kAtStop:
+      return "STOP";
     default:
       return "OFF";
+  }
+}
+
+const char* role_name(OutputRole r) {
+  switch (r) {
+    case OutputRole::kGate:
+      return "GATE";
+    case OutputRole::kResetLoop:
+      return "RST LP";
+    case OutputRole::kResetStart:
+      return "RST ST";
+    case OutputRole::kResetStop:
+      return "RST SP";
+    default:
+      return "CLOCK";
+  }
+}
+
+const char* rhythm_name(ClockOutputConfig::RhythmMode m) {
+  switch (m) {
+    case ClockOutputConfig::RhythmMode::kEuclid:
+      return "EUCLID";
+    case ClockOutputConfig::RhythmMode::kProbability:
+      return "CHANCE";
+    case ClockOutputConfig::RhythmMode::kPattern:
+      return "STEPS";
+    default:
+      return "ALL";
   }
 }
 
@@ -251,7 +281,10 @@ const char* MenuModel::item_label(int index) const {
     }
     case Screen::kOutputEdit: {
       static const char* kItems[kOutputEditItems] = {
-          "ENABLED", "PPQN", "MULT", "DIV", "MODE", "TRIG MS", "DUTY", "SHUF"};
+          "ENABLED",  "PPQN",     "MULT",     "DIV",      "MODE",
+          "TRIG MS",  "DUTY",     "SHUF",     "ROLE",     "FREE RUN",
+          "RHYTHM",   "STEPS",    "FILLS",    "ROT",      "CHANCE",
+          "JITTER",   "PER LOOP"};
       return kItems[clamp_int(index, 0, kOutputEditItems - 1)];
     }
     case Screen::kMidi: {
@@ -261,8 +294,9 @@ const char* MenuModel::item_label(int index) const {
     }
     case Screen::kSystem: {
       static const char* kItems[kSystemItems] = {
-          "LATENCY", "RESET",   "SOURCE", "IN PPQN",
-          "GATE CLK", "QUANTUM", "REBOOT"};
+          "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
+          "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
+          "SS SYNC",  "BRIGHT",   "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
     default:
@@ -301,6 +335,34 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         break;
       case 7:
         std::snprintf(buf, cap, "%u%%", static_cast<unsigned>(c.shuffle_pct));
+        break;
+      case 8:
+        std::snprintf(buf, cap, "%s", role_name(c.role));
+        break;
+      case 9:
+        std::snprintf(buf, cap, "%s", c.free_run ? "ON" : "OFF");
+        break;
+      case 10:
+        std::snprintf(buf, cap, "%s", rhythm_name(c.rhythm));
+        break;
+      case 11:
+        std::snprintf(buf, cap, "%u", static_cast<unsigned>(c.euclid_steps));
+        break;
+      case 12:
+        std::snprintf(buf, cap, "%u", static_cast<unsigned>(c.euclid_fills));
+        break;
+      case 13:
+        std::snprintf(buf, cap, "%u", static_cast<unsigned>(c.euclid_rot));
+        break;
+      case 14:
+        std::snprintf(buf, cap, "%u%%",
+                      static_cast<unsigned>(c.probability_pct));
+        break;
+      case 15:
+        std::snprintf(buf, cap, "%u%%", static_cast<unsigned>(c.humanize_pct));
+        break;
+      case 16:
+        std::snprintf(buf, cap, "%s", c.rhythm_over_loop ? "ON" : "OFF");
         break;
       default:
         break;
@@ -351,6 +413,20 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
       case 5:
         std::snprintf(buf, cap, "%u", static_cast<unsigned>(cfg_->quantum_beats));
         break;
+      case 6:
+        std::snprintf(buf, cap, "%s",
+                      cfg_->engine.reset_before_edge ? "LEAD" : "ON");
+        break;
+      case 7:
+        std::snprintf(buf, cap, "%+.1f", cfg_->midi_nudge_us / 1000.0);
+        break;
+      case 8:
+        std::snprintf(buf, cap, "%s", cfg_->start_stop_sync ? "ON" : "OFF");
+        break;
+      case 9:
+        std::snprintf(buf, cap, "%u",
+                      static_cast<unsigned>(cfg_->display_brightness));
+        break;
       default:
         break;
     }
@@ -391,6 +467,40 @@ void MenuModel::adjust_output_param(int index, int delta) {
     case 7:
       c.shuffle_pct = static_cast<uint8_t>(
           clamp_int(static_cast<int>(c.shuffle_pct) + delta, 0, 75));
+      break;
+    case 8:
+      c.role = static_cast<OutputRole>(
+          wrap_int(static_cast<int>(c.role) + delta, 5));
+      break;
+    case 9:
+      c.free_run = delta > 0;
+      break;
+    case 10:
+      c.rhythm = static_cast<ClockOutputConfig::RhythmMode>(
+          wrap_int(static_cast<int>(c.rhythm) + delta, 4));
+      break;
+    case 11:
+      c.euclid_steps = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(c.euclid_steps) + delta, 1, 64));
+      break;
+    case 12:
+      c.euclid_fills = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(c.euclid_fills) + delta, 0, 64));
+      break;
+    case 13:
+      c.euclid_rot = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(c.euclid_rot) + delta, 0, 63));
+      break;
+    case 14:
+      c.probability_pct = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(c.probability_pct) + delta, 0, 100));
+      break;
+    case 15:
+      c.humanize_pct = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(c.humanize_pct) + delta, 0, 50));
+      break;
+    case 16:
+      c.rhythm_over_loop = delta > 0;
       break;
     default:
       return;
@@ -444,8 +554,9 @@ void MenuModel::adjust_system(int index, int delta) {
           cfg_->engine.latency_us + delta * 100, -50000, 50000);
       break;
     case 1: {
+      // START / BAR / OFF / STOP.
       const int m = static_cast<int>(cfg_->engine.reset_mode) + delta;
-      cfg_->engine.reset_mode = static_cast<ResetMode>(wrap_int(m, 3));
+      cfg_->engine.reset_mode = static_cast<ResetMode>(wrap_int(m, 4));
       break;
     }
     case 2: {
@@ -463,6 +574,22 @@ void MenuModel::adjust_system(int index, int delta) {
     case 5:
       cfg_->quantum_beats = static_cast<uint32_t>(
           clamp_int(static_cast<int>(cfg_->quantum_beats) + delta, 1, 16));
+      // The engine derives its loop-rate channels from its own copy.
+      cfg_->engine.quantum_beats = cfg_->quantum_beats;
+      break;
+    case 6:
+      cfg_->engine.reset_before_edge = delta > 0;
+      break;
+    case 7:
+      cfg_->midi_nudge_us =
+          clamp_int(cfg_->midi_nudge_us + delta * 500, -100000, 100000);
+      break;
+    case 8:
+      cfg_->start_stop_sync = delta > 0 ? 1 : 0;
+      break;
+    case 9:
+      cfg_->display_brightness = static_cast<uint8_t>(clamp_int(
+          static_cast<int>(cfg_->display_brightness) + delta * 8, 0, 255));
       break;
     default:
       return;

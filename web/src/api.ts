@@ -7,8 +7,15 @@
  */
 
 export type PulseMode = "trig" | "square";
-export type Rhythm = "all" | "euclid" | "probability";
-export type ResetMode = "start" | "bar" | "off";
+export type Rhythm = "all" | "euclid" | "probability" | "pattern";
+export type ResetMode = "start" | "bar" | "off" | "stop";
+export type OutputRole =
+  | "clock"
+  | "gate"
+  | "reset_loop"
+  | "reset_start"
+  | "reset_stop";
+export type ApPolicy = "fallback" | "always" | "off";
 export type ClockSource = "auto" | "link" | "external";
 export type ClockPolicy = "ignore" | "replace" | "merge";
 export type NetworkKind = "ethernet" | "wifi" | "none";
@@ -28,6 +35,28 @@ export interface ClockConfig {
   euclid_rot: number;
   probability_pct: number;
   humanize_pct: number;
+  /** What the jack does: clock, gate, or one of the reset flavours. */
+  role: OutputRole;
+  /** "Clock (Always On)" — keeps pulsing through a transport stop. */
+  free_run: boolean;
+  /** 64-step free-assignment mask, 16 hex chars (JSON numbers lose bits). */
+  step_mask: string;
+  /** Spread the pattern's steps over one loop instead of the PPQN grid. */
+  rhythm_over_loop: boolean;
+}
+
+export interface WifiNetwork {
+  ssid: string;
+  pass: string;
+  /** Read-only: whether a password is stored (never the password itself). */
+  has_pass?: boolean;
+  hidden: boolean;
+}
+
+export interface ScanResult {
+  ssid: string;
+  rssi: number;
+  open: boolean;
 }
 
 export interface Config {
@@ -37,6 +66,9 @@ export interface Config {
     reset_trig_len_us: number;
     latency_us: number;
     transport_gating: boolean;
+    /** Let the loop reset lead the clock edge it belongs to. */
+    reset_before_edge: boolean;
+    reset_lead_us: number;
   };
   tempo_cv: { min_bpm: number; max_bpm: number };
   quantum: number;
@@ -53,7 +85,24 @@ export interface Config {
     clock_policy: ClockPolicy;
     transport_enabled: boolean;
   };
-  wifi: { ssid: string; pass: string };
+  /** Follow (and broadcast) transport changes from other Link peers. */
+  start_stop_sync: boolean;
+  /** MIDI-only offset, independent of the CV delay in engine.latency_us. */
+  midi_nudge_us: number;
+  /** Drives <name>.local and the default access point SSID. */
+  device_name: string;
+  display_brightness: number;
+  tempo_milli_bpm: number;
+  wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };
+  ap: {
+    policy: ApPolicy;
+    ssid: string;
+    pass: string;
+    has_pass?: boolean;
+    require_pass: boolean;
+    hidden: boolean;
+    channel: number;
+  };
 }
 
 export interface Status {
@@ -74,6 +123,13 @@ export interface Status {
   wifi_ssid: string;
   wifi_pass_len: number;
   wifi_fail_reason: number;
+  /** Running firmware version, for the update card. */
+  firmware: string;
+  device_name: string;
+  /** SSID the access point is advertising, "" when it is down. */
+  ap_ssid: string;
+  /** The tempo the module holds when no peer is dictating one. */
+  set_bpm: number;
   pulse: { edges: number; late_max_us: number; late_avg_us: number };
 }
 
@@ -103,6 +159,42 @@ export const api = {
       method: "POST",
     }),
 
+  /** Play/stop land on the next loop boundary unless the op says "_now". */
+  transport: (op: "play" | "stop" | "toggle" | "play_now" | "stop_now") =>
+    json<{ ok: boolean }>(`/api/transport?op=${op}`, { method: "POST" }),
+
+  setTempo: (bpm: number) =>
+    json<{ ok: boolean }>(`/api/tempo?bpm=${bpm}`, { method: "POST" }),
+
+  tempoOp: (op: "tap" | "double" | "half" | "nudge", delta?: number) =>
+    json<{ ok: boolean }>(
+      `/api/tempo?op=${op}${delta !== undefined ? `&delta=${delta}` : ""}`,
+      { method: "POST" },
+    ),
+
+  /** Reset on the next loop, or re-align the Link grid to this instant. */
+  resync: (op: "next" | "now") =>
+    json<{ ok: boolean }>(`/api/resync?op=${op}`, { method: "POST" }),
+
+  /** Blocking on the device — a full scan takes a couple of seconds. */
+  scan: () => json<ScanResult[]>("/api/scan"),
+
+  factoryReset: async () => {
+    try {
+      await fetch("/api/factory_reset?confirm=yes", { method: "POST" });
+    } catch {
+      /* the module reboots into defaults, which is the point */
+    }
+  },
+
+  /** Streams a firmware image into the inactive slot; the module reboots. */
+  ota: async (image: File): Promise<void> => {
+    const res = await fetch("/api/ota", { method: "POST", body: image });
+    if (!res.ok) {
+      throw new Error(`update failed (${res.status})`);
+    }
+  },
+
   /** The connection drops mid-reboot; a rejected fetch here is expected. */
   reboot: async () => {
     try {
@@ -112,6 +204,16 @@ export const api = {
     }
   },
 };
+
+/** Toggle one step in a 64-bit mask carried as 16 hex characters. */
+export function toggleStep(mask: string, step: number): string {
+  const bits = BigInt(`0x${mask || "0"}`) ^ (1n << BigInt(step));
+  return bits.toString(16).padStart(16, "0");
+}
+
+export function stepIsOn(mask: string, step: number): boolean {
+  return ((BigInt(`0x${mask || "0"}`) >> BigInt(step)) & 1n) === 1n;
+}
 
 /**
  * Turns an ESP-IDF disconnect reason into something actionable. The raw

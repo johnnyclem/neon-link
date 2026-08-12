@@ -14,6 +14,13 @@ import { Button, Card, Readout } from "../components/controls";
  */
 export function Live({ status }: PageProps) {
   const [presetMsg, setPresetMsg] = useState("");
+  const [bpmDraft, setBpmDraft] = useState("");
+
+  // Transport and tempo are commands, not settings: they take effect at
+  // once (play/stop on the next loop boundary) and never wait for a save.
+  const send = (run: () => Promise<unknown>) => {
+    void run().catch(() => setPresetMsg("Command failed."));
+  };
 
   const preset = async (op: "save" | "recall", slot: number) => {
     try {
@@ -32,6 +39,64 @@ export function Live({ status }: PageProps) {
 
       <Card title="Tempo">
         <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={72} />
+
+        <div class="btn-row">
+          <Button
+            variant={status?.playing ? "secondary" : "primary"}
+            onClick={() => send(() => api.transport("toggle"))}
+          >
+            {status?.playing ? "Stop" : "Play"}
+          </Button>
+          <Button variant="secondary" onClick={() => send(() => api.tempoOp("tap"))}>
+            Tap
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => send(() => api.tempoOp("nudge", -1))}
+          >
+            −1
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => send(() => api.tempoOp("nudge", 1))}
+          >
+            +1
+          </Button>
+          <Button variant="secondary" onClick={() => send(() => api.tempoOp("half"))}>
+            ÷2
+          </Button>
+          <Button variant="secondary" onClick={() => send(() => api.tempoOp("double"))}>
+            ×2
+          </Button>
+        </div>
+
+        <div class="btn-row">
+          <input
+            type="number"
+            min={20}
+            max={999}
+            step={0.5}
+            style="width:7em"
+            aria-label="Set tempo"
+            placeholder={status ? status.set_bpm.toFixed(1) : "120.0"}
+            value={bpmDraft}
+            onInput={(e) => setBpmDraft((e.target as HTMLInputElement).value)}
+          />
+          <Button
+            variant="secondary"
+            disabled={bpmDraft === ""}
+            onClick={() => {
+              const bpm = Number(bpmDraft);
+              if (!Number.isNaN(bpm)) {
+                send(() => api.setTempo(bpm));
+                setBpmDraft("");
+              }
+            }}
+          >
+            Set BPM
+          </Button>
+        </div>
+
         <div style="margin-top:var(--space-3)">
           <PhaseBar
             phase={phase}
@@ -48,6 +113,20 @@ export function Live({ status }: PageProps) {
               <StatusChip state={networkState(status)} detail={`${status.peers}P`} />
             </>
           ) : null}
+        </div>
+      </Card>
+
+      <Card
+        title="Resync"
+        note="Play, stop and “next loop” land on the loop boundary so the module drops in on the downbeat. “Now” is for re-aligning to players who are not on the Link grid."
+      >
+        <div class="btn-row" style="margin-top:0">
+          <Button variant="secondary" onClick={() => send(() => api.resync("next"))}>
+            Reset next loop
+          </Button>
+          <Button variant="secondary" onClick={() => send(() => api.resync("now"))}>
+            Re-align grid now
+          </Button>
         </div>
       </Card>
 

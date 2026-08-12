@@ -7,7 +7,6 @@
 
 #include <cstring>
 
-#include "ablink/session.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -69,7 +68,14 @@ class Sink final : public neon::IRouterSink {
     cfg.engine.clocks[clock_index & 3].shuffle_pct = pct;
     neon_config_apply(cfg);
   }
-  void transport(bool play) override { ablink::session().set_playing(play); }
+  void transport(bool play) override {
+    // The Link session has a single owner (the Link service task); route
+    // the request through the control queue rather than touching it here.
+    ControlCommand cmd{};
+    cmd.kind = play ? ControlCommand::Kind::kPlayNow
+                    : ControlCommand::Kind::kStopNow;
+    control_queue_push(cmd);
+  }
   void trs_realtime(uint8_t status) override {
     halesp::midi_uart_send_byte(status);
   }
@@ -94,22 +100,27 @@ bool link_clock_enabled() {
 }
 
 // Computes the next 24 PPQN tick strictly after now; returns false when no
-// timeline exists yet.
+// timeline exists yet. The configured MIDI nudge shifts the whole clock
+// stream relative to the CV outputs, which is what MIDI gear with its own
+// input latency needs.
 bool next_clock_tick_us(int64_t now_us, int64_t* out) {
   neon::TimelineSnapshot tl;
   timeline_bus().read(tl);
   if (tl.tempo_mpb_q32 == 0) {
     return false;
   }
+  const int64_t nudge = neon_config().midi_nudge_us;
   const double mpb = static_cast<double>(tl.tempo_mpb_q32) / 4294967296.0;
+  // Solve on the un-nudged grid, then shift the result.
+  const double grid_now = static_cast<double>(now_us - nudge);
   const double beat =
       static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0 +
-      static_cast<double>(now_us - tl.origin_us) / mpb;
+      (grid_now - static_cast<double>(tl.origin_us)) / mpb;
   const double tick_beats = 1.0 / 24.0;
   const int64_t tick = static_cast<int64_t>(beat / tick_beats) + 1;
   const double target_beat = static_cast<double>(tick) * tick_beats;
   const double b0 = static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0;
-  *out = tl.origin_us +
+  *out = tl.origin_us + nudge +
          static_cast<int64_t>((target_beat - b0) * mpb);
   if (*out <= now_us) {
     *out = now_us + 1000;

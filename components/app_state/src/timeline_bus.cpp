@@ -8,9 +8,15 @@
 namespace {
 std::atomic<uint32_t> g_peers{0};
 std::atomic<bool> g_ext_clock{false};
+std::atomic<bool> g_playing{false};
 
 QueueHandle_t gate_queue() {
   static QueueHandle_t q = xQueueCreate(16, sizeof(GateEvent));
+  return q;
+}
+
+QueueHandle_t control_queue() {
+  static QueueHandle_t q = xQueueCreate(16, sizeof(ControlCommand));
   return q;
 }
 }  // namespace
@@ -44,3 +50,16 @@ bool gate_queue_push(const GateEvent& ev) {
 bool gate_queue_pop(GateEvent* ev) {
   return xQueueReceive(gate_queue(), ev, 0) == pdTRUE;
 }
+
+bool control_queue_push(const ControlCommand& cmd) {
+  return xQueueSend(control_queue(), &cmd, 0) == pdTRUE;
+}
+
+bool control_queue_pop(ControlCommand* cmd) {
+  return xQueueReceive(control_queue(), cmd, 0) == pdTRUE;
+}
+
+void app_status_set_transport(bool playing) {
+  g_playing.store(playing, std::memory_order_relaxed);
+}
+bool app_status_transport() { return g_playing.load(std::memory_order_relaxed); }

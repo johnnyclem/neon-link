@@ -71,6 +71,11 @@ void ui_task(void*) {
   neon::MenuModel menu(&ui_cfg);
   neon::Framebuffer fb;
 
+  // Brightness is pushed to the controller only when it changes; a
+  // contrast write per frame would waste I2C bandwidth for nothing.
+  uint8_t applied_brightness = 0;
+  bool brightness_applied = false;
+
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
     const int detents = halesp::encoder_take_detents();
@@ -88,7 +93,31 @@ void ui_task(void*) {
         break;
     }
     if (menu.take_dirty()) {
-      neon_config_apply(ui_cfg);
+      // Merge rather than write the whole struct back: the menu holds a
+      // snapshot, and other tasks own fields it never touches (tempo, which
+      // the Link service rewrites on every tap; WiFi and access point,
+      // which the editor owns). Writing ui_cfg wholesale would revert them.
+      neon::Config live = neon_config();
+      live.engine = ui_cfg.engine;
+      live.quantum_beats = ui_cfg.quantum_beats;
+      live.clock_source = ui_cfg.clock_source;
+      live.clock_in_ppqn = ui_cfg.clock_in_ppqn;
+      live.midi_nudge_us = ui_cfg.midi_nudge_us;
+      live.start_stop_sync = ui_cfg.start_stop_sync;
+      live.display_brightness = ui_cfg.display_brightness;
+      neon_config_apply(live);
+      ui_cfg = live;
+    } else if (!menu.editing()) {
+      // Not mid-edit: adopt whatever the editor or a preset recall wrote.
+      ui_cfg = neon_config();
+    }
+
+    const uint8_t want_brightness = ui_cfg.display_brightness;
+    if (have_display &&
+        (!brightness_applied || want_brightness != applied_brightness)) {
+      oledui::panel_set_brightness(want_brightness);
+      applied_brightness = want_brightness;
+      brightness_applied = true;
     }
     if (menu.take_action() == neon::MenuModel::Action::kReboot) {
       // Never restart with a debounced config write still only in RAM.
@@ -103,7 +132,7 @@ void ui_task(void*) {
     halesp::status_led_run(status.playing);
     halesp::status_led_beat((status.phase_milli_beats % 1000) < 150);
 
-    if (have_display) {
+    if (have_display && want_brightness != 0) {
       neon::render_ui(menu, status, fb);
       if (!oledui::panel_flush(fb)) {
         ESP_LOGW(kTag, "panel flush failed");

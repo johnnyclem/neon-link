@@ -242,3 +242,52 @@ TEST_CASE("disabled or unretimed channel emits nothing") {
   idle.configure(basic(4));
   CHECK_FALSE(idle.peek(&e));
 }
+
+TEST_CASE("anchoring far ahead of the snapshot lands on the same grid") {
+  // The engine retimes at a cursor that runs ahead of the Link snapshot's
+  // origin. Anchoring at from_us must give the same edges as a snapshot
+  // captured at that instant — i.e. the beat conversion has to be exact,
+  // not merely recovered by the post-anchor catch-up loop.
+  neon::ClockOutputConfig cfg;
+  cfg.ppqn = 4;
+
+  neon::PulseChannel near;
+  neon::PulseChannel far;
+  near.configure(cfg);
+  far.configure(cfg);
+
+  neon::TimelineSnapshot at_origin;
+  at_origin.tempo_mpb_q32 = neon::micros_per_beat_q32_from_milli_bpm(137000);
+  at_origin.origin_us = 4000000;
+  at_origin.beat_at_origin_q32 = static_cast<int64_t>(9.125 * 4294967296.0);
+  at_origin.quantum_beats = 4;
+  at_origin.playing = 1;
+
+  near.retime(at_origin, 4000000, true);
+  far.retime(at_origin, 4000000, true);
+  // Advance `far`'s anchor point 3 seconds past the snapshot origin.
+  far.retime(at_origin, 7000000, true);
+
+  neon::Edge e{};
+  std::vector<int64_t> near_rises;
+  for (int i = 0; i < 400 && near.peek(&e); ++i) {
+    if (e.high && e.t_us >= 7000000) {
+      near_rises.push_back(e.t_us);
+    }
+    near.pop();
+    if (near_rises.size() >= 8) break;
+  }
+  std::vector<int64_t> far_rises;
+  for (int i = 0; i < 400 && far.peek(&e); ++i) {
+    if (e.high) {
+      far_rises.push_back(e.t_us);
+    }
+    far.pop();
+    if (far_rises.size() >= 8) break;
+  }
+  REQUIRE(near_rises.size() == 8);
+  REQUIRE(far_rises.size() == 8);
+  for (size_t i = 0; i < 8; ++i) {
+    CHECK(far_rises[i] == near_rises[i]);
+  }
+}

@@ -103,23 +103,52 @@ grid no matter how long the set runs. Host tests assert this bit-exactly
 The ESP32-S3 FPU is single-precision only; doubles are software-emulated
 and are banned from anything reachable by the pulse path.
 
-### Output engine (milestone 3)
+### Output engine (milestone 3, roles added in the parity pass)
 
 `neon::MultiClockEngine` owns six merged, time-ordered channels:
 
-- **CLK 1–4** — independent `PulseChannel`s: per-output PPQN/mult/div,
+- **OUT 1–4** — independent `PulseChannel`s: per-output PPQN/mult/div,
   trigger or duty-cycle square pulse shape, and shuffle (odd ticks delayed
   by a percentage of the period; parity is derived from the absolute tick
   index so swing feel survives re-anchors). Defaults: 4/2/1/24 PPQN.
 - **RESET** — `kStartOfPlay` (one pulse when the transport starts — the
   HARDWARE.md "Reset / Start pulse" default), `kEveryBar` (a 1/quantum
-  rational channel while playing), or off.
+  rational channel while playing), `kAtStop`, or off.
 - **RUN** — gate mirroring the session transport.
 
+Each of OUT 1–4 carries a **role**, so a jack is not locked to being a
+clock: `kClock`, `kGate` (high while playing), `kResetLoop` (a trigger on
+every loop boundary — internally a 1/quantum rational channel),
+`kResetStart`, `kResetStop`. Non-clock roles produce no periodic edges;
+their pulses come from the transport-transition one-shot queue, which also
+carries the RUN and RESET one-shots so everything merges through one
+time-ordered path.
+
 Latency compensation is a signed µs offset applied uniformly to every
-emitted edge. Clocks free-run on the beat grid by default;
-`transport_gating` optionally stops them with the transport (Run/Reset
-follow transport either way).
+emitted edge. Reset-role channels and the RESET jack take an additional
+negative offset when `reset_before_edge` is set, so a sequencer latches
+the reset just before the clock that starts the loop. Clocks free-run on
+the beat grid by default; `transport_gating` optionally stops them with
+the transport, and a per-output `free_run` overrides that for one jack
+(the "Clock (Always On)" idiom, paired with a `kGate` output for DIN-Sync
+style clocking).
+
+### Transport control (`neon/transport.hpp`)
+
+Portable, host-tested, and the only place beat↔time conversion lives
+outside the pulse channel:
+
+- `beat_at_q32` / `time_at_beat_q32` / `next_loop_boundary_us` — the loop
+  grid, used for quantized transport, resync, and the editor's loop meter.
+- `TapTempo` — averages a run of taps, restarting the run on a gap or an
+  out-of-range interval so a stray tap cannot poison the tempo.
+- `TransportLatch` — arms a play/stop transition and fires it at the next
+  loop boundary (or immediately, when unquantized).
+- `resync_target_us` — "at the next loop" vs "re-align the grid to now".
+
+The Link session has a single owner (the Link service task). Everything
+else — web editor, OLED encoder, BLE MIDI transport — posts a
+`ControlCommand` onto a queue that the service drains each tick.
 
 ### Configuration
 
@@ -200,7 +229,14 @@ reset.
   ticks advance silently, so patterns stay session-locked): `all`
   (classic), `euclid` E(fills, steps) with rotation (Bresenham form of
   Bjorklund — canonical up to rotation, hit at step 0, maximal evenness
-  property is test-asserted), `probability` (per-tick chance). **Humanize**
+  property is test-asserted), `pattern` (free assignment via a 64-bit step
+  mask), `probability` (per-tick chance). **Chance** (`probability_pct`)
+  applies to every mode except `all`, so Euclidean and free-assignment
+  patterns can both be thinned; a plain clock is never diced.
+  `rhythm_over_loop` distributes the pattern's steps across one loop
+  (quantum) instead of the PPQN grid — the "16 steps across 4 beats"
+  behavior — by rewriting the channel's rate to `steps/quantum`.
+  **Humanize**
   adds a deterministic pseudo-random delay (≤50% of the period); together
   with shuffle the offset is clamped below one period so edges never
   reorder. Probability and humanize decisions hash the absolute tick
@@ -218,23 +254,55 @@ reset.
 ## Web editor + AP setup (milestone 8)
 
 - **REST API** (`components/web_ui`, esp_http_server on all interfaces):
-  `GET /api/status` (BPM/transport/network/peers/ext-clock), `GET
-  /api/config`, `PUT /api/config`. PUT semantics: **partial update** —
-  only fields present in the document change — then sanitize, live-apply
-  through the milestone-6 pipeline (engine seqlock + debounced NVS), and
-  echo the sanitized result.
+
+  | Route | Purpose |
+  |---|---|
+  | `GET /api/status` | BPM, transport, network, peers, ext-clock, loop phase, firmware version, pulse jitter |
+  | `GET /api/config` · `PUT /api/config` | The whole config document |
+  | `POST /api/transport?op=play\|stop\|toggle\|play_now\|stop_now` | Loop-quantized (or immediate) transport |
+  | `POST /api/tempo?bpm=` · `?op=tap\|nudge&delta=\|double\|half` | Tempo control |
+  | `POST /api/resync?op=next\|now` | Reset on the next loop, or re-align the grid to now |
+  | `GET /api/scan` | Nearby 2.4 GHz networks, for the editor's pick-list |
+  | `POST /api/preset?op=save\|recall&slot=n` | Preset slots |
+  | `POST /api/ota` | Firmware image upload |
+  | `POST /api/factory_reset?confirm=yes` | Erase config + presets, reboot |
+  | `POST /api/reboot` | Soft reset |
+
+  PUT semantics: **partial update** — only fields present in the document
+  change — then sanitize, live-apply through the milestone-6 pipeline
+  (engine seqlock + debounced NVS), and echo the sanitized result.
 - **Config JSON** (`neon/config/json.hpp`, portable, host-tested):
   string enums, vendored cJSON (the one C dependency in `neon_core`,
-  compiled privately). The WiFi password is **write-only**: encode emits
-  "" and decode ignores empty passwords, so the secret never round-trips
-  through a browser.
+  compiled privately). Passwords are **write-only**: encode emits "" plus
+  a `has_pass` flag and decode ignores empty passwords, so secrets never
+  round-trip through a browser. Changing a slot's SSID clears that slot's
+  stored password rather than pairing it with a different network. The
+  64-step pattern mask travels as a hex string — JSON numbers are doubles
+  and would lose the top bits.
 - **Editor page**: single embedded HTML file (vanilla JS, neon 90s
-  styling) served at `/` — clock outputs, engine, clock source, tempo CV,
-  BLE MIDI routing, WiFi credentials; 2 s status ticker.
-- **Setup AP**: when the milestone-4 preference machine's grace expires,
-  `netman::ap_start()` raises an open AP `NEON-LINK-XXXX` (MAC suffix) at
-  192.168.4.1 serving the editor; STA credentials saved there apply on
-  the next boot (stored config outranks the menuconfig fallback).
+  styling) served at `/` — a transport bar (play/stop, tap, ±1, ×2/÷2,
+  direct BPM, resync, live loop meter), per-output role/shape/rhythm with
+  a clickable step grid, engine and session settings, tempo CV, BLE MIDI
+  routing, the stored-network list with an in-page scan, access point
+  settings, presets, OTA upload, and factory reset; 1 s status ticker.
+- **Stored networks**: four slots walked in order, each given
+  `wifi_retries` attempts before the station moves on. A successful
+  association resets the attempt counter so the working network stays
+  preferred.
+- **Setup AP**: policy is `fallback` (raise it when the milestone-4
+  preference machine's grace expires), `always` (self-host and never join
+  a network), or `off`. SSID defaults to `<DEVICE-NAME>-XXXX` from the
+  SoftAP MAC and is overridable, as are password, require-password,
+  hidden, and channel. A key shorter than the 8 characters WPA2 requires
+  leaves the network open rather than failing to start.
+- **Identity**: `device_name` is reduced to a DNS-safe label and drives
+  both `<name>.local` and the default AP SSID. Renaming re-registers mDNS
+  immediately, so the editor URL follows without a reboot.
+- **OTA**: two app slots (`ota_0`/`ota_1`). `POST /api/ota` streams the
+  image into the inactive slot, validates it, sets the boot partition, and
+  reboots; `esp_ota_mark_app_valid_cancel_rollback()` runs once the new
+  image's editor is serving, so an image that cannot get that far rolls
+  back.
 
 ## BLE MIDI + TRS MIDI (milestone 7)
 
