@@ -212,4 +212,91 @@ void draw_confirm(Framebuffer& fb, const char* title, const char* line1,
   fb.invert_rect(sel_x, kBoxY, kBoxW, kBoxH);
 }
 
+// ---- giant beat ---------------------------------------------------------
+
+namespace {
+
+// 7×11 block digits. Bit 6 is the leftmost column. Fat enough to read
+// from the other side of a rack at 11 px per cell (77×121 inside the
+// 2 px border).
+constexpr int kDigitW = 7;
+constexpr int kDigitH = 11;
+constexpr int kBeatInset = 2;
+
+constexpr uint8_t kDigits[10][kDigitH] = {
+    {0x3e, 0x7f, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x7f, 0x3e},  // 0
+    {0x1e, 0x3e, 0x3c, 0x1c, 0x1c, 0x1c, 0x1c, 0x1c, 0x1c, 0x7f, 0x7f},  // 1
+    {0x3e, 0x7f, 0x63, 0x03, 0x06, 0x1c, 0x30, 0x60, 0x60, 0x7f, 0x7f},  // 2
+    {0x3e, 0x7f, 0x63, 0x03, 0x1e, 0x1e, 0x03, 0x63, 0x63, 0x7f, 0x3e},  // 3
+    {0x0c, 0x1c, 0x3c, 0x6c, 0x6c, 0x7f, 0x7f, 0x0c, 0x0c, 0x0c, 0x1e},  // 4
+    {0x7f, 0x7f, 0x60, 0x60, 0x7e, 0x3f, 0x03, 0x03, 0x63, 0x7f, 0x3e},  // 5
+    {0x3e, 0x7f, 0x63, 0x60, 0x7e, 0x7f, 0x63, 0x63, 0x63, 0x7f, 0x3e},  // 6
+    {0x7f, 0x7f, 0x03, 0x06, 0x06, 0x0c, 0x0c, 0x18, 0x18, 0x18, 0x18},  // 7
+    {0x3e, 0x7f, 0x63, 0x63, 0x3e, 0x3e, 0x63, 0x63, 0x63, 0x7f, 0x3e},  // 8
+    {0x3e, 0x7f, 0x63, 0x63, 0x63, 0x3f, 0x1f, 0x03, 0x63, 0x7f, 0x3e},  // 9
+};
+
+void paint_digit(Framebuffer& fb, int origin_x, int origin_y, int cell,
+                 int digit, bool on) {
+  if (digit < 0 || digit > 9 || cell <= 0) {
+    return;
+  }
+  for (int row = 0; row < kDigitH; ++row) {
+    const uint8_t bits = kDigits[digit][row];
+    for (int col = 0; col < kDigitW; ++col) {
+      if ((bits & (1u << (kDigitW - 1 - col))) == 0) {
+        continue;
+      }
+      fb.fill_rect(origin_x + col * cell, origin_y + row * cell, cell, cell,
+                   on);
+    }
+  }
+}
+
+void paint_border(Framebuffer& fb) {
+  fb.fill_rect(0, 0, kWidth, kBeatInset, false);
+  fb.fill_rect(0, kHeight - kBeatInset, kWidth, kBeatInset, false);
+  fb.fill_rect(0, 0, kBeatInset, kHeight, false);
+  fb.fill_rect(kWidth - kBeatInset, 0, kBeatInset, kHeight, false);
+}
+
+}  // namespace
+
+void draw_giant_beat(Framebuffer& fb, uint32_t beat) {
+  if (beat == 0) {
+    beat = 1;
+  }
+  const bool invert = (beat % 2u) == 0u;
+  if (invert) {
+    fb.fill_rect(0, 0, kWidth, kHeight, true);
+  } else {
+    fb.clear();
+  }
+  const bool ink = !invert;
+
+  char digits[8];
+  const int n = std::snprintf(digits, sizeof(digits), "%u",
+                              static_cast<unsigned>(beat));
+  const int gap = 1;
+  const int cols = n * kDigitW + (n - 1) * gap;
+  const int inner = kWidth - 2 * kBeatInset;
+  int cell = inner / kDigitH;
+  if (cell * cols > inner) {
+    cell = inner / cols;
+  }
+  if (cell < 1) {
+    cell = 1;
+  }
+  const int box_w = cols * cell;
+  const int box_h = kDigitH * cell;
+  const int x0 = (kWidth - box_w) / 2;
+  const int y0 = (kHeight - box_h) / 2;
+  int x = x0;
+  for (int i = 0; i < n; ++i) {
+    paint_digit(fb, x, y0, cell, digits[i] - '0', ink);
+    x += (kDigitW + gap) * cell;
+  }
+  paint_border(fb);
+}
+
 }  // namespace neon::ui

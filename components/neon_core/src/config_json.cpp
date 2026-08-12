@@ -234,6 +234,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(root, "midi_nudge_us", cfg.midi_nudge_us);
   cJSON_AddStringToObject(root, "device_name", cfg.device_name);
   cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
+  cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -387,6 +388,7 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
   get_i32(root, "midi_nudge_us", &cfg->midi_nudge_us);
   get_str(root, "device_name", cfg->device_name, sizeof(cfg->device_name));
   get_u8(root, "display_brightness", &cfg->display_brightness);
+  get_bool_u8(root, "big_beat_display", &cfg->big_beat_display);
 
   const cJSON* ble = cJSON_GetObjectItemCaseSensitive(root, "ble");
   if (cJSON_IsObject(ble)) {

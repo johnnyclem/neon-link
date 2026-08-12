@@ -176,6 +176,7 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   a.engine.clocks[3].step_mask = 0x0f0f0f0f0f0f0f0full;
   a.engine.reset_mode = neon::ResetMode::kAtStop;
   a.engine.reset_before_edge = true;
+  a.big_beat_display = 0;
 
   std::vector<uint8_t> buf(neon::config_blob_size());
   REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
@@ -195,6 +196,35 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   CHECK(b.engine.clocks[3].step_mask == 0x0f0f0f0f0f0f0f0full);
   CHECK(b.engine.reset_mode == neon::ResetMode::kAtStop);
   CHECK(b.engine.reset_before_edge);
+  CHECK(b.big_beat_display == 0);
+}
+
+TEST_CASE("a v2 config blob keeps wifi and defaults the big beat flag") {
+  neon::Config a;
+  std::strcpy(a.wifi[0].ssid, "clemhaus-IoT");
+  std::strcpy(a.wifi[0].pass, "twelvechars!");
+  a.big_beat_display = 0;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 2;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(std::string(b.wifi[0].ssid) == "clemhaus-IoT");
+  CHECK(std::string(b.wifi[0].pass) == "twelvechars!");
+  CHECK(b.big_beat_display == 1);
 }
 
 TEST_CASE("out-of-range roles, tempo, and retries are clamped") {

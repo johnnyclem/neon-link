@@ -17,6 +17,16 @@ struct Correlated {
 
 }  // namespace
 
+TEST_CASE("beat_number is 1-based inside the bar") {
+  CHECK(neon::beat_number(0, 4) == 1);
+  CHECK(neon::beat_number(999, 4) == 1);
+  CHECK(neon::beat_number(1000, 4) == 2);
+  CHECK(neon::beat_number(2000, 4) == 3);
+  CHECK(neon::beat_number(3000, 4) == 4);
+  CHECK(neon::beat_number(3999, 4) == 4);
+  CHECK(neon::beat_number(0, 0) == 1);  // quantum 0 → 4
+}
+
 TEST_CASE("SeqLock: single-threaded round trip and versioning") {
   neon::SeqLock<neon::TimelineSnapshot> lock;
   CHECK(lock.version() == 0);

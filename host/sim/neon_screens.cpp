@@ -127,9 +127,31 @@ int main() {
     linked.ble_on = true;
     std::snprintf(linked.ip, sizeof(linked.ip), "10.0.0.42");
     capture("live-linked", "Live — running, two peers",
-            "Source, transport, network and peer count on one line, in the same "
-            "words the web UI puts on its chips.",
+            "While playing the panel fills with the current beat. Phase 1.5 "
+            "of a 4-beat bar is beat 2: black numeral on a white field.",
             m, linked);
+
+    for (uint32_t beat = 1; beat <= 4; ++beat) {
+      neon::UiStatus b = linked;
+      b.phase_milli_beats = (beat - 1) * 1000;
+      char id[16];
+      char title[24];
+      std::snprintf(id, sizeof(id), "live-beat-%u",
+                    static_cast<unsigned>(beat));
+      std::snprintf(title, sizeof(title), "Live — beat %u",
+                    static_cast<unsigned>(beat));
+      capture(id, title,
+              beat % 2 == 1
+                  ? "Odd beat: largest white numeral inside a 2 px black border."
+                  : "Even beat: the panel inverts — black numeral, white field.",
+              m, b);
+    }
+
+    neon::UiStatus classic = linked;
+    classic.big_beat_display = false;
+    capture("live-classic", "Live — running, classic layout",
+            "Big beat numbers can be turned off; the BPM home screen returns.",
+            m, classic);
 
     neon::UiStatus stopped = linked;
     stopped.playing = false;

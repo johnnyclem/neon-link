@@ -92,10 +92,15 @@ struct Config {
   uint8_t ap_channel = 1;
   char ap_ssid[33] = {};  // empty = derive from device_name + MAC
   char ap_pass[65] = "link1234";
+
+  // Full-screen beat number (1, 2, 3, 4…) while the transport is running.
+  // Appended in v3 so a v2 NVS blob still decodes (new field keeps default).
+  // On by default: 1 and 3 are white on black, 2 and 4 are black on white.
+  uint8_t big_beat_display = 1;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 2;
+inline constexpr uint16_t kConfigVersion = 3;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

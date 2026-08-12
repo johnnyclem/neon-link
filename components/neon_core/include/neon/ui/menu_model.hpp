@@ -25,6 +25,8 @@ struct UiStatus {
   // placeholder instead of a misleading tempo.
   bool tempo_valid = true;
   bool ble_on = false;
+  // Full-screen 1/2/3/4 while playing. Default on, matching Config.
+  bool big_beat_display = true;
 };
 
 // Encoder-driven menu state machine (pure logic; host-tested).
@@ -74,8 +76,8 @@ class MenuModel {
   static constexpr int kOutputEditItems = 17;
   static constexpr int kMidiItems = 5;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
-  // MIDI NDG, SS SYNC, BRIGHT, REBOOT — REBOOT stays last.
-  static constexpr int kSystemItems = 11;
+  // MIDI NDG, SS SYNC, BRIGHT, BEAT, REBOOT — REBOOT stays last.
+  static constexpr int kSystemItems = 12;
   static constexpr int kSystemRebootItem = kSystemItems - 1;
 
   explicit MenuModel(Config* cfg) : cfg_(cfg) {}

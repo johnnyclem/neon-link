@@ -67,6 +67,7 @@ let config = {
   midi_nudge_us: 0,
   device_name: "neon-link",
   display_brightness: 255,
+  big_beat_display: true,
   tempo_milli_bpm: 128000,
   wifi: {
     networks: [

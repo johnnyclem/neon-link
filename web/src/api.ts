@@ -92,6 +92,8 @@ export interface Config {
   /** Drives <name>.local and the default access point SSID. */
   device_name: string;
   display_brightness: number;
+  /** Full-screen 1/2/3/4 on the panel while the transport is running. */
+  big_beat_display: boolean;
   tempo_milli_bpm: number;
   wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };
   ap: {

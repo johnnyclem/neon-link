@@ -296,7 +296,7 @@ const char* MenuModel::item_label(int index) const {
       static const char* kItems[kSystemItems] = {
           "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
           "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
-          "SS SYNC",  "BRIGHT",   "REBOOT"};
+          "SS SYNC",  "BRIGHT",   "BEAT",     "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
     default:
@@ -426,6 +426,9 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
       case 9:
         std::snprintf(buf, cap, "%u",
                       static_cast<unsigned>(cfg_->display_brightness));
+        break;
+      case 10:
+        std::snprintf(buf, cap, "%s", cfg_->big_beat_display ? "ON" : "OFF");
         break;
       default:
         break;
@@ -590,6 +593,9 @@ void MenuModel::adjust_system(int index, int delta) {
     case 9:
       cfg_->display_brightness = static_cast<uint8_t>(clamp_int(
           static_cast<int>(cfg_->display_brightness) + delta * 8, 0, 255));
+      break;
+    case 10:
+      cfg_->big_beat_display = delta > 0 ? 1 : 0;
       break;
     default:
       return;

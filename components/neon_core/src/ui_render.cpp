@@ -2,6 +2,7 @@
 
 #include <cstdio>
 
+#include "neon/timeline.hpp"
 #include "neon/ui/widgets.hpp"
 
 namespace neon {
@@ -57,6 +58,11 @@ const char* editor_address(const UiStatus& s) {
 // ---- screens ------------------------------------------------------------
 
 void render_home(const UiStatus& s, Framebuffer& fb) {
+  if (s.playing && s.big_beat_display) {
+    draw_giant_beat(fb, neon::beat_number(s.phase_milli_beats, s.quantum_beats));
+    return;
+  }
+
   const Icon* icons[2] = {&net_icon(s), s.ble_on ? &kIconBle : nullptr};
   draw_header(fb, kBrand, icons, 2);
 

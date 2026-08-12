@@ -52,6 +52,7 @@ void assemble_status(neon::UiStatus* s) {
   s->peers = app_status_peers();
   s->ext_clock = app_status_ext_clock();
   s->setup_ap = netman::ap_is_up();
+  s->big_beat_display = neon_config().big_beat_display != 0;
   s->ip[0] = '\0';
   netman::primary_ip(s->ip, sizeof(s->ip));
 }
@@ -105,6 +106,7 @@ void ui_task(void*) {
       live.midi_nudge_us = ui_cfg.midi_nudge_us;
       live.start_stop_sync = ui_cfg.start_stop_sync;
       live.display_brightness = ui_cfg.display_brightness;
+      live.big_beat_display = ui_cfg.big_beat_display;
       neon_config_apply(live);
       ui_cfg = live;
     } else if (!menu.editing()) {

@@ -198,6 +198,11 @@ export function System(props: PageProps) {
             onChange={(v) => patch((d) => (d.display_brightness = v))}
             hint="0 blanks the panel"
           />
+          <Toggle
+            label="Big beat numbers"
+            checked={cfg.big_beat_display !== false}
+            onChange={(v) => patch((d) => (d.big_beat_display = v))}
+          />
         </div>
       </Card>
 

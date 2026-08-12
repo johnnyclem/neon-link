@@ -141,6 +141,8 @@ void config_sanitize(Config* cfg) {
   char host[sizeof(cfg->device_name)] = {};
   sanitize_hostname(cfg->device_name, host, sizeof(host));
   std::memcpy(cfg->device_name, host, sizeof(host));
+
+  cfg->big_beat_display = cfg->big_beat_display ? 1 : 0;
 }
 
 size_t sanitize_hostname(const char* in, char* out, size_t cap) {
@@ -222,20 +224,30 @@ size_t config_encode(const Config& cfg, uint8_t* buf, size_t cap) {
 }
 
 bool config_decode(const uint8_t* buf, size_t len, Config* out) {
-  if (len < sizeof(BlobHeader)) {
+  if (out == nullptr || len < sizeof(BlobHeader)) {
     return false;
   }
   BlobHeader h;
   std::memcpy(&h, buf, sizeof(BlobHeader));
-  if (h.magic != kConfigMagic || h.version != kConfigVersion ||
-      h.payload_size != sizeof(Config) ||
+  // Older versions are a prefix of Config. Reject anything newer or
+  // larger than we know how to read; smaller payloads keep defaults
+  // for fields that did not exist yet (v2 → big_beat_display = on).
+  if (h.magic != kConfigMagic || h.version == 0 ||
+      h.version > kConfigVersion || h.payload_size == 0 ||
+      h.payload_size > sizeof(Config) ||
       len < sizeof(BlobHeader) + h.payload_size) {
     return false;
   }
   if (crc32(buf + sizeof(BlobHeader), h.payload_size) != h.crc) {
     return false;
   }
-  std::memcpy(out, buf + sizeof(BlobHeader), sizeof(Config));
+  *out = Config{};
+  std::memcpy(out, buf + sizeof(BlobHeader), h.payload_size);
+  // v2's sizeof included tail padding after ap_pass. That padding lands
+  // on big_beat_display and would silently turn the new default off.
+  if (h.version < 3) {
+    out->big_beat_display = 1;
+  }
   config_sanitize(out);
   return true;
 }

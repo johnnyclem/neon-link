@@ -57,6 +57,9 @@ neon::UiStatus playing_status() {
   st.active_net = 1;
   st.phase_milli_beats = 2000;  // half way through a 4-beat bar
   st.quantum_beats = 4;
+  // Existing layout checks cover the classic home; giant beats are
+  // tested separately so one flag flip does not rewrite every fixture.
+  st.big_beat_display = false;
   return st;
 }
 
@@ -716,4 +719,78 @@ TEST_CASE("REBOOT stays the last system row after the parity additions") {
   CHECK(std::string(m.item_label(m.cursor())) == "REBOOT");
   m.on_click();
   CHECK(m.screen() == neon::MenuModel::Screen::kConfirm);
+}
+
+TEST_CASE("system menu can disable the big beat display") {
+  neon::Config cfg;
+  CHECK(cfg.big_beat_display == 1);
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(4);  // System
+  m.on_click();
+  m.on_rotate(10);  // BEAT
+  CHECK(std::string(m.item_label(m.cursor())) == "BEAT");
+  m.on_click();
+  m.on_rotate(-1);
+  CHECK(cfg.big_beat_display == 0);
+}
+
+TEST_CASE("giant beat fills the panel and flips ink on 2 and 4") {
+  auto render_beat = [](uint32_t phase) {
+    neon::UiStatus st;
+    st.playing = true;
+    st.big_beat_display = true;
+    st.quantum_beats = 4;
+    st.phase_milli_beats = phase;
+    neon::Config cfg;
+    neon::MenuModel menu(&cfg);
+    neon::Framebuffer fb;
+    neon::render_ui(menu, st, fb);
+    return fb;
+  };
+
+  neon::Framebuffer one = render_beat(0);      // beat 1
+  neon::Framebuffer two = render_beat(1000);   // beat 2
+  neon::Framebuffer three = render_beat(2000); // beat 3
+  neon::Framebuffer four = render_beat(3000);  // beat 4
+
+  CHECK(dump(one) != dump(two));
+  CHECK(dump(two) != dump(three));
+  CHECK(dump(three) != dump(four));
+  CHECK(dump(one) != dump(three));
+
+  // 2 px black safe zone on every beat, including the inverted ones.
+  CHECK_FALSE(one.pixel(0, 0));
+  CHECK_FALSE(one.pixel(127, 127));
+  CHECK_FALSE(two.pixel(0, 0));
+  CHECK_FALSE(two.pixel(127, 0));
+  CHECK_FALSE(two.pixel(0, 127));
+  CHECK_FALSE(two.pixel(127, 127));
+  CHECK_FALSE(two.pixel(1, 64));
+  CHECK_FALSE(two.pixel(126, 64));
+
+  const int ink1 = lit_pixels(one);
+  const int ink2 = lit_pixels(two);
+  // 1 is white-on-black; 2 is black-on-white, so far more pixels are lit.
+  CHECK(ink1 > 400);
+  CHECK(ink2 > ink1);
+
+  // Corners of the inner field: beat 2's white background reaches just
+  // inside the border.
+  CHECK(two.pixel(2, 2));
+  CHECK_FALSE(one.pixel(2, 2));
+}
+
+TEST_CASE("giant beat is only the live screen while playing") {
+  neon::UiStatus st;
+  st.playing = true;
+  st.big_beat_display = true;
+  st.phase_milli_beats = 0;
+  neon::Config cfg;
+  neon::MenuModel menu(&cfg);
+  menu.on_click();  // leave Home
+  neon::Framebuffer fb;
+  neon::render_ui(menu, st, fb);
+  // Menu header rule is a full-width line; a giant 1 is not.
+  CHECK(lit_in_row(fb, neon::ui::kHeaderRuleY) == neon::Framebuffer::kWidth);
 }

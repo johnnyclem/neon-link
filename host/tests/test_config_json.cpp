@@ -45,6 +45,7 @@ TEST_CASE("config JSON round-trips every field") {
   std::strcpy(a.ap_ssid, "backline");
   std::strcpy(a.device_name, "stage-left");
   a.display_brightness = 64;
+  a.big_beat_display = 0;
   a.midi_nudge_us = -3000;
   a.start_stop_sync = 0;
   a.tempo_milli_bpm = 137500;
@@ -81,6 +82,7 @@ TEST_CASE("config JSON round-trips every field") {
   CHECK(std::strcmp(b.ap_ssid, "backline") == 0);
   CHECK(std::strcmp(b.device_name, "stage-left") == 0);
   CHECK(b.display_brightness == 64);
+  CHECK(b.big_beat_display == 0);
   CHECK(b.midi_nudge_us == -3000);
   CHECK(b.start_stop_sync == 0);
   CHECK(b.tempo_milli_bpm == 137500);

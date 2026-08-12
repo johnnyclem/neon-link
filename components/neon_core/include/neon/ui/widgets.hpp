@@ -50,6 +50,11 @@ void draw_status_row(Framebuffer& fb, int y, const char* const* words,
 void draw_bar(Framebuffer& fb, int y, uint32_t phase_milli_beats,
               uint32_t quantum_beats, bool running);
 
+// Full-panel beat number for a playing transport. 1-based `beat`. Odd
+// beats (1, 3, …) are the largest white glyph that fits inside a 2 px
+// black border; even beats invert the panel (black glyph, white field).
+void draw_giant_beat(Framebuffer& fb, uint32_t beat);
+
 // ---- lists --------------------------------------------------------------
 
 // Inverts a full-width band. Selection has no colour to fall back on, so

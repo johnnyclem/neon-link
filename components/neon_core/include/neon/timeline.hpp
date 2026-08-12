@@ -45,6 +45,12 @@ inline uint32_t phase_milli_beats(const TimelineSnapshot& tl, int64_t now_us) {
   return static_cast<uint32_t>(bar_pos * 1000.0);
 }
 
+// 1-based beat inside the current bar (1..quantum). Phase 0..999 is beat 1.
+inline uint32_t beat_number(uint32_t phase_milli_beats, uint32_t quantum_beats) {
+  const uint32_t q = quantum_beats != 0 ? quantum_beats : 4;
+  return (phase_milli_beats / 1000u) % q + 1u;
+}
+
 // Single-writer / single-reader seqlock. The payload is stored as relaxed
 // atomic words (data-race-free by construction) and the protocol is fenced
 // with seq_cst barriers on both sides — conservative and cheap at the call
