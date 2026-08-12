@@ -36,11 +36,14 @@ if [[ ! -f build/neon_link.bin ]]; then
 fi
 
 echo "Flashing to $PORT ..."
+# OTA partition table: app at 0x20000 (not the old 0x10000). flash_args
+# paths are relative to build/.
 python -m esptool --chip esp32s3 -p "$PORT" -b 115200 \
   --before default_reset --after hard_reset \
   write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB \
   0x0 build/bootloader/bootloader.bin \
   0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/neon_link.bin
+  0xf000 build/ota_data_initial.bin \
+  0x20000 build/neon_link.bin
 
 echo "Done. Monitor with: idf.py -p $PORT monitor"

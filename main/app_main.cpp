@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_rom_sys.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
@@ -23,6 +24,24 @@ extern "C" void app_main(void) {
     err = nvs_flash_init();
   }
   ESP_ERROR_CHECK(err);
+
+  // OTA rollback is enabled: a new image boots as "pending verify".  If we
+  // never confirm it, the *next* cold boot reverts to the other OTA slot
+  // (often empty after a USB flash) — blank/garbage OLED, "need reflash".
+  // Confirm as soon as app_main is alive so a power-cycle right after flash
+  // keeps this image.  webui_start() still re-confirms after the editor is
+  // up (defence in depth for OTA images that crash before that).
+#if CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
+  {
+    const esp_err_t ota_err = esp_ota_mark_app_valid_cancel_rollback();
+    if (ota_err == ESP_OK) {
+      ESP_LOGI(kTag, "OTA image marked valid (rollback cancelled)");
+    } else if (ota_err != ESP_ERR_OTA_ROLLBACK_INVALID_STATE) {
+      // INVALID_STATE = already confirmed; anything else is worth a warning.
+      ESP_LOGW(kTag, "esp_ota_mark_app_valid: %s", esp_err_to_name(ota_err));
+    }
+  }
+#endif
 
 #if CONFIG_NEON_BOARD_AMYBOARD
   ESP_LOGI(kTag, "NEON LINK firmware starting (AMYboard) free_heap=%u",

@@ -66,6 +66,13 @@ void link_service_task(void*) {
   // Ethernet first: when a cable is present it outranks WiFi (route
   // priority), and Link's interface scanner picks it up automatically.
   netman::ethernet_start();
+
+  // Bring the editor up *before* the long STA wait so (a) setup works while
+  // WiFi is still associating and (b) OTA rollback is cancelled quickly if
+  // app_main's early mark_valid was skipped for any reason.
+  netman::mdns_start(neon_config().device_name);
+  webui_start();
+
   if (neon_config().ap_policy == neon::ApPolicy::kAlways) {
     // "Always create an access point": self-host immediately and never
     // join a stored network.
@@ -78,8 +85,6 @@ void link_service_task(void*) {
                static_cast<unsigned long>(kWifiWaitMs));
     }
   }
-  netman::mdns_start(neon_config().device_name);
-  webui_start();
 
   auto& session = ablink::session();
   apply_session_settings(session);
