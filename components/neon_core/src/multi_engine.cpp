@@ -102,6 +102,23 @@ void MultiClockEngine::set_config(const EngineConfig& cfg) {
   reset_bar_.set_latency(reset_latency());
 }
 
+void MultiClockEngine::sync_levels(int64_t from_us) {
+  for (int i = 0; i < 4; ++i) {
+    const ClockOutputConfig& c = cfg_.clocks[i];
+    const bool want =
+        c.enabled && c.role == OutputRole::kGate && playing_;
+    if (want != gate_level_[i]) {
+      push_pending(from_us + cfg_.latency_us, static_cast<uint8_t>(i), want);
+      gate_level_[i] = want;
+    }
+  }
+  const bool want_run = cfg_.run_enabled && playing_;
+  if (want_run != run_target_) {
+    push_pending(from_us + cfg_.latency_us, kChRun, want_run);
+    run_target_ = want_run;
+  }
+}
+
 void MultiClockEngine::retime(const TimelineSnapshot& tl, int64_t from_us) {
   const bool was_playing = playing_;
   playing_ = tl.playing != 0;
@@ -120,45 +137,32 @@ void MultiClockEngine::retime(const TimelineSnapshot& tl, int64_t from_us) {
   reset_bar_.retime(tl, from_us,
                     playing_ && cfg_.reset_mode == ResetMode::kEveryBar);
 
+  // Gate and Run levels are re-driven every retime, so re-assigning a role
+  // (or enabling/disabling an output) takes effect at once rather than
+  // leaving the jack stuck at whatever the last transport change set.
+  sync_levels(from_us);
+
   if (playing_ == was_playing) {
     return;
   }
 
-  // --- Transport transition one-shots -------------------------------
-  if (cfg_.run_enabled) {
-    push_pending(from_us + cfg_.latency_us, kChRun, playing_);
-  }
-
-  // Dedicated RESET jack.
+  // --- One-shot reset pulses on transport transitions ---------------
   if (playing_ && cfg_.reset_mode == ResetMode::kStartOfPlay) {
     emit_reset_pulse(from_us, kChReset, cfg_.reset_trig_len_us);
   } else if (!playing_ && cfg_.reset_mode == ResetMode::kAtStop) {
     emit_reset_pulse(from_us, kChReset, cfg_.reset_trig_len_us);
   }
 
-  // Role-assigned outputs.
   for (int i = 0; i < 4; ++i) {
     const ClockOutputConfig& c = cfg_.clocks[i];
     if (!c.enabled) {
       continue;
     }
     const uint8_t ch = static_cast<uint8_t>(i);
-    switch (c.role) {
-      case OutputRole::kGate:
-        push_pending(from_us + cfg_.latency_us, ch, playing_);
-        break;
-      case OutputRole::kResetStart:
-        if (playing_) {
-          emit_reset_pulse(from_us, ch, c.trig_len_us);
-        }
-        break;
-      case OutputRole::kResetStop:
-        if (!playing_) {
-          emit_reset_pulse(from_us, ch, c.trig_len_us);
-        }
-        break;
-      default:
-        break;
+    if (c.role == OutputRole::kResetStart && playing_) {
+      emit_reset_pulse(from_us, ch, c.trig_len_us);
+    } else if (c.role == OutputRole::kResetStop && !playing_) {
+      emit_reset_pulse(from_us, ch, c.trig_len_us);
     }
   }
 }
@@ -211,7 +215,19 @@ size_t MultiClockEngine::generate(int64_t t0_us, int64_t t1_us, Edge* out,
       if (e.channel == kChRun) {
         run_level_ = e.high;
       }
-    } else if (best_src == 4) {
+      // One-shots are events, not grid positions: a reset pulse or a gate
+      // transition scheduled just before this window (reset_before_edge
+      // leads the anchor, and the anchor is usually t0 itself) must still
+      // fire. Clamp it into the window rather than dropping it, which
+      // would swallow the pulse entirely or strand a gate at the wrong
+      // level. Periodic channels keep the consume-silently rule below.
+      if (e.t_us < t0_us) {
+        e.t_us = t0_us;
+      }
+      out[n++] = e;
+      continue;
+    }
+    if (best_src == 4) {
       reset_bar_.pop();
     } else {
       clocks_[best_src].pop();

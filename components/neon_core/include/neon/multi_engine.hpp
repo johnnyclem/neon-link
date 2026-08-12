@@ -80,6 +80,11 @@ class MultiClockEngine {
   void push_pending(int64_t t_us, uint8_t channel, bool high);
   void emit_reset_pulse(int64_t t_us, uint8_t channel, uint32_t len_us);
   int32_t reset_latency() const;
+  // Drive every level-holding channel (Gate roles, RUN) to the level its
+  // current config and transport state call for. Runs on every retime, so
+  // a role or enable change takes effect immediately instead of waiting
+  // for the next transport transition.
+  void sync_levels(int64_t from_us);
 
   EngineConfig cfg_{};
   TimelineSnapshot tl_{};
@@ -98,6 +103,12 @@ class MultiClockEngine {
     bool valid;
   };
   Pending pending_[kMaxPending] = {};
+
+  // Last level *scheduled* for each level-holding channel, so sync_levels
+  // only emits an edge when the target actually moves. Outputs start low,
+  // which is the hardware's power-on state.
+  bool gate_level_[4] = {false, false, false, false};
+  bool run_target_ = false;
 
   bool run_level_ = false;
   bool playing_ = false;

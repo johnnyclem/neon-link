@@ -93,11 +93,22 @@ void ui_task(void*) {
       menu.on_click();
     }
     if (menu.take_dirty()) {
-      neon_config_apply(ui_cfg);
-    }
-    // The web editor can change settings behind the menu's back; adopt
-    // anything it wrote while the encoder is idle.
-    if (!menu.editing() && menu.screen() == neon::MenuModel::Screen::kHome) {
+      // Merge rather than write the whole struct back: the menu holds a
+      // snapshot, and other tasks own fields it never touches (tempo, which
+      // the Link service rewrites on every tap; WiFi and access point,
+      // which the editor owns). Writing ui_cfg wholesale would revert them.
+      neon::Config live = neon_config();
+      live.engine = ui_cfg.engine;
+      live.quantum_beats = ui_cfg.quantum_beats;
+      live.clock_source = ui_cfg.clock_source;
+      live.clock_in_ppqn = ui_cfg.clock_in_ppqn;
+      live.midi_nudge_us = ui_cfg.midi_nudge_us;
+      live.start_stop_sync = ui_cfg.start_stop_sync;
+      live.display_brightness = ui_cfg.display_brightness;
+      neon_config_apply(live);
+      ui_cfg = live;
+    } else if (!menu.editing()) {
+      // Not mid-edit: adopt whatever the editor or a preset recall wrote.
       ui_cfg = neon_config();
     }
 

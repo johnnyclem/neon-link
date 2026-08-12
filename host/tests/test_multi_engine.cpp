@@ -318,3 +318,88 @@ TEST_CASE("rhythm_over_loop spreads the pattern across the loop, not the grid") 
   edges = collect(eng2, 0, 2000000);
   CHECK(count_channel(edges, neon::kChClk1, true) == 32);
 }
+
+// --- Regressions -----------------------------------------------------
+
+TEST_CASE("a leading reset still fires when the window starts at the anchor") {
+  // The pulse task retimes at the cursor and then generates from that same
+  // instant, so reset_before_edge puts the rise just before t0. It must be
+  // clamped into the window, not dropped — dropping it left the RESET jack
+  // emitting a falling edge with no rise.
+  for (int lead : {0, 1500}) {
+    neon::MultiClockEngine eng;
+    neon::EngineConfig cfg;
+    cfg.reset_mode = neon::ResetMode::kStartOfPlay;
+    cfg.reset_before_edge = lead != 0;
+    cfg.reset_lead_us = static_cast<uint32_t>(lead);
+    cfg.clocks[0].role = neon::OutputRole::kResetStart;
+    eng.set_config(cfg);
+
+    eng.retime(snapshot_at(120000, 0.0, 0, false), 0);
+    collect(eng, 0, 1000000);
+    // Transport starts exactly at the window boundary.
+    eng.retime(snapshot_at(120000, 2.0, 1000000, true), 1000000);
+    const auto edges = collect(eng, 1000000, 2000000);
+
+    CHECK(count_channel(edges, neon::kChReset, true) == 1);
+    CHECK(count_channel(edges, neon::kChReset, false) == 1);
+    CHECK(count_channel(edges, neon::kChClk1, true) == 1);
+    CHECK(count_channel(edges, neon::kChClk1, false) == 1);
+    for (const auto& e : edges) {
+      CHECK(e.t_us >= 1000000);  // nothing escapes below the window
+    }
+  }
+}
+
+TEST_CASE("changing a role mid-flight drives the gate to its new level") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+  collect(eng, 0, 500000);
+
+  // Assign OUT2 as a gate while the transport is already playing.
+  cfg.clocks[1].role = neon::OutputRole::kGate;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 2.0, 1000000, true), 1000000);
+  auto edges = collect(eng, 1000000, 1500000);
+  REQUIRE(count_channel(edges, neon::kChClk2, true) == 1);
+
+  // Take the role away again: the jack must not stay stuck high.
+  cfg.clocks[1].role = neon::OutputRole::kClock;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 4.0, 2000000, true), 2000000);
+  edges = collect(eng, 1500000, 2500000);
+  CHECK(count_channel(edges, neon::kChClk2, false) >= 1);
+
+  // Disabling a gate output drops it low too.
+  cfg.clocks[2].role = neon::OutputRole::kGate;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 6.0, 3000000, true), 3000000);
+  edges = collect(eng, 2500000, 3500000);
+  REQUIRE(count_channel(edges, neon::kChClk3, true) == 1);
+
+  cfg.clocks[2].enabled = false;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 8.0, 4000000, true), 4000000);
+  edges = collect(eng, 3500000, 4500000);
+  CHECK(count_channel(edges, neon::kChClk3, false) == 1);
+}
+
+TEST_CASE("run gate follows run_enabled without a transport transition") {
+  neon::MultiClockEngine eng;
+  neon::EngineConfig cfg;
+  cfg.run_enabled = false;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 0.0, 0, true), 0);
+  auto edges = collect(eng, 0, 500000);
+  CHECK(count_channel(edges, neon::kChRun, true) == 0);
+  CHECK_FALSE(eng.run_level());
+
+  cfg.run_enabled = true;
+  eng.set_config(cfg);
+  eng.retime(snapshot_at(120000, 2.0, 1000000, true), 1000000);
+  edges = collect(eng, 500000, 1500000);
+  CHECK(count_channel(edges, neon::kChRun, true) == 1);
+  CHECK(eng.run_level());
+}

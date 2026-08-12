@@ -175,7 +175,14 @@ esp_err_t handle_tempo(httpd_req_t* req) {
   char val[24] = {};
   ControlCommand cmd{};
   if (query_param(req, "bpm", val, sizeof(val))) {
-    const double bpm = std::atof(val);
+    // Clamp in double space first: casting an infinity or NaN to int64 is
+    // undefined, and the query string is whatever the client sent.
+    double bpm = std::atof(val);
+    if (!(bpm > 0.0)) {  // false for NaN and for anything <= 0
+      bpm = static_cast<double>(neon::kMinMilliBpm) / 1000.0;
+    } else if (bpm > static_cast<double>(neon::kMaxMilliBpm) / 1000.0) {
+      bpm = static_cast<double>(neon::kMaxMilliBpm) / 1000.0;
+    }
     cmd.kind = ControlCommand::Kind::kSetTempo;
     cmd.arg = static_cast<int32_t>(
         neon::clamp_milli_bpm(static_cast<int64_t>(bpm * 1000.0)));
@@ -298,13 +305,24 @@ esp_err_t handle_ota(httpd_req_t* req) {
   }
   size_t remaining = total;
   bool failed = false;
+  int timeouts = 0;
   while (remaining > 0) {
     const size_t want = remaining < kChunk ? remaining : kChunk;
     const int got = httpd_req_recv(req, chunk, want);
+    if (got == HTTPD_SOCK_ERR_TIMEOUT) {
+      // A stall part-way through a several-megabyte upload is normal on a
+      // busy 2.4 GHz link; only give up once it stops recovering.
+      if (++timeouts > 10) {
+        failed = true;
+        break;
+      }
+      continue;
+    }
     if (got <= 0) {
       failed = true;
       break;
     }
+    timeouts = 0;
     if (esp_ota_write(handle, chunk, static_cast<size_t>(got)) != ESP_OK) {
       failed = true;
       break;

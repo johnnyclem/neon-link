@@ -282,9 +282,14 @@ byId("scan").addEventListener("click",async()=>{
       b.type="button";b.className="secondary";
       b.textContent=`${n.ssid} ${n.rssi}dBm${n.open?" (open)":""}`;
       b.addEventListener("click",()=>{
-        // First empty slot, or slot 1 when the list is full.
-        let slot=0;
+        // Never overwrite a stored network silently: saving a changed SSID
+        // also drops that slot's password.
+        let slot=-1;
         for(let i=0;i<4;i++){if(!ninp(i,"ssid").value){slot=i;break;}}
+        if(slot<0){
+          out.textContent="all four slots are full — clear one first";
+          return;
+        }
         ninp(slot,"ssid").value=n.ssid;
         ninp(slot,"pass").focus();
         document.querySelector(`[data-state="${slot}"]`).textContent="enter password, then SAVE";
