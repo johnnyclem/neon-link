@@ -52,6 +52,26 @@ esp_err_t send_json(httpd_req_t* req, const char* json) {
 
 esp_err_t send_ok(httpd_req_t* req) { return send_json(req, "{\"ok\":true}"); }
 
+// SSIDs are whatever the user (or a neighbour) named their network. A
+// stray quote or backslash would break the status document and take the
+// whole editor offline, so escape before interpolating.
+void json_escape(const char* in, char* out, size_t cap) {
+  size_t n = 0;
+  for (const char* p = in; p != nullptr && *p != '\0' && n + 2 < cap; ++p) {
+    const unsigned char c = static_cast<unsigned char>(*p);
+    if (c < 0x20) {
+      continue;  // control characters have no place in an SSID
+    }
+    if (c == '"' || c == '\\') {
+      out[n++] = '\\';
+    }
+    out[n++] = *p;
+  }
+  if (cap != 0) {
+    out[n < cap ? n : cap - 1] = '\0';
+  }
+}
+
 extern "C" {
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
@@ -143,7 +163,8 @@ esp_err_t handle_transport(httpd_req_t* req) {
     return ESP_OK;
   }
   if (!control_queue_push(cmd)) {
-    httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "queue full");
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "control queue full");
     return ESP_OK;
   }
   return send_ok(req);
@@ -180,7 +201,8 @@ esp_err_t handle_tempo(httpd_req_t* req) {
     return ESP_OK;
   }
   if (!control_queue_push(cmd)) {
-    httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "queue full");
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "control queue full");
     return ESP_OK;
   }
   return send_ok(req);
@@ -195,7 +217,8 @@ esp_err_t handle_resync(httpd_req_t* req) {
   cmd.kind = now ? ControlCommand::Kind::kResyncNow
                  : ControlCommand::Kind::kResyncNextLoop;
   if (!control_queue_push(cmd)) {
-    httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "queue full");
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "control queue full");
     return ESP_OK;
   }
   return send_ok(req);
@@ -247,16 +270,21 @@ esp_err_t handle_ota(httpd_req_t* req) {
                         "no OTA partition (reflash with the new table)");
     return ESP_OK;
   }
-  if (req->content_len <= 0) {
+  if (req->content_len == 0) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty body");
     return ESP_OK;
   }
-  ESP_LOGW(kTag, "OTA: writing %d bytes to %s", req->content_len,
+  const size_t total = static_cast<size_t>(req->content_len);
+  if (total > target->size) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "image larger than the app partition");
+    return ESP_OK;
+  }
+  ESP_LOGW(kTag, "OTA: writing %u bytes to %s", static_cast<unsigned>(total),
            target->label);
 
   esp_ota_handle_t handle = 0;
-  if (esp_ota_begin(target, static_cast<size_t>(req->content_len), &handle) !=
-      ESP_OK) {
+  if (esp_ota_begin(target, total, &handle) != ESP_OK) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                         "esp_ota_begin failed");
     return ESP_OK;
@@ -268,12 +296,11 @@ esp_err_t handle_ota(httpd_req_t* req) {
     esp_ota_abort(handle);
     return httpd_resp_send_500(req);
   }
-  int remaining = req->content_len;
+  size_t remaining = total;
   bool failed = false;
   while (remaining > 0) {
-    const int want = remaining < static_cast<int>(kChunk) ? remaining
-                                                          : static_cast<int>(kChunk);
-    const int got = httpd_req_recv(req, chunk, static_cast<size_t>(want));
+    const size_t want = remaining < kChunk ? remaining : kChunk;
+    const int got = httpd_req_recv(req, chunk, want);
     if (got <= 0) {
       failed = true;
       break;
@@ -282,13 +309,14 @@ esp_err_t handle_ota(httpd_req_t* req) {
       failed = true;
       break;
     }
-    remaining -= got;
+    remaining -= static_cast<size_t>(got);
   }
   std::free(chunk);
 
   if (failed) {
     esp_ota_abort(handle);
-    ESP_LOGE(kTag, "OTA: transfer failed with %d bytes left", remaining);
+    ESP_LOGE(kTag, "OTA: transfer failed with %u bytes left",
+             static_cast<unsigned>(remaining));
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "write failed");
     return ESP_OK;
   }
@@ -321,7 +349,10 @@ esp_err_t handle_status(httpd_req_t* req) {
   netman::primary_ip(ip, sizeof(ip));
   const bool setup_ap = netman::ap_is_up();
   const auto& cfg = neon_config();
-  const char* ssid = neon_wifi_current_ssid();
+  char ssid[68] = {};
+  char ap_ssid[68] = {};
+  json_escape(neon_wifi_current_ssid(), ssid, sizeof(ssid));
+  json_escape(netman::ap_ssid(), ap_ssid, sizeof(ap_ssid));
   const unsigned disc = neon_wifi_last_disconnect_reason();
 
   // Phase within the loop, in milli-beats, for the editor's loop meter —
@@ -357,7 +388,7 @@ esp_err_t handle_status(httpd_req_t* req) {
                                         : "none",
       app_status_ext_clock() ? "true" : "false",
       static_cast<long long>(esp_timer_get_time() / 1000000), cfg.device_name,
-      cfg.device_name, ip, setup_ap ? "true" : "false", netman::ap_ssid(), ssid,
+      cfg.device_name, ip, setup_ap ? "true" : "false", ap_ssid, ssid,
       static_cast<unsigned>(std::strlen(cfg.wifi[0].pass)), disc,
       firmware_version(), static_cast<unsigned>(quantum),
       static_cast<unsigned>(phase_milli),

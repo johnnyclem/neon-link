@@ -22,12 +22,19 @@ NEON LINK is designed to beat it on nearly every axis:
 | Directionality          | One-way                   | **True bidirectional**                 |
 | Networking              | WiFi only                 | **WiFi + RJ45 Ethernet**               |
 | Clock outputs           | 2                         | **4 independent**                      |
+| Output roles            | Clock / gate / reset      | Same list, **assignable per output**   |
 | Extra outputs           | Optional MIDI clock       | Reset, Run gate, **Tempo CV**, TRS MIDI |
 | Inputs                  | None                      | **Clock In + Reset In**                |
 | Local UI                | Buttons + LEDs            | **OLED + encoder**                     |
+| Rhythm Explorer         | Euclidean + free steps    | Same, **64 steps, 4 independent patterns** |
+| Stored WiFi networks    | List with retry count     | Same, **plus wired Ethernet**          |
+| Firmware update         | Vendor server             | **Upload from the editor, with rollback** |
 | BLE MIDI (notes/CC)     | None                      | **Full support**                       |
 | Aesthetic               | Minimal industrial        | **90s neon / Saved by the Bell**       |
 | Price                   | $250                      | Components < $75                       |
+
+Row-by-row against both competitor manuals:
+**[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)**.
 
 ---
 
@@ -123,6 +130,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[SOFTWARE.md](SOFTWARE.md)** | Software / Firmware Architect | Full software architecture handoff — dual-core strategy, Link integration, BLE MIDI routing matrix, UI requirements, milestones, risks |
 | **[FEATURES.md](FEATURES.md)** | Everyone | **Authoritative feature priority list** (Must / Should / Nice / Deferred) after AMYboard pivot |
 | **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
+| **[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)** | Everyone | Row-by-row audit against the Circuit Happy ML:2m and Missing Link Junior manuals |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
 | **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
 | **[ADDENDUM_01-SOFTWARE.md](ADDENDUM_01-SOFTWARE.md)** | Software / Firmware | BLE MIDI standards, compatibility, scope, latency expectations, and build guidance |
@@ -197,8 +205,13 @@ git submodule update --init --recursive
 . ~/esp/esp-idf-v5.3.2/export.sh          # ESP-IDF v5.3.2
 idf.py set-target esp32s3
 idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" build
-idf.py -p /dev/cu.usbmodem* flash monitor
+idf.py -p /dev/cu.usbmodem* erase-flash flash monitor
 ```
+
+> The partition table now carries two OTA app slots so firmware can be
+> updated from the web editor. The first flash after that change needs
+> `erase-flash`; afterwards, `idf.py flash` — or the editor's **INSTALL
+> UPDATE** button — is enough.
 
 Host unit tests (no ESP-IDF):
 

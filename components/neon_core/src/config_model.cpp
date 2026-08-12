@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <type_traits>
 
 namespace neon {
 
@@ -14,6 +15,13 @@ struct BlobHeader {
   uint32_t crc;
 };
 static_assert(sizeof(BlobHeader) == 12, "packed header expected");
+
+// encode/decode memcpy the struct wholesale, and EngineConfig rides a
+// SeqLock to core 1 — both require a trivially copyable payload.
+static_assert(std::is_trivially_copyable<Config>::value,
+              "Config must stay trivially copyable");
+static_assert(std::is_trivially_copyable<EngineConfig>::value,
+              "EngineConfig must stay trivially copyable");
 
 template <typename T>
 void clamp(T* v, T lo, T hi) {

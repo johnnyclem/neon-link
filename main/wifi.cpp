@@ -77,10 +77,6 @@ const char* effective_pass() {
   return configured_count() == 0 ? CONFIG_NEON_WIFI_PASSWORD : "";
 }
 
-bool effective_hidden() {
-  const neon::WifiNetwork* n = slot_at(g_slot);
-  return n != nullptr && n->hidden != 0;
-}
 
 const char* reason_name(uint8_t r) {
   switch (r) {
@@ -118,11 +114,10 @@ void fill_sta_config(wifi_config_t* cfg) {
   cfg->sta.pmf_cfg.capable = true;
   cfg->sta.pmf_cfg.required = false;
   cfg->sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+  // All-channel scan either way; a hidden network is only reachable
+  // because the SSID is configured explicitly, not from a probe response.
   cfg->sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
   cfg->sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
-  // Hidden networks do not answer broadcast probes.
-  cfg->sta.scan_method =
-      effective_hidden() ? WIFI_ALL_CHANNEL_SCAN : cfg->sta.scan_method;
 }
 
 // Reconfigure the STA for the current slot and kick off a connect.

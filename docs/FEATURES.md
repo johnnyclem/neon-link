@@ -1,9 +1,9 @@
 # NEON LINK / Formidable — Feature Priority List
 
-**Version**: 1.1 (AMYboard pivot)  
-**Date**: 2026-08-09  
+**Version**: 1.2 (competitive parity pass)  
+**Date**: 2026-08-12  
 **Status**: Active  
-**Related**: [`SOFTWARE.md`](SOFTWARE.md) · [`HARDWARE.md`](HARDWARE.md) · [`ADDENDUM_01-SOFTWARE.md`](ADDENDUM_01-SOFTWARE.md)
+**Related**: [`COMPETITIVE_PARITY.md`](COMPETITIVE_PARITY.md) · [`SOFTWARE.md`](SOFTWARE.md) · [`HARDWARE.md`](HARDWARE.md) · [`ADDENDUM_01-SOFTWARE.md`](ADDENDUM_01-SOFTWARE.md)
 
 ---
 
@@ -87,6 +87,33 @@ These define the product. Shipping without any of them means it is not yet the p
 | Hardware cost target    | ~$250 retail            | **Very low** (AMYboard base ≈ $30)       |
 
 The two outputs are enough. Mults and clock dividers already exist in every rack.
+
+---
+
+## Feature Parity Baseline (locked 2026-08-12)
+
+The firmware now implements everything the ML:2m and Missing Link Junior
+manuals (firmware 1.5) document, and goes past them on most rows. The
+row-by-row audit lives in **[`COMPETITIVE_PARITY.md`](COMPETITIVE_PARITY.md)**
+and is the checklist to re-run whenever a competitor ships an update.
+
+Delivered in that pass:
+
+| Area | What shipped |
+|------|--------------|
+| Output roles | Clock / Gate / Reset-every-loop / Reset-at-start / Reset-at-stop, assignable per output, plus per-output free-run |
+| Reset behavior | Reset-at-stop on the RESET jack, and reset edges that can lead the clock edge by a configurable amount |
+| Rhythm Explorer | Free-assignment 64-step patterns alongside Euclidean; Chance on every pattern mode; patterns can span the loop instead of the PPQN grid |
+| Transport | Tap tempo, ±1 BPM nudge, ×2 / ÷2, direct tempo entry, loop-quantized play/stop, resync now / at next loop |
+| Timing | MIDI nudge independent of CV delay; loop size reaches the Link session |
+| WiFi | Four stored networks walked in order with a per-network retry count, in-editor scan, hidden-network entry |
+| Access point | Policy (fallback / always / off), SSID, password, require-password, hidden, channel |
+| Identity | Device name driving the mDNS hostname and default AP SSID, applied without a reboot |
+| Panel | Display brightness, 0 blanks the screen |
+| Maintenance | OTA firmware update from the editor, and factory reset |
+
+These are **shipped**, not planned. Anything added below this line is new
+scope on top of parity.
 
 ---
 

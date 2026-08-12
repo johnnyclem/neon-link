@@ -436,4 +436,26 @@ bool panel_flush(const neon::Framebuffer& fb) {
 
 PanelKind panel_kind() { return g_kind; }
 
+bool panel_set_brightness(uint8_t level) {
+  // Every supported controller takes contrast as 0x81 followed by a byte,
+  // so one path covers all of them. Level 0 blanks the panel instead of
+  // leaving a dim-but-readable screen, matching what users expect from a
+  // brightness control that goes all the way down.
+  switch (g_kind) {
+    case PanelKind::kSsd1327I2c:
+      return i2c_cmd_ctl(kSsd1327Addr, 0x80, 0x81) &&
+             i2c_cmd_ctl(kSsd1327Addr, 0x80, level) &&
+             i2c_cmd_ctl(kSsd1327Addr, 0x80, level != 0 ? 0xAF : 0xAE);
+    case PanelKind::kSh1107I2c:
+    case PanelKind::kSsd1306I2c:
+      return i2c_cmd(kSh1107Addr, 0x81) && i2c_cmd(kSh1107Addr, level) &&
+             i2c_cmd(kSh1107Addr, level != 0 ? 0xAF : 0xAE);
+    case PanelKind::kSh1107Spi:
+      return spi_sh1107_cmd(0x81) && spi_sh1107_cmd(level) &&
+             spi_sh1107_cmd(level != 0 ? 0xAF : 0xAE);
+    default:
+      return false;
+  }
+}
+
 }  // namespace oledui

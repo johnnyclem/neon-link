@@ -26,4 +26,8 @@ bool panel_flush(const neon::Framebuffer& fb);
 
 PanelKind panel_kind();
 
+// Set panel contrast, 0..255. 0 blanks the display entirely. No-op (and
+// false) when no panel was detected.
+bool panel_set_brightness(uint8_t level);
+
 }  // namespace oledui

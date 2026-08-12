@@ -2,6 +2,8 @@
 // starts the Link session, and publishes integer timeline snapshots to the
 // pulse engine whenever the session state materially changes.
 
+#include <cstddef>
+
 #include "ablink/session.hpp"
 #include "esp_log.h"
 #include "esp_mac.h"
