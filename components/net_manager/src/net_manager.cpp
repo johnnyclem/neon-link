@@ -211,6 +211,28 @@ void mdns_start(const char* hostname) {
 }
 
 char g_ap_ssid[33] = {};
+bool g_ap_handlers = false;
+
+void on_ap_event(void*, esp_event_base_t, int32_t id, void* event_data) {
+  if (id == WIFI_EVENT_AP_START) {
+    g_ap_up = true;
+    ESP_LOGI(kTag, "SoftAP started: %s at 192.168.4.1", g_ap_ssid);
+  } else if (id == WIFI_EVENT_AP_STOP) {
+    ESP_LOGW(kTag, "SoftAP stopped");
+  } else if (id == WIFI_EVENT_AP_STACONNECTED) {
+    auto* ev = static_cast<wifi_event_ap_staconnected_t*>(event_data);
+    if (ev != nullptr) {
+      ESP_LOGI(kTag, "AP client joined " MACSTR " aid=%u", MAC2STR(ev->mac),
+               ev->aid);
+    }
+  } else if (id == WIFI_EVENT_AP_STADISCONNECTED) {
+    auto* ev = static_cast<wifi_event_ap_stadisconnected_t*>(event_data);
+    if (ev != nullptr) {
+      ESP_LOGW(kTag, "AP client left " MACSTR " aid=%u", MAC2STR(ev->mac),
+               ev->aid);
+    }
+  }
+}
 
 bool ap_start(const ApParams& params) {
   wifi_mode_t mode = WIFI_MODE_NULL;
@@ -225,6 +247,12 @@ bool ap_start(const ApParams& params) {
   if (esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") == nullptr) {
     esp_netif_create_default_wifi_ap();
   }
+  if (!g_ap_handlers) {
+    if (esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &on_ap_event,
+                                   nullptr) == ESP_OK) {
+      g_ap_handlers = true;
+    }
+  }
 
   wifi_config_t cfg = {};
   const char* ssid = (params.ssid != nullptr && params.ssid[0] != '\0')
@@ -235,6 +263,7 @@ bool ap_start(const ApParams& params) {
   cfg.ap.channel = params.channel != 0 ? params.channel : 1;
   cfg.ap.max_connection = 4;
   cfg.ap.ssid_hidden = params.hidden ? 1 : 0;
+  cfg.ap.beacon_interval = 100;
   // WPA2 needs an 8-character key; anything shorter stays an open network
   // rather than silently failing to start.
   const bool secured = params.require_pass && params.pass != nullptr &&
@@ -247,22 +276,42 @@ bool ap_start(const ApParams& params) {
     cfg.ap.authmode = WIFI_AUTH_OPEN;
   }
 
+  copy_str(g_ap_ssid, sizeof(g_ap_ssid), ssid);
+
+  // Setup AP must be AP-only. APSTA plus a scanning/retrying STA hops
+  // the beacon channel and phones lose the network after a brief join.
+  const bool sta_was_on = mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA;
   const wifi_mode_t new_mode =
-      (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) ? WIFI_MODE_APSTA
-                                                         : WIFI_MODE_AP;
+      (params.keep_sta && sta_was_on) ? WIFI_MODE_APSTA : WIFI_MODE_AP;
+  bool need_start = !wifi_inited || mode == WIFI_MODE_NULL;
+  if (!params.keep_sta && sta_was_on) {
+    (void)esp_wifi_disconnect();
+    const esp_err_t stop_err = esp_wifi_stop();
+    if (stop_err != ESP_OK && stop_err != ESP_ERR_WIFI_NOT_STARTED) {
+      ESP_LOGW(kTag, "esp_wifi_stop: %s", esp_err_to_name(stop_err));
+    }
+    need_start = true;
+  }
+
+  // Modem sleep + SoftAP = missed beacons. Link also wants the radio awake.
+  (void)esp_wifi_set_ps(WIFI_PS_NONE);
+
   if (esp_wifi_set_mode(new_mode) != ESP_OK ||
       esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK) {
     return false;
   }
-  if (!g_ap_up && (!wifi_inited || mode == WIFI_MODE_NULL)) {
-    if (esp_wifi_start() != ESP_OK) {
+  if (need_start) {
+    const esp_err_t start_err = esp_wifi_start();
+    if (start_err != ESP_OK && start_err != ESP_ERR_INVALID_STATE) {
+      ESP_LOGW(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));
       return false;
     }
   }
   g_ap_up = true;
-  copy_str(g_ap_ssid, sizeof(g_ap_ssid), ssid);
-  ESP_LOGI(kTag, "setup AP up: %s (%s%s) at 192.168.4.1", g_ap_ssid,
-           secured ? "WPA2" : "open", params.hidden ? ", hidden" : "");
+  ESP_LOGI(kTag, "setup AP up: %s (%s%s, ch %u, %s) at 192.168.4.1", g_ap_ssid,
+           secured ? "WPA2" : "open", params.hidden ? ", hidden" : "",
+           static_cast<unsigned>(cfg.ap.channel),
+           new_mode == WIFI_MODE_AP ? "AP-only" : "APSTA");
   return true;
 }
 

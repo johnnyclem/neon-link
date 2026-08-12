@@ -83,6 +83,13 @@ void link_service_task(void*) {
     if (!neon_wifi_wait_ip(kWifiWaitMs)) {
       ESP_LOGW(kTag, "no IP after %lu ms; starting Link anyway (local session)",
                static_cast<unsigned long>(kWifiWaitMs));
+      // Do not sit on OFF for another minute: 192.168.4.1 is what the
+      // user tries next, and it does not exist until SoftAP is up.
+      if (neon_config().ap_policy == neon::ApPolicy::kFallback) {
+        ESP_LOGW(kTag, "STA never got an address; holding STA and starting setup AP");
+        neon_wifi_hold_station();
+        start_ap_from_config();
+      }
     }
   }
 
@@ -250,9 +257,11 @@ void link_service_task(void*) {
       ap_recommended_logged = false;
     }
     if (neon_config().ap_policy == neon::ApPolicy::kFallback &&
+        !netman::ap_is_up() &&
         netman::preference().update_should_start_ap(esp_timer_get_time()) &&
         !ap_recommended_logged) {
-      ESP_LOGW(kTag, "no connectivity: starting setup AP");
+      ESP_LOGW(kTag, "no connectivity: holding STA and starting setup AP");
+      neon_wifi_hold_station();
       start_ap_from_config();
       ap_recommended_logged = true;
     }

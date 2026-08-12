@@ -21,7 +21,8 @@ constexpr EventBits_t kGotIpBit = BIT0;
 EventGroupHandle_t g_events = nullptr;
 bool g_handlers_registered = false;
 bool g_sta_started = false;
-bool g_connect_requested = false;
+bool g_sta_enabled = false;       // false after hold: do not reconnect
+bool g_connect_requested = false; // in-flight esp_wifi_connect()
 uint8_t g_last_disconnect_reason = 0;
 
 // Which stored network we are currently trying, and how many attempts it
@@ -120,6 +121,20 @@ void fill_sta_config(wifi_config_t* cfg) {
   cfg->sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
 }
 
+// Kick off a connect. A second call while one is in flight returns
+// ESP_ERR_WIFI_CONN — ignore that; do not treat it as a new attempt.
+void request_connect() {
+  if (!g_sta_enabled) {
+    return;
+  }
+  g_connect_requested = true;
+  const esp_err_t err = esp_wifi_connect();
+  if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
+    g_connect_requested = false;
+    ESP_LOGW(kTag, "esp_wifi_connect: %s", esp_err_to_name(err));
+  }
+}
+
 // Reconfigure the STA for the current slot and kick off a connect.
 void connect_current_slot() {
   wifi_config_t cfg = {};
@@ -128,8 +143,7 @@ void connect_current_slot() {
     ESP_LOGW(kTag, "set_config failed");
     return;
   }
-  g_connect_requested = true;
-  esp_wifi_connect();
+  request_connect();
 }
 
 // Count this failure; roll to the next stored network once the current one
@@ -156,10 +170,7 @@ void advance_after_failure() {
 
 void on_wifi_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-    if (!g_connect_requested) {
-      g_connect_requested = true;
-      esp_wifi_connect();
-    }
+    request_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     auto* disc = static_cast<wifi_event_sta_disconnected_t*>(event_data);
     g_last_disconnect_reason = disc != nullptr ? disc->reason : 0;
@@ -168,17 +179,23 @@ void on_wifi_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
       xEventGroupClearBits(g_events, kGotIpBit);
     }
     netman::preference().wifi_ip(false);
+    if (!g_sta_enabled) {
+      ESP_LOGI(kTag, "disconnected reason=%u (%s) — STA held, not retrying",
+               static_cast<unsigned>(g_last_disconnect_reason),
+               reason_name(g_last_disconnect_reason));
+      return;
+    }
     ESP_LOGW(kTag, "disconnected reason=%u (%s) ssid=\"%s\" — retrying",
              static_cast<unsigned>(g_last_disconnect_reason),
              reason_name(g_last_disconnect_reason), effective_ssid());
     const int prev_slot = g_slot;
     advance_after_failure();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    // Do not block the event loop: a delay here stalls AP-start and IP
+    // events, and a scanning STA makes the setup AP vanish from phones.
     if (g_slot != prev_slot) {
       connect_current_slot();
     } else {
-      g_connect_requested = true;
-      esp_wifi_connect();
+      request_connect();
     }
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     auto* event = static_cast<ip_event_got_ip_t*>(event_data);
@@ -266,17 +283,22 @@ void neon_wifi_start() {
   wifi_config_t cfg = {};
   fill_sta_config(&cfg);
 
+  g_sta_enabled = true;
   const wifi_mode_t mode =
       netman::ap_is_up() ? WIFI_MODE_APSTA : WIFI_MODE_STA;
   ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
+  (void)esp_wifi_set_ps(WIFI_PS_NONE);
   const esp_err_t start_err = esp_wifi_start();
   if (start_err != ESP_OK && start_err != ESP_ERR_WIFI_NOT_INIT &&
       start_err != ESP_ERR_INVALID_STATE) {
     ESP_LOGW(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));
   }
-  g_connect_requested = true;
-  esp_wifi_connect();
+  // Fresh start delivers WIFI_EVENT_STA_START, which calls request_connect.
+  // Already-running driver (INVALID_STATE) will not, so connect here.
+  if (start_err == ESP_ERR_INVALID_STATE) {
+    request_connect();
+  }
   g_sta_started = true;
   ESP_LOGI(kTag,
            "connecting to \"%s\" (pass_len=%u, %d stored, %u tries each) — "
@@ -287,6 +309,20 @@ void neon_wifi_start() {
            static_cast<unsigned>(neon_config().wifi_retries));
 }
 
+void neon_wifi_hold_station() {
+  if (!g_sta_enabled && !g_sta_started) {
+    return;
+  }
+  g_sta_enabled = false;
+  g_connect_requested = false;
+  if (g_events != nullptr) {
+    xEventGroupClearBits(g_events, kGotIpBit);
+  }
+  netman::preference().wifi_ip(false);
+  (void)esp_wifi_disconnect();
+  ESP_LOGI(kTag, "STA held — setup AP can beacon without STA scans");
+}
+
 extern "C" void neon_wifi_apply_credentials(void) {
   netman::preference().wifi_configured(neon_wifi_has_credentials());
   if (!neon_wifi_has_credentials()) {
@@ -294,6 +330,7 @@ extern "C" void neon_wifi_apply_credentials(void) {
     return;
   }
 
+  g_sta_enabled = true;
   if (!g_sta_started) {
     neon_wifi_start();
     return;
@@ -304,8 +341,9 @@ extern "C" void neon_wifi_apply_credentials(void) {
   if (netman::ap_is_up()) {
     esp_wifi_set_mode(WIFI_MODE_APSTA);
   }
+  (void)esp_wifi_set_ps(WIFI_PS_NONE);
   g_connect_requested = false;
-  esp_wifi_disconnect();
+  (void)esp_wifi_disconnect();
   connect_current_slot();
   ESP_LOGI(kTag, "reconnecting to \"%s\" (pass_len=%u)", effective_ssid(),
            static_cast<unsigned>(std::strlen(effective_pass())));

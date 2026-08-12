@@ -35,6 +35,9 @@ struct ApParams {
   bool require_pass;
   bool hidden;
   uint8_t channel;
+  // When false (the setup-AP case), drop station mode so SoftAP beacons
+  // stay on one channel. APSTA + a scanning STA makes the network vanish.
+  bool keep_sta;
 };
 
 // Setup access point at 192.168.4.1, serving the web editor for

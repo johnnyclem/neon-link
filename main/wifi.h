@@ -11,6 +11,11 @@ bool neon_wifi_has_credentials();
 // on. No-op without credentials. Safe with the setup AP running (APSTA).
 void neon_wifi_start();
 
+// Stop station association and retries so a setup AP can beacon on a
+// fixed channel. SoftAP disappears from phones if STA keeps scanning.
+// neon_wifi_start / neon_wifi_apply_credentials resume joining.
+void neon_wifi_hold_station();
+
 // Apply credentials from the current config: first-time STA start, or
 // disconnect/reconnect when the stored list changed from the web editor.
 // Safe to call from the HTTP handler after neon_config_apply().
