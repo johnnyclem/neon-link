@@ -12,17 +12,19 @@ export function Card({
   children,
   actions,
 }: {
-  title: string;
+  title?: string;
   note?: ComponentChildren;
   children: ComponentChildren;
   actions?: ComponentChildren;
 }) {
   return (
     <section class="card">
+      {title || actions ? (
       <header class="card__head">
-        <h2 class="card__title">{title}</h2>
+        {title ? <h2 class="card__title">{title}</h2> : null}
         {actions ? <div style="margin-left:auto">{actions}</div> : null}
       </header>
+      ) : null}
       <div class="card__body">{children}</div>
       {note ? <p class="card__note">{note}</p> : null}
     </section>

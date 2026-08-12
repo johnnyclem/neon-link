@@ -718,6 +718,40 @@ a.button {
   margin-top: var(--space-2);
 }
 
+/* ---- in-page tabs ------------------------------------------------------ */
+
+.subnav {
+  display: flex;
+  margin: 0 0 var(--space-3);
+  border: var(--border-solid) solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.subnav::-webkit-scrollbar {
+  display: none;
+}
+
+.subnav__item {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--touch-min);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0 var(--space-2);
+}
+
+.subnav__item[aria-selected="true"] {
+  background: var(--neon);
+  color: var(--bg);
+}
+
 /* ---- bottom tab bar (phones) ------------------------------------------- */
 
 .tabbar {
@@ -738,16 +772,16 @@ a.button {
   }
 
   .page-title {
-    margin-top: var(--space-3);
-    font-size: var(--text-subtitle);
-  }
-
-  .page-title--live {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
+  }
+
+  .page-intro,
+  .card__note {
+    display: none;
   }
 
   .nav--top {

@@ -1,7 +1,9 @@
+import { useState } from "preact/hooks";
 import type { PageProps } from "../app";
 import { strings } from "../design/strings";
 import { StatusChip } from "../components/StatusChip";
 import { Card, NumberField, SelectField, Toggle } from "../components/controls";
+import { SubNav } from "../components/SubNav";
 import { SaveBar } from "./SaveBar";
 
 const OMNI = 255;
@@ -26,15 +28,24 @@ const GATE_TARGETS = [
 export function Midi(props: PageProps) {
   const { cfg, patch } = props;
   const ble = cfg.ble;
+  const [pane, setPane] = useState<"ble" | "route">("ble");
 
   return (
     <>
       <h1 class="page-title">{strings.screens.midi.web}</h1>
 
-      <Card
-        title="Bluetooth MIDI"
-        note="Disabling BLE fully powers down the Bluetooth controller. That is the setting to reach for if Link timing ever looks unstable."
-      >
+      <SubNav
+        label="MIDI section"
+        value={pane}
+        onChange={(id) => setPane(id as "ble" | "route")}
+        items={[
+          { id: "ble", label: "BLE" },
+          { id: "route", label: "Route" },
+        ]}
+      />
+
+      {pane === "ble" ? (
+      <Card title="Bluetooth MIDI">
         <div class="strip__chips" style="margin-bottom:var(--space-3)">
           <StatusChip state={ble.enabled ? "ble_on" : "ble_off"} />
         </div>
@@ -56,7 +67,8 @@ export function Midi(props: PageProps) {
           />
         </div>
       </Card>
-
+      ) : (
+      <>
       <Card title="Routing">
         <div class="fields">
           <SelectField
@@ -113,6 +125,8 @@ export function Midi(props: PageProps) {
           />
         </div>
       </Card>
+      </>
+      )}
 
       <SaveBar {...props} />
     </>

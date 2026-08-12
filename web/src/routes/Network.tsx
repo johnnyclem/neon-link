@@ -15,6 +15,7 @@ import {
   Toggle,
 } from "../components/controls";
 import { SaveBar } from "./SaveBar";
+import { SubNav } from "../components/SubNav";
 
 /**
  * Network identity and credentials.
@@ -34,6 +35,8 @@ export function Network(props: PageProps) {
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
   const [found, setFound] = useState<ScanResult[]>([]);
+  const [pane, setPane] = useState<"now" | "join" | "ap">("now");
+  const [slot, setSlot] = useState(0);
 
   const scan = async () => {
     setScanning(true);
@@ -86,6 +89,18 @@ export function Network(props: PageProps) {
         </div>
       ) : null}
 
+      <SubNav
+        label="Network section"
+        value={pane}
+        onChange={(id) => setPane(id as "now" | "join" | "ap")}
+        items={[
+          { id: "now", label: "Now" },
+          { id: "join", label: "Join" },
+          { id: "ap", label: "AP" },
+        ]}
+      />
+
+      {pane === "now" ? (
       <Card title="Current">
         <div class="strip__chips" style="margin-bottom:var(--space-3)">
           {status ? <StatusChip state={networkState(status)} /> : null}
@@ -104,61 +119,70 @@ export function Network(props: PageProps) {
         ) : null}
         <Readout label="Link peers" value={<span class="mono">{status?.peers ?? "—"}</span>} />
       </Card>
+      ) : null}
 
+      {pane === "join" ? (
       <Card
         title="Stored networks"
-        note="Tried in order, top first. Saving applies them live. Leave a password blank to keep the stored one; clear the name to free the slot."
         actions={
           <Button variant="secondary" onClick={() => void scan()} disabled={scanning}>
             {scanning ? "Scanning…" : "Scan"}
           </Button>
         }
       >
-        {cfg.wifi.networks.map((n, i) => (
-          <div key={i} class="net-slot">
-            <div class="fields">
-              <TextField
-                label={`${i + 1} · Network name`}
-                value={n.ssid}
-                maxLength={32}
-                onChange={(v) =>
-                  patch((d) => {
-                    // A different network must not inherit the old key.
-                    if (d.wifi.networks[i].ssid !== v) {
-                      d.wifi.networks[i].pass = "";
-                    }
-                    d.wifi.networks[i].ssid = v;
-                  })
-                }
-                hint="2.4 GHz only"
+        <SubNav
+          label="Network slot"
+          value={String(slot)}
+          onChange={(id) => setSlot(Number(id))}
+          items={cfg.wifi.networks.map((n, i) => ({
+            id: String(i),
+            label: n.ssid ? `${i + 1} ${n.ssid.slice(0, 8)}` : `${i + 1}`,
+          }))}
+        />
+        {(() => {
+          const n = cfg.wifi.networks[slot];
+          const i = slot;
+          return (
+            <>
+              <div class="fields">
+                <TextField
+                  label="Network name"
+                  value={n.ssid}
+                  maxLength={32}
+                  onChange={(v) =>
+                    patch((d) => {
+                      if (d.wifi.networks[i].ssid !== v) {
+                        d.wifi.networks[i].pass = "";
+                      }
+                      d.wifi.networks[i].ssid = v;
+                    })
+                  }
+                  hint="2.4 GHz only"
+                />
+                <TextField
+                  label="Password"
+                  type="password"
+                  value={n.pass}
+                  maxLength={64}
+                  placeholder={n.has_pass ? "•••••••• (unchanged)" : "None"}
+                  onChange={(v) => patch((d) => (d.wifi.networks[i].pass = v))}
+                />
+                <NumberField
+                  label="Attempts"
+                  value={cfg.wifi.retries}
+                  min={1}
+                  max={10}
+                  onChange={(v) => patch((d) => (d.wifi.retries = v))}
+                />
+              </div>
+              <Toggle
+                label="Hidden network"
+                checked={n.hidden}
+                onChange={(v) => patch((d) => (d.wifi.networks[i].hidden = v))}
               />
-              <TextField
-                label="Password"
-                type="password"
-                value={n.pass}
-                maxLength={64}
-                placeholder={n.has_pass ? "•••••••• (unchanged)" : "None"}
-                onChange={(v) => patch((d) => (d.wifi.networks[i].pass = v))}
-              />
-            </div>
-            <Toggle
-              label="Hidden network"
-              checked={n.hidden}
-              onChange={(v) => patch((d) => (d.wifi.networks[i].hidden = v))}
-            />
-          </div>
-        ))}
-
-        <div class="fields" style="margin-top:var(--space-3)">
-          <NumberField
-            label="Attempts each"
-            value={cfg.wifi.retries}
-            min={1}
-            max={10}
-            onChange={(v) => patch((d) => (d.wifi.retries = v))}
-            hint="Before moving to the next network"
-          />
-        </div>
+            </>
+          );
+        })()}
 
         {scanMsg ? <p class="btn-row__msg">{scanMsg}</p> : null}
         {found.length ? (
@@ -175,11 +199,10 @@ export function Network(props: PageProps) {
           </div>
         ) : null}
       </Card>
+      ) : null}
 
-      <Card
-        title="Access point"
-        note="Other Link devices can join this network to sync. A password shorter than eight characters leaves it open, because that is all WPA2 accepts. In access point mode the editor is at http://192.168.4.1."
-      >
+      {pane === "ap" ? (
+      <Card title="Access point">
         <div class="fields">
           <SelectField
             label="Create"
@@ -226,6 +249,7 @@ export function Network(props: PageProps) {
           onChange={(v) => patch((d) => (d.ap.hidden = v))}
         />
       </Card>
+      ) : null}
 
       <SaveBar {...props} />
     </>

@@ -13,6 +13,7 @@ import {
   Toggle,
 } from "../components/controls";
 import { SaveBar } from "./SaveBar";
+import { SubNav } from "../components/SubNav";
 
 /** Timing, clock source, tempo CV range, and the destructive actions. */
 export function System(props: PageProps) {
@@ -22,6 +23,7 @@ export function System(props: PageProps) {
   const [resetting, setResetting] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [otaMsg, setOtaMsg] = useState("");
+  const [pane, setPane] = useState<"time" | "clock" | "panel" | "mod">("time");
 
   const reboot = async () => {
     setConfirming(false);
@@ -51,10 +53,20 @@ export function System(props: PageProps) {
     <>
       <h1 class="page-title">{strings.screens.system.web}</h1>
 
-      <Card
-        title="Timing"
-        note="Latency compensation shifts every output in time. Positive values fire later; use it to line the module up against gear with its own input delay."
-      >
+      <SubNav
+        label="System section"
+        value={pane}
+        onChange={(id) => setPane(id as typeof pane)}
+        items={[
+          { id: "time", label: "Time" },
+          { id: "clock", label: "Clock" },
+          { id: "panel", label: "Panel" },
+          { id: "mod", label: "Module" },
+        ]}
+      />
+
+      {pane === "time" ? (
+      <Card title="Timing">
         <div class="fields">
           <NumberField
             label="Latency"
@@ -130,11 +142,11 @@ export function System(props: PageProps) {
           />
         </div>
       </Card>
+      ) : null}
 
-      <Card
-        title="Clock source"
-        note="Auto follows the external input whenever it is running and falls back to the Link session otherwise."
-      >
+      {pane === "clock" ? (
+      <>
+      <Card title="Clock source">
         <div class="fields">
           <SelectField
             label="Source"
@@ -177,11 +189,11 @@ export function System(props: PageProps) {
           />
         </div>
       </Card>
+      </>
+      ) : null}
 
-      <Card
-        title="Identity"
-        note="The name sets this page's address and the default access point SSID. It is reduced to lowercase letters, digits and hyphens."
-      >
+      {pane === "panel" ? (
+      <Card title="Identity">
         <div class="fields">
           <TextField
             label="Device name"
@@ -205,11 +217,11 @@ export function System(props: PageProps) {
           />
         </div>
       </Card>
+      ) : null}
 
-      <Card
-        title="Firmware"
-        note="Upload a build (.bin). It streams into the inactive slot and the module reboots into it; an image that cannot serve this page rolls back on the next boot."
-      >
+      {pane === "mod" ? (
+      <>
+      <Card title="Firmware">
         <Readout
           label="Installed"
           value={<span class="mono">{status?.firmware ?? "—"}</span>}
@@ -247,6 +259,8 @@ export function System(props: PageProps) {
           </span>
         </div>
       </Card>
+      </>
+      ) : null}
 
       <SaveBar {...props} />
 

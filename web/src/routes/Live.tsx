@@ -7,6 +7,7 @@ import { PhaseBar } from "../components/PhaseBar";
 import { StatusChip } from "../components/StatusChip";
 import { networkState } from "../components/StatusStrip";
 import { BeatStage, beatFromStatus } from "../components/BeatStage";
+import { SubNav } from "../components/SubNav";
 import { Button, Card, Readout } from "../components/controls";
 
 /**
@@ -16,6 +17,7 @@ import { Button, Card, Readout } from "../components/controls";
 export function Live({ status, cfg }: PageProps) {
   const [presetMsg, setPresetMsg] = useState("");
   const [bpmDraft, setBpmDraft] = useState("");
+  const [pane, setPane] = useState<"sync" | "set" | "stats">("sync");
 
   // Transport and tempo are commands, not settings: they take effect at
   // once (play/stop on the next loop boundary) and never wait for a save.
@@ -131,10 +133,19 @@ export function Live({ status, cfg }: PageProps) {
         </div>
       </Card>
 
-      <Card
-        title="Resync"
-        note="Play, stop and “next loop” land on the loop boundary so the module drops in on the downbeat. “Now” is for re-aligning to players who are not on the Link grid."
-      >
+      <SubNav
+        label="Live extras"
+        value={pane}
+        onChange={(id) => setPane(id as typeof pane)}
+        items={[
+          { id: "sync", label: "Sync" },
+          { id: "set", label: "Set" },
+          { id: "stats", label: "Stats" },
+        ]}
+      />
+
+      {pane === "sync" ? (
+      <Card title="Resync">
         <div class="btn-row" style="margin-top:0">
           <Button variant="secondary" onClick={() => send(() => api.resync("next"))}>
             Reset next loop
@@ -144,8 +155,9 @@ export function Live({ status, cfg }: PageProps) {
           </Button>
         </div>
       </Card>
+      ) : null}
 
-      {status && status.tempo_valid && status.peers === 0 && !status.setup_ap ? (
+      {status && pane === "sync" && status.tempo_valid && status.peers === 0 && !status.setup_ap ? (
         <div class="banner">
           <div class="banner__body">
             <strong class="banner__title">{strings.states.no_link.web}</strong>
@@ -154,10 +166,8 @@ export function Live({ status, cfg }: PageProps) {
         </div>
       ) : null}
 
-      <Card
-        title="Presets"
-        note="Slots also recall from MIDI Program Change 1–4, so a set can switch the module without a phone in hand."
-      >
+      {pane === "set" ? (
+      <Card title="Presets">
         <div class="preset-grid">
           {[0, 1, 2, 3].map((slot) => (
             <div key={slot} class="btn-row" style="margin-top:0">
@@ -179,7 +189,9 @@ export function Live({ status, cfg }: PageProps) {
           </p>
         ) : null}
       </Card>
+      ) : null}
 
+      {pane === "stats" ? (
       <Card title="Timing">
         <Readout label="Edges emitted" value={<span class="mono">{status?.pulse.edges ?? "—"}</span>} />
         <Readout
@@ -195,6 +207,7 @@ export function Live({ status, cfg }: PageProps) {
           value={<span class="mono">{status ? formatUptime(status.uptime_s) : "—"}</span>}
         />
       </Card>
+      ) : null}
     </>
   );
 }
