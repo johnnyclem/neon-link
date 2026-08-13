@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { tokens } from "../design/tokens";
 import { strings, type StateName } from "../design/strings";
-import { iconMasters, type IconName } from "../design/icons";
+import { iconMasters, ICON_TICK_HZ, type IconName } from "../design/icons";
 import { Icon } from "../components/Icon";
 import { HeroTempo } from "../components/HeroTempo";
 import { PhaseBar } from "../components/PhaseBar";
@@ -161,7 +161,7 @@ export function Styleguide() {
                     </span>
                   </td>
                   <td style="padding:var(--space-2) var(--space-2) var(--space-2) 0">
-                    <StatusChip state={name} />
+                    <StatusChip state={name} bpm={tempo} />
                   </td>
                   <td style="padding:var(--space-2) 0;color:var(--text-muted)">
                     {strings.states[name].long}
@@ -174,20 +174,49 @@ export function Styleguide() {
 
         <Card title="Icons">
           <p class="card__note" style="padding:0 0 var(--space-3)">
-            Authored once as 8×8 1-bit masters. The web renders the same master as an
-            SVG pixel grid rather than redrawing it as a vector, so the icon on the
-            page is pixel-for-pixel the icon on the panel.
+            Authored once as 8×8 1-bit masters, frames and all. The web renders the
+            same master as an SVG pixel grid rather than redrawing it as a vector, and
+            plays the same loop — so the icon on the page is pixel-for-pixel, and
+            frame-for-frame, the icon on the panel.
           </p>
+          <p class="card__note" style="padding:0 0 var(--space-3)">
+            <strong style="color:var(--neon)">beat</strong> loops advance once per
+            musical beat and run at the tempo below;{" "}
+            <strong style="color:var(--neon)">tick</strong> loops run at a fixed{" "}
+            {ICON_TICK_HZ} Hz. Everything else holds still, because motion here means
+            the thing is actually happening.
+          </p>
+          <div style="max-width:220px;margin-bottom:var(--space-4)">
+            <NumberField
+              label="Tempo driving the beat loops"
+              value={tempo}
+              min={20}
+              max={999}
+              onChange={setTempo}
+            />
+          </div>
           <div style="display:flex;gap:var(--space-5);flex-wrap:wrap">
             {(Object.keys(iconMasters) as IconName[]).map((name) => (
               <div key={name} style="text-align:center">
                 <div style="display:flex;gap:var(--space-2);align-items:flex-end;color:var(--neon)">
-                  <Icon name={name} size={8} />
-                  <Icon name={name} size={16} />
-                  <Icon name={name} size={32} />
+                  <Icon name={name} size={8} beatMs={60000 / tempo} />
+                  <Icon name={name} size={16} beatMs={60000 / tempo} />
+                  <Icon name={name} size={32} beatMs={60000 / tempo} />
                 </div>
                 <div class="mono" style="margin-top:var(--space-1);font-size:var(--text-caption);color:var(--text-muted)">
                   {name}
+                </div>
+                <div
+                  class="mono"
+                  style={`font-size:var(--text-caption);color:${
+                    iconMasters[name].clock === "static"
+                      ? "var(--text-muted)"
+                      : "var(--neon-dim)"
+                  }`}
+                >
+                  {iconMasters[name].clock === "static"
+                    ? "static"
+                    : `${iconMasters[name].clock} · ${iconMasters[name].frames.length}f`}
                 </div>
               </div>
             ))}

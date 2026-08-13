@@ -23,7 +23,7 @@
     "source_link":  { "device": "LINK", "web": "Link",        "long": "Following the Link session",        "icon": "link",    "tone": "neon" },
     "source_ext":   { "device": "EXT",  "web": "External",    "long": "Following the external clock input", "icon": "link",    "tone": "yellow" },
 
-    "transport_run":  { "device": "RUN",  "web": "Running", "long": "Transport running", "icon": "play", "tone": "success" },
+    "transport_run":  { "device": "RUN",  "web": "Running", "long": "Transport running", "icon": "run", "tone": "success" },
     "transport_stop": { "device": "STOP", "web": "Stopped", "long": "Transport stopped", "icon": "stop", "tone": "text-muted" },
 
     "net_ap":       { "device": "AP",   "web": "Setup AP",  "long": "Serving its own setup access point", "icon": "wifi-ap",  "tone": "yellow" },

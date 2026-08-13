@@ -45,9 +45,16 @@ export function StatusStrip({ status, offline }: { status: Status | null; offlin
             </span>
           ) : (
             <>
-              <StatusChip state={status.ext_clock ? "source_ext" : "source_link"} />
-              <StatusChip state={status.playing ? "transport_run" : "transport_stop"} />
               <StatusChip
+                state={status.ext_clock ? "source_ext" : "source_link"}
+                bpm={status.bpm}
+              />
+              <StatusChip
+                state={status.playing ? "transport_run" : "transport_stop"}
+                bpm={status.playing ? status.bpm : undefined}
+              />
+              <StatusChip
+                bpm={status.bpm}
                 state={networkState(status)}
                 detail={status.peers > 0 ? `${status.peers}P` : undefined}
               />

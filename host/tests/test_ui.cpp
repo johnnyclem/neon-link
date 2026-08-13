@@ -905,3 +905,114 @@ TEST_CASE("long press leaves the audio screen with the cursor on AUDIO") {
   CHECK(m.screen() == neon::MenuModel::Screen::kMenu);
   CHECK(m.cursor() == 4);
 }
+
+// ---------------------------------------------------------------------------
+// animated icons
+// ---------------------------------------------------------------------------
+
+TEST_CASE("icon frames advance on the clock the icon declares") {
+  using namespace neon::ui;
+
+  // The set carries both kinds of motion and some deliberately static marks.
+  CHECK(kIconLink.clock == IconClock::kBeat);
+  CHECK(kIconWifiSta.clock == IconClock::kTick);
+  CHECK(kIconWarning.clock == IconClock::kStatic);
+  CHECK(kIconLink.frame_count > 1);
+  CHECK(kIconWarning.frame_count == 1);
+
+  IconClocks clocks;
+  clocks.beat = 2;
+  clocks.tick = 1;
+
+  // Each icon reads only its own clock.
+  CHECK(icon_frame_index(kIconLink, clocks) == 2);
+  CHECK(icon_frame_index(kIconWifiSta, clocks) == 1);
+  CHECK(icon_frame_index(kIconWarning, clocks) == 0);
+
+  // Counters run forever; the icon wraps them to its own length.
+  CHECK(icon_frame(kIconLink, kIconLink.frame_count) ==
+        icon_frame(kIconLink, 0));
+  CHECK(icon_frame(kIconLink, 2u * kIconLink.frame_count + 1) ==
+        icon_frame(kIconLink, 1));
+
+  // A static icon ignores the counter entirely rather than reading past its
+  // single frame.
+  CHECK(icon_frame(kIconWarning, 7) == icon_frame(kIconWarning, 0));
+}
+
+TEST_CASE("every frame of an animated icon is distinct and non-empty") {
+  using namespace neon::ui;
+  const Icon* animated[] = {&kIconLink, &kIconWifiAp, &kIconWifiSta, &kIconRun};
+
+  for (const Icon* icon : animated) {
+    int drawn = 0;
+    for (uint32_t f = 0; f < icon->frame_count; ++f) {
+      neon::Framebuffer fb;
+      fb.blit(0, 0, icon_frame(*icon, f), kIconSize, kIconSize);
+      if (lit_pixels(fb) > 0) {
+        ++drawn;
+      }
+      // Consecutive frames must differ, or the loop stalls visibly.
+      const uint32_t next = (f + 1) % icon->frame_count;
+      bool same = true;
+      for (int row = 0; row < kIconSize; ++row) {
+        if (icon_frame(*icon, f)[row] != icon_frame(*icon, next)[row]) {
+          same = false;
+          break;
+        }
+      }
+      CHECK_FALSE(same);
+    }
+    CHECK(drawn == icon->frame_count);
+  }
+}
+
+TEST_CASE("the tick counter reaches the panel") {
+  neon::UiStatus a = playing_status();
+  a.playing = false;  // classic layout, so the header is on screen
+  a.setup_ap = true;  // wifi-ap is tick-clocked
+  a.ble_on = true;
+  a.anim_tick = 0;
+
+  neon::UiStatus b = a;
+  b.anim_tick = 1;
+
+  CHECK(render_home(a) != render_home(b));
+  // Same tick, same pixels: the renderer reads the counter from status and
+  // never from a clock of its own.
+  CHECK(render_home(a) == render_home(a));
+}
+
+TEST_CASE("beat-locked icons freeze while the transport is stopped") {
+  auto header = [](const neon::UiStatus& st) {
+    neon::Config cfg;
+    neon::MenuModel menu(&cfg);
+    neon::Framebuffer fb;
+    neon::render_ui(menu, st, fb);
+    std::string out;
+    char row[neon::Framebuffer::kWidth + 1];
+    for (int y = 0; y <= neon::ui::kHeaderRuleY; ++y) {
+      fb.ascii_row(y, row);
+      out += row;
+    }
+    return out;
+  };
+
+  neon::UiStatus stopped = playing_status();
+  stopped.playing = false;
+  stopped.phase_milli_beats = 0;
+  neon::UiStatus stopped_later = stopped;
+  stopped_later.phase_milli_beats = 3000;
+
+  // The Link timeline keeps advancing whether or not anything is playing, so
+  // without freezing them the header would animate a bar that is not running.
+  CHECK(header(stopped) == header(stopped_later));
+
+  // Playing, the same two phases must differ.
+  neon::UiStatus playing = stopped;
+  playing.playing = true;
+  playing.big_beat_display = false;
+  neon::UiStatus playing_later = playing;
+  playing_later.phase_milli_beats = 3000;
+  CHECK(header(playing) != header(playing_later));
+}

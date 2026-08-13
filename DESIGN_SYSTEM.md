@@ -179,27 +179,78 @@ Shared labels (do not invent synonyms): `LINK`, `EXT`, `STOP`, `RUN`, `AP`, `STA
 
 Icons are authored once as pure 1-bit masters and used unchanged by both surfaces.
 
-Set: `link`, `wifi-ap`, `wifi-sta`, `ble`, `play`, `stop`, `run`, `warning`, `check`.
+Set: `link`, `wifi-ap`, `wifi-sta`, `ble`, `stop`, `run`, `warning`, `check`.
+
+Four of them animate — see §8 for which clock each uses and why. An icon that nothing references is dead weight and gets deleted rather than kept "just in case"; `play` went that way when `run`'s marching gate turned out to be the better mark for a running transport.
 
 Style: geometric, closed shapes where possible, consistent stroke weight, no filled blobs unless needed for recognition at 8 px.
 
 They are authored at **8×8** rather than 16×16, because 8×8 is the size the device header actually renders. The web scales the same master to 16 or 32 px as a pixel grid. Pixel-art icons at 2×/3× are a deliberate style here, not an artefact.
 
+### Judge them at 1×
+
+`design/icons_preview.png` is generated alongside the code and shows every icon at 1×, 2×, 4× and 8×, in the same order as `design/icons.txt`. **A glyph that does not read in the first two columns does not work**, whatever it looks like blown up.
+
+This exists because two icons shipped unreadable before it did, both for the same reason: they were only ever reviewed enlarged. An 8×8 master viewed at 32 px tells you nothing about whether it survives in the panel header.
+
+### What 8×8 can and cannot carry
+
+8×8 gives you roughly twenty meaningful pixels of outline and no usable interior. That supports **silhouettes** — shapes recognised from their outline — and rules out **pictograms**, which are recognised from internal structure.
+
+Three failed attempts at the error icon all hit this same wall, and are worth not repeating:
+
+| Attempt | Why it failed |
+|---|---|
+| Outline triangle with an exclamation inside | The 1px walls close up against the bang; reads as a seated figure |
+| Solid triangle with the exclamation knocked out | The tapering silhouette reads as a fir tree |
+| X inside a circle | A circle outline leaves a 4×4 interior, and a 4×4 X has a 2×2 centre — the strokes merge into a square hole, giving a ring with a box in it |
+
+A container **or** interior detail, never both. The resolution is to drop the container and let the mark use the whole cell.
+
 ---
 
 ## 8. Motion & Feedback
 
+**Motion is meaning.** Something moves only while the thing it stands for is actually happening. That is the whole rule; everything below follows from it.
+
+The test for any proposed animation is: *if this stopped moving, would I have lost information?* A pulsing Link ring says the session is alive and how fast — stop it and you have lost that. A spinning decoration says nothing — stop it and you have lost nothing, which means it should never have moved.
+
+### Two clocks, and why it matters which
+
+Icon loops declare their own clock in `design/icons.txt`, because the two kinds of motion mean different things:
+
+| Clock | Advances | For |
+|---|---|---|
+| `beat` | Once per musical beat, from the shared phase | Anything tempo-locked: the Link pulse, the run gate |
+| `tick` | A fixed 5 Hz counter | Motion with no musical time: a radio beaconing, a stack advertising |
+| *(none)* | Never | Everything else — still the right answer for most icons |
+
+`beat` is the one that only makes sense on a clock module. Those loops speed up when the tempo does, so the panel visibly *runs* at the tempo rather than reporting it as a number. It is the reason to have animation here at all; a fixed-rate spinner would be generic UI polish.
+
+Beat-locked loops **freeze at frame 0 while the transport is stopped**. The Link timeline keeps advancing whether or not anything is playing, so without this the run gate would march through a bar that is not happening.
+
+### What holds still
+
+Settled states do not move, and this is a rule rather than an oversight:
+
+- `stop` — a stopped transport that animates is a contradiction
+- `check` — a confirmation is a moment, not a state
+- `warning` — a steady error is easier to read than a flashing one
+
 ### Device
 
 - Instant response to the encoder
-- Minimal animation — a blinking cursor or a single-pixel phase tick is enough
-- No fades: hard cuts and inversions only
+- Hard cuts only: no fades, no tweening — a 1-bit panel cannot fade, so the vocabulary does not pretend otherwise
+- 3–6 frames per loop. The UI task flushes at 10 fps whether or not anything changed, so animation costs no extra bus time, but it also caps the frame rate
+- Loop state arrives in `UiStatus`, never from a clock inside the renderer. `render_ui()` stays pure, so the golden tests still mean something now that the panel moves
 
 ### Web
 
-- Subtle, fast transitions (150–200 ms)
+- The same frames, played the same way: a `steps()` animation over a filmstrip, which is a hard cut per frame exactly like the panel
+- Beat-locked loops run at the tempo the page is already polling
+- Subtle, fast transitions elsewhere (150–200 ms)
 - Never decorative motion
-- `prefers-reduced-motion` collapses every transition
+- `prefers-reduced-motion` parks every loop on frame 0, which each icon is drawn to survive, rather than collapsing the duration and landing on an arbitrary frame
 
 ---
 

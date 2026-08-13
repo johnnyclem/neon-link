@@ -153,6 +153,25 @@ int main() {
             "Big beat numbers can be turned off; the BPM home screen returns.",
             m, classic);
 
+    // The header's animated icons, one fixture per beat. Read left to right
+    // and the Link ring radiates outward on the beat while the Wi-Fi and BLE
+    // marks run on their own fixed-rate clock. Captured because a loop that
+    // is only ever seen in a still frame is a loop nobody reviews.
+    for (uint32_t beat = 0; beat < 4; ++beat) {
+      neon::UiStatus a = classic;
+      a.phase_milli_beats = beat * 1000;
+      a.anim_tick = beat;
+      char id[24];
+      char title[32];
+      std::snprintf(id, sizeof(id), "header-beat-%u",
+                    static_cast<unsigned>(beat + 1));
+      std::snprintf(title, sizeof(title), "Header — beat %u",
+                    static_cast<unsigned>(beat + 1));
+      capture(id, title,
+              "Link pulses on the beat; the radio marks run on the 5 Hz tick.",
+              m, a);
+    }
+
     neon::UiStatus stopped = linked;
     stopped.playing = false;
     stopped.phase_milli_beats = 2600;
@@ -167,6 +186,19 @@ int main() {
             "External clock drives the session; the source word changes and the "
             "rest of the layout holds still.",
             m, ext);
+
+    // The only screen that shows the warning icon. Without a fixture for it
+    // the icon was only ever reviewed in the style guide's icon grid, which
+    // is how a badly-drawn one survived — a hazard sign has to be judged at
+    // 8 px in the header, not at 32 px on its own.
+    neon::UiStatus offline = base_status();
+    offline.big_beat_display = false;
+    offline.active_net = 0;
+    offline.setup_ap = false;
+    capture("live-offline", "Live — no network",
+            "No access point and no network joined: the header carries the "
+            "warning icon and the state row reads OFF.",
+            m, offline);
   }
 
   // ---- menus ----------------------------------------------------------

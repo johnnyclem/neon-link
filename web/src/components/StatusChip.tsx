@@ -7,6 +7,8 @@ interface Props {
   /** Appends a value to the chip, e.g. the peer count or an address. */
   detail?: string;
   title?: string;
+  /** Current tempo, so tempo-locked icon loops run at the session's speed. */
+  bpm?: number;
 }
 
 /**
@@ -18,11 +20,15 @@ interface Props {
  * (DESIGN_SYSTEM.md §6), and pairing colour with a word and an icon is what
  * keeps the state readable without relying on colour alone (§12).
  */
-export function StatusChip({ state, detail, title }: Props) {
+export function StatusChip({ state, detail, title, bpm }: Props) {
   const entry = strings.states[state];
   return (
     <span class={`chip chip--${entry.tone}`} title={title ?? entry.long}>
-      <Icon name={entry.icon as IconName} size={12} />
+      <Icon
+        name={entry.icon as IconName}
+        size={12}
+        beatMs={bpm && bpm > 0 ? 60000 / bpm : undefined}
+      />
       {entry.web}
       {detail ? <span class="mono">{detail}</span> : null}
     </span>

@@ -32,6 +32,30 @@ using Dither = Framebuffer::Dither;
 
 enum class Align : uint8_t { kLeft, kCenter, kRight };
 
+// Where an animated icon is in its loop.
+//
+// Both counters arrive from UiStatus rather than being read from a clock in
+// here, which is what keeps render_ui() pure: give it the same status twice
+// and it draws the same pixels twice, so the golden tests stay meaningful
+// even though the panel now moves.
+struct IconClocks {
+  uint32_t beat = 0;  // beat within the bar, for tempo-locked loops
+  uint32_t tick = 0;  // free-running counter at kIconTickHz
+};
+
+// Which frame of an icon to draw. Static icons ignore both counters.
+inline uint32_t icon_frame_index(const Icon& icon, const IconClocks& clocks) {
+  switch (icon.clock) {
+    case IconClock::kBeat:
+      return clocks.beat;
+    case IconClock::kTick:
+      return clocks.tick;
+    case IconClock::kStatic:
+      break;
+  }
+  return 0;
+}
+
 // Advance width of one body-font row of text, for right-aligning values.
 inline int body_width(const char* s) {
   return Framebuffer::text_width(s, kFontBody);

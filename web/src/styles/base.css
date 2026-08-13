@@ -612,6 +612,33 @@ a.button {
   flex: none;
 }
 
+/*
+ * Animated icons are a filmstrip: every frame sits side by side inside the
+ * SVG, and the strip is slid one frame at a time. steps() is the whole point
+ * — each frame is a hard cut with nothing tweened between, which is what the
+ * 1-bit panel does and what §8 asks for. The custom properties come from the
+ * component, which reads the frame count and clock out of design/icons.txt.
+ */
+@keyframes icon-filmstrip {
+  to {
+    transform: translateX(calc(var(--icon-shift) * 1px));
+  }
+}
+
+.icon__strip {
+  animation: icon-filmstrip var(--icon-duration) steps(var(--icon-frames))
+    infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The blanket rule below collapses durations to near-zero, which for a
+     stepped loop would land on an arbitrary frame. Park on frame 0 instead —
+     every icon's first frame is drawn to stand alone. */
+  .icon__strip {
+    animation: none;
+  }
+}
+
 /* Free-assignment step grid. Cells are square, hard-cornered and big
    enough to hit on a phone; every fourth one carries a beat marker so the
    downbeat is findable without counting. */

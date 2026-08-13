@@ -17,14 +17,29 @@ firmware build must never depend on a Python environment.
 from __future__ import annotations
 
 import argparse
+import binascii
 import json
 import pathlib
+import struct
 import sys
+import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DESIGN = ROOT / "design"
 
 BANNER_SOURCES = "design/tokens.json, design/strings.json, design/icons.txt, design/fonts/hero.json"
+
+# What advances an icon's frame. Kept here rather than inferred, so a typo in
+# icons.txt fails the build instead of silently freezing an animation.
+#   beat   one frame per musical beat, from the shared phase
+#   tick   a fixed-rate counter, for motion with no musical time
+#   static single frame
+ICON_CLOCKS = {"static", "beat", "tick"}
+
+# The fixed-rate clock, in frames per second. Slow enough that a 3-6 frame
+# loop lasts most of a second, which is the difference between an icon that
+# reads as pulsing and one that reads as flickering.
+ICON_TICK_HZ = 5
 
 
 def banner(comment_open: str, comment_close: str = "") -> str:
@@ -57,19 +72,31 @@ def strip_meta(obj: dict) -> dict:
 def load_icons(path: pathlib.Path) -> "dict[str, list[str]]":
     icons: dict[str, list[str]] = {}
     name: str | None = None
+    clock: str = "static"
     rows: list[str] = []
 
     def flush() -> None:
         if name is None:
             return
-        if len(rows) != 8:
-            raise SystemExit(f"icon '{name}': expected 8 rows, got {len(rows)}")
+        if not rows or len(rows) % 8 != 0:
+            raise SystemExit(
+                f"icon '{name}': expected whole 8-row frames, got {len(rows)} rows"
+            )
         for row in rows:
             if len(row) != 8:
                 raise SystemExit(f"icon '{name}': row '{row}' is {len(row)} chars, expected 8")
             if set(row) - {"#", "."}:
                 raise SystemExit(f"icon '{name}': row '{row}' has characters other than # and .")
-        icons[name] = list(rows)
+        frames = [rows[i : i + 8] for i in range(0, len(rows), 8)]
+        if clock != "static" and len(frames) < 2:
+            raise SystemExit(
+                f"icon '{name}': clock '{clock}' declared but only one frame"
+            )
+        if clock == "static" and len(frames) > 1:
+            raise SystemExit(
+                f"icon '{name}': {len(frames)} frames but no clock — add 'beat' or 'tick'"
+            )
+        icons[name] = {"clock": clock, "frames": frames}
 
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.rstrip()
@@ -77,7 +104,14 @@ def load_icons(path: pathlib.Path) -> "dict[str, list[str]]":
             continue
         if line.startswith("@"):
             flush()
-            name = line[1:].strip()
+            parts = line[1:].split()
+            name = parts[0]
+            clock = parts[1] if len(parts) > 1 else "static"
+            if clock not in ICON_CLOCKS:
+                raise SystemExit(
+                    f"icon '{name}': unknown clock '{clock}' "
+                    f"(expected one of {', '.join(sorted(ICON_CLOCKS))})"
+                )
             rows = []
             continue
         if not line.strip():
@@ -249,20 +283,22 @@ def emit_strings_ts(strings: dict) -> str:
     )
 
 
-def emit_icons_ts(icons: "dict[str, list[str]]") -> str:
-    payload = {name: rows for name, rows in icons.items()}
-    body = json.dumps(payload, indent=2)
+def emit_icons_ts(icons: dict) -> str:
+    body = json.dumps(icons, indent=2)
     return (
         banner("//")
         + "\n"
         + "/*\n"
-        + " * The 8x8 1-bit masters, verbatim. The web renders these as crisp SVG\n"
-        + " * pixel grids rather than redrawing them as vectors, so the icon on the\n"
-        + " * page is pixel-for-pixel the icon on the panel.\n"
+        + " * The 8x8 1-bit masters, verbatim, with their frames and the clock\n"
+        + " * that advances them. The web renders these as crisp SVG pixel grids\n"
+        + " * rather than redrawing them as vectors, so the icon on the page is\n"
+        + " * pixel-for-pixel the icon on the panel - and plays the same loop.\n"
         + " */\n"
         + f"export const iconMasters = {body} as const;\n\n"
         + "export type IconName = keyof typeof iconMasters;\n\n"
-        + "export const ICON_SIZE = 8;\n"
+        + "export const ICON_SIZE = 8;\n\n"
+        + "/** Frames per second for the fixed-rate clock. */\n"
+        + f"export const ICON_TICK_HZ = {ICON_TICK_HZ};\n"
     )
 
 
@@ -292,6 +328,80 @@ def emit_hero_font_ts(spec: dict) -> str:
         + "\n"
         + f"export const heroFont = {body} as const;\n\n"
         + "export type SegmentName = keyof typeof heroFont.segments;\n"
+    )
+
+
+def emit_icons_preview_png(tokens: dict, icons: dict) -> bytes:
+    """A contact sheet: every icon, every frame, at the sizes it ships at.
+
+    Two icons shipped unreadable before this existed, and both times the
+    reason was the same: they were only ever looked at blown up. An 8x8
+    master reviewed at 32 px tells you nothing about whether it survives in
+    the panel header. So every frame is drawn at 8x, 2x and 1x stacked, and
+    the small copies are the ones that decide whether it works.
+
+    One row per icon, in design/icons.txt order, so the two files read side
+    by side; one column per frame, left to right in playback order. Palette
+    comes from tokens.json, so the sheet always shows an icon on the ground
+    it is actually drawn on.
+    """
+    scales = [8, 2, 1]
+    pad, col_gap, row_gap, stack_gap = 12, 10, 14, 4
+    frame_w = 8 * max(scales)
+    cell_h = sum(8 * s for s in scales) + stack_gap * (len(scales) - 1)
+    max_frames = max(len(icon["frames"]) for icon in icons.values())
+
+    width = pad * 2 + max_frames * frame_w + col_gap * (max_frames - 1)
+    height = pad * 2 + len(icons) * (cell_h + row_gap) - row_gap
+
+    def rgb(hex_color: str) -> "tuple[int, int, int]":
+        v = hex_color.lstrip("#")
+        return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+
+    colors = strip_meta(tokens["color"])
+    bg = rgb(colors["bg"]["hex"])
+    fg = rgb(colors["neon"]["hex"])
+    # Animated rows are marked with a rule in the accent the web uses for
+    # "alive", so a glance tells you which icons move.
+    mark = rgb(colors["neon-dim"]["hex"])
+
+    pixels = [[bg] * width for _ in range(height)]
+    for row, icon in enumerate(icons.values()):
+        top = pad + row * (cell_h + row_gap)
+        if icon["clock"] != "static":
+            for x in range(pad, width - pad):
+                pixels[top + cell_h + row_gap // 2][x] = mark
+        for col, rows in enumerate(icon["frames"]):
+            left = pad + col * (frame_w + col_gap)
+            offset = top
+            for scale in scales:
+                for y, line in enumerate(rows):
+                    for x, ch in enumerate(line):
+                        if ch != "#":
+                            continue
+                        for dy in range(scale):
+                            for dx in range(scale):
+                                pixels[offset + y * scale + dy][left + x * scale + dx] = fg
+                offset += 8 * scale + stack_gap
+
+    raw = b"".join(
+        b"\x00" + b"".join(bytes(px) for px in line) for line in pixels
+    )
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        body = tag + payload
+        return (
+            struct.pack(">I", len(payload))
+            + body
+            + struct.pack(">I", binascii.crc32(body) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
     )
 
 
@@ -328,7 +438,8 @@ def emit_theme_gen_hpp(tokens: dict, strings: dict) -> str:
     return "\n".join(out) + "\n"
 
 
-def emit_icons_gen_hpp(icons: "dict[str, list[str]]") -> str:
+def emit_icons_gen_hpp(icons: dict) -> str:
+    max_frames = max(len(icon["frames"]) for icon in icons.values())
     out = [
         banner("//"),
         "",
@@ -338,24 +449,54 @@ def emit_icons_gen_hpp(icons: "dict[str, list[str]]") -> str:
         "",
         "namespace neon::ui {",
         "",
-        "// 8x8 1-bit icons, one byte per row, bit 7 = leftmost pixel.",
-        "struct Icon {",
-        "  uint8_t rows[8];",
+        "// What advances an icon's frame. Motion is meaning here, so the clock",
+        "// is a property of the icon rather than a global setting: kBeat loops",
+        "// run at the tempo, kTick loops run at a fixed rate.",
+        "enum class IconClock : uint8_t {",
+        "  kStatic,",
+        "  kBeat,",
+        "  kTick,",
         "};",
         "",
-        "// The 8x8 size itself is declared as kIconSize in theme_gen.hpp, which",
-        "// owns panel geometry.",
+        f"inline constexpr int kIconTickHz = {ICON_TICK_HZ};",
+        f"inline constexpr int kIconMaxFrames = {max_frames};",
+        "",
+        "// 8x8 1-bit icons, one byte per row, bit 7 = leftmost pixel. Static",
+        "// icons simply have one frame. The 8x8 size itself is kIconSize in",
+        "// theme_gen.hpp, which owns panel geometry.",
+        "struct Icon {",
+        "  IconClock clock;",
+        "  uint8_t frame_count;",
+        "  uint8_t frames[kIconMaxFrames][8];",
+        "};",
+        "",
+        "// Rows for one frame, wrapping the index. Callers pass a beat or tick",
+        "// counter straight in without worrying about an icon's length.",
+        "inline constexpr const uint8_t* icon_frame(const Icon& icon,",
+        "                                           uint32_t index) {",
+        "  return icon.frames[icon.frame_count > 0 ? index % icon.frame_count : 0];",
+        "}",
         "",
     ]
-    for name, rows in icons.items():
-        packed = []
-        for row in rows:
-            value = 0
-            for x, ch in enumerate(row):
-                if ch == "#":
-                    value |= 1 << (7 - x)
-            packed.append(f"0x{value:02x}")
-        out.append(f"inline constexpr Icon kIcon{cpp_ident(name)} = {{{{{', '.join(packed)}}}}};")
+    clock_enum = {"static": "IconClock::kStatic", "beat": "IconClock::kBeat", "tick": "IconClock::kTick"}
+    for name, icon in icons.items():
+        frames = []
+        for rows in icon["frames"]:
+            packed = []
+            for row in rows:
+                value = 0
+                for x, ch in enumerate(row):
+                    if ch == "#":
+                        value |= 1 << (7 - x)
+                packed.append(f"0x{value:02x}")
+            frames.append("{" + ", ".join(packed) + "}")
+        # Pad to kIconMaxFrames so every Icon is the same shape; frame_count
+        # is what bounds playback.
+        while len(frames) < max_frames:
+            frames.append("{}")
+        out.append(f"inline constexpr Icon kIcon{cpp_ident(name)} = {{")
+        out.append(f"    {clock_enum[icon['clock']]}, {len(icon['frames'])},")
+        out.append("    {" + ", ".join(frames) + "}};")
     out.append("")
     out.append("}  // namespace neon::ui")
     return "\n".join(out) + "\n"
@@ -440,6 +581,7 @@ def main() -> int:
         ROOT / "web" / "src" / "design" / "icons.ts": emit_icons_ts(icons),
         ROOT / "web" / "src" / "design" / "heroFont.ts": emit_hero_font_ts(hero_spec),
         DESIGN / "fonts" / "hero_preview.txt": hero_preview(hero_spec, hero),
+        DESIGN / "icons_preview.png": emit_icons_preview_png(tokens, icons),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "theme_gen.hpp": emit_theme_gen_hpp(tokens, strings),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "icons_gen.hpp": emit_icons_gen_hpp(icons),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "hero_font_gen.hpp": emit_hero_font_hpp(hero_spec, hero),
@@ -448,13 +590,22 @@ def main() -> int:
     stale: list[str] = []
     for path, content in outputs.items():
         rel = path.relative_to(ROOT)
+        binary = isinstance(content, bytes)
+        current = None
+        if path.exists():
+            current = path.read_bytes() if binary else path.read_text(encoding="utf-8")
+
         if args.check:
-            if not path.exists() or path.read_text(encoding="utf-8") != content:
+            if current != content:
                 stale.append(str(rel))
             continue
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and path.read_text(encoding="utf-8") == content:
+        if current == content:
             print(f"  unchanged  {rel}")
+        elif binary:
+            path.write_bytes(content)
+            print(f"  wrote      {rel}")
         else:
             path.write_text(content, encoding="utf-8")
             print(f"  wrote      {rel}")
