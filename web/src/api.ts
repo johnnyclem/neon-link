@@ -210,11 +210,45 @@ export interface Status {
 }
 
 async function json<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, init);
-  if (!res.ok) {
-    throw new Error(`${init?.method ?? "GET"} ${input} → ${res.status}`);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const res = await fetch(input, {
+      ...init,
+      cache: "no-store",
+      signal: init?.signal ?? ctrl.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`${init?.method ?? "GET"} ${input} → ${res.status}`);
+    }
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await res.json()) as T;
+}
+
+/**
+ * Fold a device reply onto the config we already have. A partial or
+ * unexpected body (or a reply that arrived after a WiFi bounce) must not
+ * wipe the form the user just saved.
+ */
+export function adoptConfig(applied: Partial<Config>, fallback: Config): Config {
+  const wifi = applied.wifi ?? fallback.wifi;
+  const ap = applied.ap ?? fallback.ap;
+  return {
+    ...fallback,
+    ...applied,
+    engine: {
+      ...fallback.engine,
+      ...applied.engine,
+      clocks: applied.engine?.clocks ?? fallback.engine.clocks,
+    },
+    audio: { ...fallback.audio, ...applied.audio },
+    ble: { ...fallback.ble, ...applied.ble },
+    tempo_cv: { ...fallback.tempo_cv, ...applied.tempo_cv },
+    wifi: { ...wifi, pass: "" },
+    ap: { ...ap, pass: "" },
+  };
 }
 
 export const api = {

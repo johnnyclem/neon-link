@@ -48,9 +48,28 @@ bool query_param(httpd_req_t* req, const char* key, char* out, size_t cap) {
   return httpd_query_key_value(query, key, out, cap) == ESP_OK;
 }
 
+void no_store(httpd_req_t* req) {
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+}
+
 esp_err_t send_json(httpd_req_t* req, const char* json) {
   httpd_resp_set_type(req, "application/json");
+  no_store(req);
   return httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+}
+
+bool wifi_identity_changed(const neon::Config& a, const neon::Config& b) {
+  if (a.wifi_retries != b.wifi_retries) {
+    return true;
+  }
+  for (int i = 0; i < neon::kWifiSlots; ++i) {
+    if (std::strcmp(a.wifi[i].ssid, b.wifi[i].ssid) != 0 ||
+        std::strcmp(a.wifi[i].pass, b.wifi[i].pass) != 0 ||
+        a.wifi[i].hidden != b.wifi[i].hidden) {
+      return true;
+    }
+  }
+  return false;
 }
 
 esp_err_t send_ok(httpd_req_t* req) { return send_json(req, "{\"ok\":true}"); }
@@ -103,6 +122,7 @@ esp_err_t handle_get_config(httpd_req_t* req) {
   }
   const size_t n = neon::config_to_json(neon_config(), buf, kConfigJsonCap);
   httpd_resp_set_type(req, "application/json");
+  no_store(req);
   const esp_err_t err =
       n != 0 ? httpd_resp_send(req, buf, n) : httpd_resp_send_500(req);
   std::free(buf);
@@ -129,7 +149,8 @@ esp_err_t handle_put_config(httpd_req_t* req) {
   }
   body[got] = '\0';
 
-  neon::Config cfg = neon_config();
+  const neon::Config before = neon_config();
+  neon::Config cfg = before;
   const bool ok = neon::config_from_json(body, got, &cfg);
   std::free(body);
   if (!ok) {
@@ -141,12 +162,25 @@ esp_err_t handle_put_config(httpd_req_t* req) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS save failed");
     return ESP_OK;
   }
-  neon_wifi_apply_credentials();
-  // Renaming the module moves the editor's address; follow it live so the
-  // user is not stranded on a stale .local URL until the next reboot.
-  netman::mdns_set_hostname(neon_config().device_name);
-  ESP_LOGI(kTag, "config updated from web editor (persisted)");
-  return handle_get_config(req);  // respond with the sanitized result
+  const neon::Config& after = neon_config();
+  const bool bounce_wifi = wifi_identity_changed(before, after);
+  const bool rename =
+      std::strcmp(before.device_name, after.device_name) != 0;
+  if (rename) {
+    // Renaming the module moves the editor's address; follow it live so
+    // the user is not stranded on a stale .local URL until the next reboot.
+    netman::mdns_set_hostname(after.device_name);
+  }
+  ESP_LOGI(kTag, "config updated from web editor (persisted)%s",
+           bounce_wifi ? ", will rejoin WiFi" : "");
+  // Reply before any STA bounce. apply_credentials() disconnects the
+  // station, which used to kill this response — the save landed, but the
+  // editor stayed on Saving… until the user refreshed.
+  const esp_err_t err = handle_get_config(req);
+  if (bounce_wifi) {
+    neon_wifi_apply_credentials();
+  }
+  return err;
 }
 
 // POST /api/transport?op=play|stop|toggle|play_now|stop_now
