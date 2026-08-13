@@ -54,6 +54,12 @@ uint32_t nudge_milli_bpm(uint32_t milli_bpm, int delta_bpm);
 uint32_t double_milli_bpm(uint32_t milli_bpm);
 uint32_t halve_milli_bpm(uint32_t milli_bpm);
 
+// Double BPM → milli-BPM, rounded (32.89 → 32890, not 32889).
+uint32_t milli_bpm_from_bpm(double bpm);
+// Reconstruct milli-BPM from integer µs-per-beat, rounded so 33.0 BPM
+// (1 818 182 µs) comes back as 33000, not 32999.
+uint32_t milli_bpm_from_mpb_us(uint64_t mpb_us);
+
 // --- Quantized transport --------------------------------------------
 //
 // Pressing play/stop takes effect at the start of the next loop so the

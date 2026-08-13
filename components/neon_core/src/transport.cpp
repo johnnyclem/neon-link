@@ -1,5 +1,7 @@
 #include "neon/transport.hpp"
 
+#include <cmath>
+
 #include "neon/fixed_math.hpp"
 
 namespace neon {
@@ -97,6 +99,23 @@ bool TapTempo::tap(int64_t t_us, uint32_t* milli_bpm) {
 }
 
 // --- Tempo edits -----------------------------------------------------
+
+uint32_t milli_bpm_from_bpm(double bpm) {
+  if (!(bpm > 0.0)) {
+    return kMinMilliBpm;
+  }
+  return clamp_milli_bpm(std::llround(bpm * 1000.0));
+}
+
+uint32_t milli_bpm_from_mpb_us(uint64_t mpb_us) {
+  if (mpb_us == 0) {
+    return 0;
+  }
+  // Round-to-nearest so a period that came from 33.000 BPM does not
+  // display as 32.9 (truncating 60e9/1818182 = 32999.76).
+  return clamp_milli_bpm(
+      static_cast<int64_t>((60000000000ull + mpb_us / 2) / mpb_us));
+}
 
 uint32_t clamp_milli_bpm(int64_t milli_bpm) {
   if (milli_bpm < static_cast<int64_t>(kMinMilliBpm)) {

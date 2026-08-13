@@ -89,6 +89,28 @@ TEST_CASE("tap tempo ignores intervals outside the tempo range") {
   CHECK(bpm == 120000);
 }
 
+TEST_CASE("milli-BPM from a double rounds instead of truncating") {
+  CHECK(neon::milli_bpm_from_bpm(120.0) == 120000);
+  CHECK(neon::milli_bpm_from_bpm(33.0) == 33000);
+  CHECK(neon::milli_bpm_from_bpm(32.8) == 32800);
+  CHECK(neon::milli_bpm_from_bpm(32.85) == 32850);
+  CHECK(neon::milli_bpm_from_bpm(32.89) == 32890);
+  CHECK(neon::milli_bpm_from_bpm(32.894) == 32894);
+  CHECK(neon::milli_bpm_from_bpm(32.8999) == 32900);
+}
+
+TEST_CASE("milli-BPM from µs-per-beat rounds so 33.0 survives the trip") {
+  CHECK(neon::milli_bpm_from_mpb_us(500000) == 120000);
+  // 33 BPM = 60e6/33 ≈ 1 818 181.82 µs. Nearest integer period is
+  // 1 818 182; truncating 60e9/1818182 gives 32999 (32.9 on the hero).
+  CHECK(neon::milli_bpm_from_mpb_us(1818182) == 33000);
+  const uint64_t q32 = neon::micros_per_beat_q32_from_milli_bpm(33000);
+  const uint64_t mpb = (q32 + (1ull << 31)) >> 32;
+  CHECK(neon::milli_bpm_from_mpb_us(mpb) == 33000);
+  const uint64_t q120 = neon::micros_per_beat_q32_from_milli_bpm(120000);
+  CHECK(neon::milli_bpm_from_mpb_us((q120 + (1ull << 31)) >> 32) == 120000);
+}
+
 TEST_CASE("tempo edits clamp at the ends of the range") {
   CHECK(neon::nudge_milli_bpm(120000, 5) == 125000);
   CHECK(neon::nudge_milli_bpm(120000, -5) == 115000);

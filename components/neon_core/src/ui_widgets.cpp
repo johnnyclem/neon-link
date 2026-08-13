@@ -76,9 +76,11 @@ int draw_hero_text(Framebuffer& fb, int x, int y, const char* text) {
 void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid) {
   char text[12];
   if (valid) {
-    std::snprintf(text, sizeof(text), "%u.%u",
-                  static_cast<unsigned>(milli_bpm / 1000),
-                  static_cast<unsigned>((milli_bpm % 1000) / 100));
+    // One decimal, rounded (.5 and up goes up). 32850 → "32.9",
+    // 33000 → "33.0", 119949 → "119.9", 119950 → "120.0".
+    const unsigned tenths =
+        static_cast<unsigned>((milli_bpm + 50u) / 100u);
+    std::snprintf(text, sizeof(text), "%u.%u", tenths / 10u, tenths % 10u);
   } else {
     // Same glyph count as a three-digit tempo, so the readout does not
     // jump when the first sync lands.

@@ -111,6 +111,9 @@ struct Sink {
 class LinkAudioEsp final : public hal::ILinkAudio {
  public:
   bool available() const override { return true; }
+  bool session_ready() const override {
+    return detail::link_instance() != nullptr;
+  }
 
   void set_enabled(bool enable) override {
     LinkImpl* link = detail::link_instance();

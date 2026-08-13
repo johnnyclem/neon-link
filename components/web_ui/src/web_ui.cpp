@@ -227,8 +227,7 @@ esp_err_t handle_tempo(httpd_req_t* req) {
       bpm = static_cast<double>(neon::kMaxMilliBpm) / 1000.0;
     }
     cmd.kind = ControlCommand::Kind::kSetTempo;
-    cmd.arg = static_cast<int32_t>(
-        neon::clamp_milli_bpm(static_cast<int64_t>(bpm * 1000.0)));
+    cmd.arg = static_cast<int32_t>(neon::milli_bpm_from_bpm(bpm));
   } else if (query_param(req, "op", val, sizeof(val))) {
     if (std::strcmp(val, "tap") == 0) {
       cmd.kind = ControlCommand::Kind::kTapTempo;
@@ -432,7 +431,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   timeline_bus().read(tl);
   const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
   const uint32_t mbpm =
-      mpb_us != 0 ? static_cast<uint32_t>(60000000000ull / mpb_us) : 0;
+      mpb_us != 0 ? neon::milli_bpm_from_mpb_us(mpb_us) : 0;
   const neon::ActiveNet net = netman::preference().active();
 
   char ip[16] = {};
