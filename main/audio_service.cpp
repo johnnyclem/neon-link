@@ -139,9 +139,13 @@ void drain_synth_queue() {
 }
 
 // Moves whatever the network delivered into the jitter buffer. Cheap: a
-// pop from a lock-free ring and a memcpy, both bounded.
+// pop from a lock-free ring and a memcpy, both bounded. The guard must
+// clear a whole WiFi burst faster than the network can refill the block
+// ring, or the ring overflows and drops audio the jitter buffer never
+// sees — 32 pops per 5.3 ms block outruns any sender rate the protocol
+// allows while still bounding the loop.
 void drain_link_audio(hal::ILinkAudio& la) {
-  for (int guard = 0; guard < 8; ++guard) {
+  for (int guard = 0; guard < 32; ++guard) {
     neon::AudioBlockInfo info;
     uint8_t channels = 2;
     uint32_t rate = 0;
@@ -397,11 +401,15 @@ void audio_task(void*) {
               : 0;
       status.subscribers = link_audio.subscriber_count();
       status.sub_state = static_cast<uint8_t>(g_jitter.state());
-      status.sub_dropped = g_jitter.dropped() + link_audio.source_dropped();
+      status.sub_dropped = g_jitter.dropped();
       status.sub_rate = g_jitter.sender_rate();
       status.fill_ms = (g_jitter.fill_frames() * 1000u) / kSampleRate;
       status.clock_ppm = clock.ppm();
       status.clock_residual_us = static_cast<int32_t>(clock.residual_us());
+      status.rx_dropped = link_audio.source_dropped();
+      status.jit_underruns = g_jitter.underruns();
+      status.tx_dropped = link_audio.sink_dropped();
+      status.trim_ppm = g_jitter.trim_ppm();
       audio_status_bus().publish(status);
     }
   }
@@ -450,15 +458,38 @@ void audio_ctl_task(void*) {
 
   char subscribed_to[sizeof(neon::AudioConfig::la_sub_channel_id)] = {};
   uint8_t published_mono = 0xff;
+  char peer_name[sizeof(neon::Config::device_name)] = {};
+  uint32_t quantum = 0;
+  int enabled = -1;
+
+  // Diagnostics: previous counter values so the periodic log prints
+  // deltas, and the last sub_state so transitions are logged as they
+  // happen. All of this runs here on core 0 — a blocking ESP_LOG from the
+  // render task would itself cause the underruns it reports.
+  neon::AudioStatus prev{};
+  uint8_t last_state = 0;
+  uint32_t log_countdown = 0;
 
   for (;;) {
     const neon::Config& cfg = neon_config();
-    la.set_peer_name(cfg.device_name);
-    la.set_quantum(static_cast<double>(cfg.quantum_beats));
+    // setPeerName / enableLinkAudio reach into the Link session; calling
+    // them every 250 ms with unchanged values is churn the session does
+    // not need while it is trying to stream.
+    if (std::strcmp(peer_name, cfg.device_name) != 0) {
+      std::snprintf(peer_name, sizeof(peer_name), "%s", cfg.device_name);
+      la.set_peer_name(cfg.device_name);
+    }
+    if (cfg.quantum_beats != quantum) {
+      quantum = cfg.quantum_beats;
+      la.set_quantum(static_cast<double>(quantum));
+    }
     const bool want_stream = cfg.audio.la_publish_mix != 0 ||
                              cfg.audio.la_publish_linein != 0 ||
                              cfg.audio.la_sub_channel_id[0] != '\0';
-    la.set_enabled(want_stream);
+    if (static_cast<int>(want_stream) != enabled) {
+      enabled = static_cast<int>(want_stream);
+      la.set_enabled(want_stream);
+    }
     if (cfg.audio.la_publish_mono != published_mono) {
       // Channel count is fixed when a sink is created, so a mono/stereo
       // flip has to tear the sinks down and put them back.
@@ -480,6 +511,43 @@ void audio_ctl_task(void*) {
         ESP_LOGW(kTag, "could not subscribe to \"%s\"", subscribed_to);
         subscribed_to[0] = '\0';
       }
+    }
+
+    // --- receive/publish diagnostics --------------------------------
+    neon::AudioStatus st;
+    audio_status_bus().read(st);
+    if (st.sub_state != last_state) {
+      ESP_LOGI(kTag, "sub %s -> %s (fill %lu ms, rx_drop %lu, jit_drop %lu)",
+               last_state == 0 ? "idle" : last_state == 1 ? "buffering"
+                                                          : "playing",
+               st.sub_state == 0 ? "idle" : st.sub_state == 1 ? "buffering"
+                                                              : "playing",
+               static_cast<unsigned long>(st.fill_ms),
+               static_cast<unsigned long>(st.rx_dropped),
+               static_cast<unsigned long>(st.sub_dropped));
+      last_state = st.sub_state;
+    }
+    const bool streaming = st.sub_state != 0 || st.publishing != 0 ||
+                           subscribed_to[0] != '\0';
+    if (streaming && log_countdown-- == 0) {
+      log_countdown = 20;  // every ~5 s while streaming
+      ESP_LOGI(kTag,
+               "la: state %u fill %lu ms trim %ld ppm | d5s rx_drop %lu "
+               "jit_drop %lu rebuf %lu i2s_und %lu tx_drop %lu | clk %ld ppm",
+               static_cast<unsigned>(st.sub_state),
+               static_cast<unsigned long>(st.fill_ms),
+               static_cast<long>(st.trim_ppm),
+               static_cast<unsigned long>(st.rx_dropped - prev.rx_dropped),
+               static_cast<unsigned long>(st.sub_dropped - prev.sub_dropped),
+               static_cast<unsigned long>(st.jit_underruns -
+                                          prev.jit_underruns),
+               static_cast<unsigned long>(st.underruns - prev.underruns),
+               static_cast<unsigned long>(st.tx_dropped - prev.tx_dropped),
+               static_cast<long>(st.clock_ppm));
+      prev = st;
+    } else if (!streaming) {
+      log_countdown = 0;
+      prev = st;
     }
     vTaskDelay(pdMS_TO_TICKS(250));
   }
