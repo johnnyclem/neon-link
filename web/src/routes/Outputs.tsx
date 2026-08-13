@@ -4,6 +4,7 @@ import type { ClockConfig, Config } from "../api";
 import { stepIsOn, toggleStep } from "../api";
 import { strings } from "../design/strings";
 import { Card, NumberField, SelectField, Toggle } from "../components/controls";
+import type { AudioRole } from "../api";
 import {
   JackField,
   jackTitle,
@@ -44,6 +45,17 @@ function StepGrid({
     </div>
   );
 }
+
+const AUDIO_ROLES: { value: AudioRole; label: string }[] = [
+  { value: "mix", label: "Mix" },
+  { value: "metronome", label: "Metronome" },
+  { value: "clock", label: "Clock (audio)" },
+  { value: "reset", label: "Reset (audio)" },
+  { value: "run", label: "Run gate (audio)" },
+  { value: "synth", label: "Synth" },
+  { value: "link_in", label: "Link Audio in" },
+  { value: "line_in", label: "Line in" },
+];
 
 function setClock(
   patch: PageProps["patch"],
@@ -409,11 +421,68 @@ function JackSettings({
         </>
       );
 
+    case "line-out":
+      return (
+        <>
+          <p class="jack-copy">
+            Stereo line out from the audio engine — the mix, or a solo tap of
+            one source per channel. Levels and the metronome live on the{" "}
+            <a href="#/audio">Audio page</a>.
+          </p>
+          <Toggle
+            label="Audio engine enabled (takes effect on reboot)"
+            checked={cfg.audio.enabled}
+            onChange={(v) => patch((d) => (d.audio.enabled = v))}
+          />
+          <div class="fields">
+            <SelectField
+              label="Left carries"
+              value={cfg.audio.role_l}
+              options={AUDIO_ROLES}
+              onChange={(v) => patch((d) => (d.audio.role_l = v))}
+            />
+            <SelectField
+              label="Right carries"
+              value={cfg.audio.role_r}
+              options={AUDIO_ROLES}
+              onChange={(v) => patch((d) => (d.audio.role_r = v))}
+            />
+          </div>
+        </>
+      );
+
+    case "line-in":
+      return (
+        <>
+          <p class="jack-copy">
+            Stereo line in. Feed it into the mix here; publishing it as a Link
+            Audio channel lives on the <a href="#/audio">Audio page</a>.
+          </p>
+          <div class="fields">
+            <NumberField
+              label="Monitor %"
+              value={Math.round((cfg.audio.linein_monitor_gain * 100) / 200)}
+              min={0}
+              max={127}
+              onChange={(v) =>
+                patch(
+                  (d) =>
+                    (d.audio.linein_monitor_gain = Math.min(
+                      255,
+                      Math.round((v * 200) / 100),
+                    )),
+                )
+              }
+            />
+          </div>
+        </>
+      );
+
     default:
       return (
         <p class="jack-copy">
-          This hole is on the AMYboard but NEON LINK does not drive it. SPDIF
-          and LINE stay unused — only MIDI and the two CV pairs are wired.
+          S/PDIF is on the AMYboard but deliberately deferred — the firmware
+          does not drive it yet. Everything else on the block is live.
         </p>
       );
   }

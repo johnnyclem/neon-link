@@ -4,8 +4,6 @@ import { api } from "../api";
 import { strings } from "../design/strings";
 import { HeroTempo } from "../components/HeroTempo";
 import { PhaseBar } from "../components/PhaseBar";
-import { StatusChip } from "../components/StatusChip";
-import { networkState } from "../components/StatusStrip";
 import { BeatStage, beatFromStatus } from "../components/BeatStage";
 import { SubNav } from "../components/SubNav";
 import { Button, Card, Readout } from "../components/controls";
@@ -56,6 +54,12 @@ export function Live({ status, cfg }: PageProps) {
           </div>
         ) : null}
 
+        {/* The bar sits with the transport it describes: glance at Play,
+            see where the loop is, hit Stop — one eye movement. */}
+        <div class="live-phase">
+          <PhaseBar phase={phase} quantum={quantum} running={playing} height={44} />
+        </div>
+
         <div class="transport">
           <Button
             variant={playing ? "secondary" : "primary"}
@@ -95,7 +99,12 @@ export function Live({ status, cfg }: PageProps) {
             inputMode="decimal"
             class="tempo-input"
             aria-label="Set tempo"
-            placeholder={status ? status.set_bpm.toFixed(1) : "120.0"}
+            placeholder={
+              // The ghost value is where the session is *now*. Showing the
+              // last requested tempo here made the field contradict the hero
+              // digits whenever Link had since agreed on something else.
+              status && status.tempo_valid ? status.bpm.toFixed(1) : "120.0"
+            }
             value={bpmDraft}
             onInput={(e) => setBpmDraft((e.target as HTMLInputElement).value)}
           />
@@ -113,49 +122,85 @@ export function Live({ status, cfg }: PageProps) {
             Set BPM
           </Button>
         </div>
+        {/* No chips here: the sticky strip above already shows source /
+            transport / network, and repeating them cost half a screen. */}
+      </Card>
 
-        <div class="live-phase">
-          <PhaseBar
-            phase={phase}
-            quantum={quantum}
-            running={playing}
-            height={44}
+      {/* The switcher is the card's own header, so Sync / Set / Stats reads
+          as one panel with tabs — not a second tab bar floating above the
+          real one at the bottom of the phone. */}
+      <section class="card">
+        <div class="card__head card__head--tabs">
+          <SubNav
+            label="Live extras"
+            value={pane}
+            onChange={(id) => setPane(id as typeof pane)}
+            items={[
+              { id: "sync", label: "Sync" },
+              { id: "set", label: "Set" },
+              { id: "stats", label: "Stats" },
+            ]}
           />
         </div>
-        <div class="strip__chips" style="margin:var(--space-3) 0 0">
-          {status ? (
+        <div class="card__body">
+          {pane === "sync" ? (
+            <div class="btn-row" style="margin-top:0">
+              <Button variant="secondary" onClick={() => send(() => api.resync("next"))}>
+                Reset next loop
+              </Button>
+              <Button variant="secondary" onClick={() => send(() => api.resync("now"))}>
+                Re-align grid now
+              </Button>
+            </div>
+          ) : null}
+
+          {pane === "set" ? (
             <>
-              <StatusChip state={status.ext_clock ? "source_ext" : "source_link"} />
-              <StatusChip state={playing ? "transport_run" : "transport_stop"} />
-              <StatusChip state={networkState(status)} detail={`${status.peers}P`} />
+              <div class="preset-grid">
+                {[0, 1, 2, 3].map((slot) => (
+                  <div key={slot} class="btn-row" style="margin-top:0">
+                    <span class="field__label" style="min-width:4em">
+                      Slot {slot + 1}
+                    </span>
+                    <Button variant="secondary" onClick={() => void preset("save", slot)}>
+                      Save
+                    </Button>
+                    <Button variant="secondary" onClick={() => void preset("recall", slot)}>
+                      Recall
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {presetMsg ? (
+                <p class="btn-row__msg" style="margin-top:var(--space-2)">
+                  {presetMsg}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {pane === "stats" ? (
+            <>
+              <Readout
+                label="Edges emitted"
+                value={<span class="mono">{status?.pulse.edges ?? "—"}</span>}
+              />
+              <Readout
+                label="Worst lateness"
+                value={<span class="mono">{status ? `${status.pulse.late_max_us} µs` : "—"}</span>}
+              />
+              <Readout
+                label="Average lateness"
+                value={<span class="mono">{status ? `${status.pulse.late_avg_us} µs` : "—"}</span>}
+              />
+              <Readout
+                label="Uptime"
+                value={<span class="mono">{status ? formatUptime(status.uptime_s) : "—"}</span>}
+              />
             </>
           ) : null}
         </div>
-      </Card>
-
-      <SubNav
-        label="Live extras"
-        value={pane}
-        onChange={(id) => setPane(id as typeof pane)}
-        items={[
-          { id: "sync", label: "Sync" },
-          { id: "set", label: "Set" },
-          { id: "stats", label: "Stats" },
-        ]}
-      />
-
-      {pane === "sync" ? (
-      <Card title="Resync">
-        <div class="btn-row" style="margin-top:0">
-          <Button variant="secondary" onClick={() => send(() => api.resync("next"))}>
-            Reset next loop
-          </Button>
-          <Button variant="secondary" onClick={() => send(() => api.resync("now"))}>
-            Re-align grid now
-          </Button>
-        </div>
-      </Card>
-      ) : null}
+      </section>
 
       {status && pane === "sync" && status.tempo_valid && status.peers === 0 && !status.setup_ap ? (
         <div class="banner">
@@ -164,49 +209,6 @@ export function Live({ status, cfg }: PageProps) {
             {strings.states.no_link.long}
           </div>
         </div>
-      ) : null}
-
-      {pane === "set" ? (
-      <Card title="Presets">
-        <div class="preset-grid">
-          {[0, 1, 2, 3].map((slot) => (
-            <div key={slot} class="btn-row" style="margin-top:0">
-              <span class="field__label" style="min-width:4em">
-                Slot {slot + 1}
-              </span>
-              <Button variant="secondary" onClick={() => void preset("save", slot)}>
-                Save
-              </Button>
-              <Button variant="secondary" onClick={() => void preset("recall", slot)}>
-                Recall
-              </Button>
-            </div>
-          ))}
-        </div>
-        {presetMsg ? (
-          <p class="btn-row__msg" style="margin-top:var(--space-2)">
-            {presetMsg}
-          </p>
-        ) : null}
-      </Card>
-      ) : null}
-
-      {pane === "stats" ? (
-      <Card title="Timing">
-        <Readout label="Edges emitted" value={<span class="mono">{status?.pulse.edges ?? "—"}</span>} />
-        <Readout
-          label="Worst lateness"
-          value={<span class="mono">{status ? `${status.pulse.late_max_us} µs` : "—"}</span>}
-        />
-        <Readout
-          label="Average lateness"
-          value={<span class="mono">{status ? `${status.pulse.late_avg_us} µs` : "—"}</span>}
-        />
-        <Readout
-          label="Uptime"
-          value={<span class="mono">{status ? formatUptime(status.uptime_s) : "—"}</span>}
-        />
-      </Card>
       ) : null}
     </>
   );
