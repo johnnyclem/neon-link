@@ -472,9 +472,23 @@ void audio_ctl_task(void*) {
 
   for (;;) {
     const neon::Config& cfg = neon_config();
+    // session.start() lives in link_svc, after the STA wait (up to 15 s).
+    // This task is created the moment audio_service starts, so the first
+    // ticks hit a null LinkAudio. Caching enable / peer-name across those
+    // no-ops left enableLinkAudio(false) forever — Live saw no stream.
+    if (!la.session_ready()) {
+      enabled = -1;
+      peer_name[0] = '\0';
+      quantum = 0;
+      published_mono = 0xff;
+      subscribed_to[0] = '\0';
+      vTaskDelay(pdMS_TO_TICKS(250));
+      continue;
+    }
     // setPeerName / enableLinkAudio reach into the Link session; calling
     // them every 250 ms with unchanged values is churn the session does
-    // not need while it is trying to stream.
+    // not need while it is trying to stream. Only cache after a call that
+    // actually reached the instance.
     if (std::strcmp(peer_name, cfg.device_name) != 0) {
       std::snprintf(peer_name, sizeof(peer_name), "%s", cfg.device_name);
       la.set_peer_name(cfg.device_name);
@@ -489,6 +503,7 @@ void audio_ctl_task(void*) {
     if (static_cast<int>(want_stream) != enabled) {
       enabled = static_cast<int>(want_stream);
       la.set_enabled(want_stream);
+      ESP_LOGI(kTag, "Link Audio %s", want_stream ? "enabled" : "disabled");
     }
     if (cfg.audio.la_publish_mono != published_mono) {
       // Channel count is fixed when a sink is created, so a mono/stereo

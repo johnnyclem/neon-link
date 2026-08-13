@@ -21,6 +21,7 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_hal neon_hal)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_core neon_core)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/client neon_client)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Juce.cmake)
 
@@ -44,6 +45,9 @@ juce_add_plugin(NeonLink
 target_sources(NeonLink PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
+  Source/DeviceController.cpp
+  Source/ui/HeroTempo.cpp
+  Source/ui/PhaseBar.cpp
 )
 
 target_compile_definitions(NeonLink
@@ -57,11 +61,15 @@ target_compile_definitions(NeonLink
 set_source_files_properties(
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
+  Source/DeviceController.cpp
+  Source/ui/HeroTempo.cpp
+  Source/ui/PhaseBar.cpp
   PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
 
 target_link_libraries(NeonLink
   PRIVATE
     juce::juce_audio_utils
+    neon_client
     neon_core
     neon_hal
   PUBLIC

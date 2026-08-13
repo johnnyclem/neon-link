@@ -1,10 +1,12 @@
 #pragma once
 
+#include <memory>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
-// Audio-effect device manager. Constructor is I/O-free: Live constructs
-// and destroys this during the VST3 scan. Network starts in a later PR.
-class NeonLinkProcessor : public juce::AudioProcessor {
+#include "DeviceController.h"
+
+class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
  public:
   NeonLinkProcessor();
   ~NeonLinkProcessor() override;
@@ -33,6 +35,14 @@ class NeonLinkProcessor : public juce::AudioProcessor {
 
   bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
+  void ensureControllerStarted();
+  neon::plugin::DeviceController* controller() { return controller_.get(); }
+
  private:
+  void timerCallback() override;
+
+  std::unique_ptr<neon::plugin::DeviceController> controller_;
+  juce::String pending_host_;
+
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeonLinkProcessor)
 };
