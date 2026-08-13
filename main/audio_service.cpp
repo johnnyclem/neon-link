@@ -89,21 +89,18 @@ void clear(float* buf) {
   }
 }
 
-bool role_uses(neon::AudioRole role, neon::AudioRole want) {
-  return role == want;
-}
-
 // Is `role` on either output, or folded into a mix that is?
 bool source_needed(const neon::AudioEngineConfig& cfg, neon::AudioRole role,
                    bool in_mix) {
-  if (role_uses(cfg.role_l, role) || role_uses(cfg.role_r, role)) {
+  if (cfg.role_l == role || cfg.role_r == role) {
     return true;
   }
   return in_mix && (cfg.role_l == neon::AudioRole::kMix ||
                     cfg.role_r == neon::AudioRole::kMix);
 }
 
-neon::MixerConfig mixer_config(const neon::AudioEngineConfig& cfg) {
+neon::MixerConfig mixer_config(const neon::AudioEngineConfig& cfg,
+                               bool click_sounding) {
   neon::MixerConfig m;
   m.role_l = cfg.role_l;
   m.role_r = cfg.role_r;
@@ -111,7 +108,10 @@ neon::MixerConfig mixer_config(const neon::AudioEngineConfig& cfg) {
   m.amy_gain = cfg.amy_gain;
   m.linein_gain = cfg.linein_monitor_gain;
   m.sub_gain = cfg.la_sub_gain;
-  m.metro_enabled = cfg.metro_enabled != 0;
+  // A click switched off mid-envelope still has to reach the output, or
+  // the fade is a fade into a muted bus — which is the pop it exists to
+  // prevent.
+  m.metro_enabled = cfg.metro_enabled != 0 || click_sounding;
   m.amy_enabled = cfg.amy_enabled != 0;
   return m;
 }
@@ -236,7 +236,11 @@ void audio_task(void*) {
 
     const uint32_t new_cfg_version = audio_config_bus().version();
     if (new_cfg_version != cfg_version) {
+      const bool metro_was_on = cfg.metro_enabled != 0;
       cfg_version = audio_config_bus().read(cfg);
+      if (metro_was_on && cfg.metro_enabled == 0) {
+        g_click.fade_out();
+      }
       g_click.set_config(click_config(cfg));
       amysynth::set_patch(cfg.amy_patch);
       g_jitter.configure(cfg.la_jitter_ms);
@@ -297,7 +301,8 @@ void audio_task(void*) {
     neon::MixSources src;
 
     clear(g_metro);
-    if (want_metro) {
+    const bool click_sounding = g_click.voice_active();
+    if (want_metro || click_sounding) {
       g_click.render(window, g_metro, kBlockFrames);
       src.metro = g_metro;
     }
@@ -345,7 +350,8 @@ void audio_task(void*) {
     }
 
     // --- mix, publish, play --------------------------------------------
-    neon::mix_block(mixer_config(cfg), src, kBlockFrames, g_out_l, g_out_r);
+    neon::mix_block(mixer_config(cfg, click_sounding), src, kBlockFrames,
+                    g_out_l, g_out_r);
     neon::float_to_int16(g_out_l, g_out_r, kBlockFrames, g_out_i16);
 
     const int sink_mix = g_sink_mix.load(std::memory_order_relaxed);

@@ -17,6 +17,7 @@
 
 #include <ableton/LinkAudio.hpp>
 
+#include <cstdio>
 #include <cstring>
 #include <new>
 
