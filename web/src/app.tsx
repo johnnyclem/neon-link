@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
-import { api, type Config, type Status } from "./api";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { adoptConfig, api, type Config, type Status } from "./api";
 import { strings } from "./design/strings";
 import { StatusStrip } from "./components/StatusStrip";
 import { TabBar } from "./components/TabBar";
@@ -39,11 +39,15 @@ export function App() {
       .catch((e: Error) => setLoadError(e.message));
   }, []);
 
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+
   const patch = useCallback((mutate: (draft: Config) => void) => {
     setCfg((current) => {
       if (!current) return current;
       const draft = structuredClone(current) as Config;
       mutate(draft);
+      cfgRef.current = draft;
       return draft;
     });
     setDirty(true);
@@ -51,13 +55,22 @@ export function App() {
   }, []);
 
   const save = useCallback(async () => {
-    if (!cfg) return;
+    const current = cfgRef.current;
+    if (!current) return;
     setSaving(true);
     try {
       // The device answers with the sanitized config; adopting its reply is
-      // how the form learns about any value it clamped.
-      const applied = await api.putConfig(cfg);
-      setCfg({ ...applied, wifi: { ...applied.wifi, pass: "" } });
+      // how the form learns about any value it clamped. If the station
+      // bounces mid-reply, the write has already landed — GET what stuck.
+      let applied: Config;
+      try {
+        applied = await api.putConfig(current);
+      } catch {
+        applied = await api.getConfig();
+      }
+      const next = adoptConfig(applied, current);
+      cfgRef.current = next;
+      setCfg(next);
       setDirty(false);
       setMessage({ text: strings.states.saved.long, kind: "ok" });
     } catch (e) {
@@ -65,7 +78,7 @@ export function App() {
     } finally {
       setSaving(false);
     }
-  }, [cfg]);
+  }, []);
 
   // A success confirmation has a shelf life; once read, the save bar it
   // holds open should give the row back. Errors stay until acted on.
