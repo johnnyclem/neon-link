@@ -12,6 +12,7 @@ config NEON_LINK_STUB
 config NEON_LINK_AUDIO
     bool "Link Audio streaming (needs Ableton Link 4.0)"
     depends on !NEON_LINK_STUB
+    default y if NEON_AUDIO
     default n
     help
         Publish the module's mix (and line input) as named Link Audio

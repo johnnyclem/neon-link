@@ -19,13 +19,10 @@
 
 #pragma once
 
-// NEON LINK override of ableton/platforms/esp32/Context.hpp (Link-3.1.5).
-// The upstream esp32 platform still uses asio::io_service / io_service::work
-// / io_context::post(), all removed in the asio 1.36.0 that Link pins as a
-// submodule (the esp32 platform is experimental and not CI-covered
-// upstream). This copy modernizes exactly those call sites; everything else
-// is unchanged. This directory is placed before the Link submodule on the
-// include path, so this file shadows the upstream one.
+// NEON LINK override of ableton/platforms/esp32/Context.hpp (Link-4.0).
+// Upstream still uses asio::io_service / io_service::work / io_context::post(),
+// removed in the asio 1.36.0 that Link pins. This copy modernizes those
+// call sites. Shadowed via include-path order in CMakeLists.txt.
 
 #include <ableton/discovery/AsioTypes.hpp>
 #include <ableton/discovery/IpInterface.hpp>
@@ -72,11 +69,13 @@ class Context
       , mpWork(new ::asio::executor_work_guard<::asio::io_context::executor_type>(
           mpService->get_executor()))
     {
+      // Prio 2 lost to HTTP/OLED on core 0 and Link Audio packets
+      // arrived late enough that the play ring bled ~40 ms/s.
       xTaskCreatePinnedToCore(run,
                               "link",
-                              8192,
+                              16384,
                               this,
-                              2 | portPRIVILEGE_BIT,
+                              8 | portPRIVILEGE_BIT,
                               &mTaskHandle,
                               LINK_ESP_TASK_CORE_ID);
     }

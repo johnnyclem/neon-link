@@ -162,7 +162,7 @@ void config_sanitize(Config* cfg) {
   a.la_publish_mix = a.la_publish_mix ? 1 : 0;
   a.la_publish_linein = a.la_publish_linein ? 1 : 0;
   a.la_publish_mono = a.la_publish_mono ? 1 : 0;
-  clamp<uint16_t>(&a.la_jitter_ms, 5, 500);
+  clamp<uint16_t>(&a.la_jitter_ms, 5, 800);
   a.la_channel_name[sizeof(a.la_channel_name) - 1] = '\0';
   a.la_sub_channel_id[sizeof(a.la_sub_channel_id) - 1] = '\0';
   a.pad_[0] = 0;

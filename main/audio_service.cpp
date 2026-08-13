@@ -43,9 +43,9 @@ namespace {
 
 const char* kTag = "audio_svc";
 
-constexpr uint32_t kSampleRate = 44100;
-constexpr uint16_t kBlockFrames = 128;
-constexpr uint8_t kDmaDesc = 4;
+constexpr uint32_t kSampleRate = 48000;
+constexpr uint16_t kBlockFrames = 256;
+constexpr uint8_t kDmaDesc = 8;
 constexpr uint32_t kMaxRxFrames = 512;
 
 // Analog latency of the DAC's reconstruction filter, on top of the DMA
@@ -53,9 +53,9 @@ constexpr uint32_t kMaxRxFrames = 512;
 // outputs on hardware (docs/AUDIOLINK.md PR8); zero until it is.
 constexpr int32_t kDacLatencyUs = 0;
 
-// ~340 ms of stereo at 48 kHz: deep enough for the 500 ms jitter maximum
-// to be meaningful at any sender rate the protocol allows.
-constexpr uint32_t kJitterRingFrames = 16384;
+// ~680 ms of stereo at 48 kHz: deep enough for the 800 ms jitter
+// maximum (hardware needed ~650 ms of pre-roll on a busy studio LAN).
+constexpr uint32_t kJitterRingFrames = 32768;
 
 // Per-source render buffers. Static rather than stack: this task's stack
 // would have to be 8 KB bigger for no reason.
@@ -399,6 +399,7 @@ void audio_task(void*) {
       status.sub_state = static_cast<uint8_t>(g_jitter.state());
       status.sub_dropped = g_jitter.dropped() + link_audio.source_dropped();
       status.sub_rate = g_jitter.sender_rate();
+      status.fill_ms = (g_jitter.fill_frames() * 1000u) / kSampleRate;
       status.clock_ppm = clock.ppm();
       status.clock_residual_us = static_cast<int32_t>(clock.residual_us());
       audio_status_bus().publish(status);
@@ -452,6 +453,12 @@ void audio_ctl_task(void*) {
 
   for (;;) {
     const neon::Config& cfg = neon_config();
+    la.set_peer_name(cfg.device_name);
+    la.set_quantum(static_cast<double>(cfg.quantum_beats));
+    const bool want_stream = cfg.audio.la_publish_mix != 0 ||
+                             cfg.audio.la_publish_linein != 0 ||
+                             cfg.audio.la_sub_channel_id[0] != '\0';
+    la.set_enabled(want_stream);
     if (cfg.audio.la_publish_mono != published_mono) {
       // Channel count is fixed when a sink is created, so a mono/stereo
       // flip has to tear the sinks down and put them back.
@@ -504,9 +511,9 @@ extern "C" int neon_audio_channels_json(char* buf, int cap) {
   for (size_t i = 0; i < n && written < cap; ++i) {
     written += std::snprintf(
         buf + written, static_cast<size_t>(cap - written),
-        "%s{\"id\":\"%s\",\"name\":\"%s\",\"rate\":%u,\"channels\":%u,"
-        "\"local\":%s}",
-        i == 0 ? "" : ",", channels[i].id, channels[i].name,
+        "%s{\"id\":\"%s\",\"name\":\"%s\",\"peer\":\"%s\",\"rate\":%u,"
+        "\"channels\":%u,\"local\":%s}",
+        i == 0 ? "" : ",", channels[i].id, channels[i].name, channels[i].peer,
         static_cast<unsigned>(channels[i].sample_rate),
         static_cast<unsigned>(channels[i].num_channels),
         channels[i].is_local ? "true" : "false");

@@ -151,6 +151,7 @@ const status = () => {
       sub_state: config.audio.sub_channel_id ? "playing" : "idle",
       sub_rate: config.audio.sub_channel_id ? 48000 : 0,
       sub_dropped: 0,
+      fill_ms: config.audio.sub_channel_id ? 210 : 0,
       clock_ppm: 43,
     },
   };
@@ -160,12 +161,27 @@ const status = () => {
 const audioChannels = () => ({
   available: true,
   channels: [
-    { id: "8f2a/master", name: "Live Master", rate: 48000, channels: 2, local: false },
-    { id: "8f2a/track3", name: "Live Drums", rate: 48000, channels: 2, local: false },
     {
-      id: "self/out",
+      id: "8f2a01c4d8e0ab11",
+      name: "Master",
+      peer: "Live 12",
+      rate: 48000,
+      channels: 2,
+      local: false,
+    },
+    {
+      id: "8f2a01c4d8e0ab12",
+      name: "Drums",
+      peer: "Live 12",
+      rate: 48000,
+      channels: 2,
+      local: false,
+    },
+    {
+      id: "00aabbccddeeff01",
       name: `${config.audio.channel_name || config.device_name} Out`,
-      rate: 44100,
+      peer: config.device_name,
+      rate: 48000,
       channels: 2,
       local: true,
     },

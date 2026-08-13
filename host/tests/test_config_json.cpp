@@ -262,6 +262,6 @@ TEST_CASE("an out-of-range jitter figure is clamped on the way in") {
   neon::Config cfg;
   const char* doc = R"({"audio":{"jitter_ms":100000,"amy_patch":9}})";
   REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
-  CHECK(cfg.audio.la_jitter_ms == 500);
+  CHECK(cfg.audio.la_jitter_ms == 800);
   CHECK(cfg.audio.amy_patch == 1);
 }

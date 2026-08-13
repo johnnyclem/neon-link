@@ -80,6 +80,7 @@ struct AudioStatus {
   uint32_t sub_dropped = 0; // receive-path frames dropped
   uint32_t sub_rate = 0;    // sender sample rate, 0 when not receiving
   uint32_t subscribers = 0; // peers listening to our published channels
+  uint32_t fill_ms = 0;     // receive-buffer fill, milliseconds
   int32_t clock_ppm = 0;    // SampleClock rate correction
   int32_t clock_residual_us = 0;
 };

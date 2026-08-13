@@ -1,12 +1,16 @@
 #pragma once
 
-// I2S duplex audio for the AMYboard's PCM5101 (out) and PCM1808 (in).
+// I2S audio for the AMYboard's PCM3060 LINE codec.
 //
-// One I2S port in duplex mode: TX and RX share BCLK and WS, which is the
-// only arrangement that keeps the two converters on one sample clock — and
-// therefore keeps one SampleClock instance valid for both directions. If a
-// board wires the ADC to its own crystal instead, the input side needs its
-// own instance; see docs/AUDIOLINK.md.
+// The PCM3060 is an I2S slave that wants 32-bit left-justified slots and
+// a 256fs MCLK. The portable engine still hands us interleaved stereo
+// int16; the driver packs each sample into the top 16 bits of a 32-bit
+// slot on the way out.
+//
+// Duplex is optional and off by default. A TX+RX DMA ring (16 × 256 ×
+// 32-bit stereo × 2) ate ~64 kB of internal RAM and the chip rebooted as
+// soon as WiFi associated. TX-only with 8 descriptors is ~16 kB and
+// ~42 ms of slack so a late write does not auto-clear to zeros.
 //
 // The on_sent callback records (esp_timer µs, cumulative frames) marks
 // through an ISR-safe seqlock, which is what SampleClock is fed with.

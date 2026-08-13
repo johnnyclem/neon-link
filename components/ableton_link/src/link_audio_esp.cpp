@@ -14,6 +14,11 @@
 //
 // Beats cross the ILinkAudio boundary as Q32.32. The double↔Q32.32
 // conversions live in this file and nowhere else.
+//
+// The constructors and buffer handles here match the real Link-4.0 API
+// (LinkAudio(bpm, name), LinkAudioSink(link, name, maxSamples),
+// LinkAudioSource(link, ChannelId, callback)) — not the guessed surface
+// in the original design spec.
 
 #include <ableton/LinkAudio.hpp>
 
@@ -41,7 +46,7 @@ namespace {
 const char* kTag = "link_audio";
 
 constexpr uint32_t kMaxBlockFrames = 512;
-constexpr uint32_t kRxSlots = 16;   // ~170 ms of 512-frame blocks at 48 kHz
+constexpr uint32_t kRxSlots = 16;
 constexpr uint32_t kTxSlots = 8;
 constexpr uint32_t kPumpPeriodMs = 4;
 
@@ -53,12 +58,35 @@ double q32_to_beats(int64_t q32) {
   return static_cast<double>(q32) / 4294967296.0;
 }
 
-// PSRAM for the ring payloads: they are ~200 KB together and nothing in
-// the audio path DMAs from them.
+void id_to_hex(const ableton::ChannelId& id, char out[17]) {
+  static const char kHex[] = "0123456789abcdef";
+  for (int i = 0; i < 8; ++i) {
+    out[i * 2] = kHex[(id[i] >> 4) & 0xf];
+    out[i * 2 + 1] = kHex[id[i] & 0xf];
+  }
+  out[16] = '\0';
+}
+
+bool hex_to_id(const char* hex, ableton::ChannelId* out) {
+  if (hex == nullptr || std::strlen(hex) != 16 || out == nullptr) {
+    return false;
+  }
+  ableton::ChannelId id{};
+  for (int i = 0; i < 8; ++i) {
+    unsigned v = 0;
+    if (std::sscanf(hex + i * 2, "%2x", &v) != 1) {
+      return false;
+    }
+    id[i] = static_cast<uint8_t>(v);
+  }
+  *out = id;
+  return true;
+}
+
 void* psram_alloc(size_t bytes) {
   void* p = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (p == nullptr) {
-    p = heap_caps_malloc(bytes, MALLOC_CAP_8BIT);  // no PSRAM on this board
+    p = heap_caps_malloc(bytes, MALLOC_CAP_8BIT);
   }
   return p;
 }
@@ -68,16 +96,38 @@ struct Sink {
   neon::AudioBlockRing ring;
   int16_t* samples = nullptr;
   neon::AudioBlockInfo* infos = nullptr;
-  uint32_t rate = 44100;
+  uint32_t rate = 48000;
   uint8_t channels = 2;
   bool active = false;
+  bool had_subscribers = false;
 };
 
 class LinkAudioEsp final : public hal::ILinkAudio {
  public:
   bool available() const override { return true; }
 
-  // ---- control plane (core 0) ----
+  void set_enabled(bool enable) override {
+    LinkImpl* link = detail::link_instance();
+    if (link == nullptr) {
+      return;
+    }
+    link->enableLinkAudio(enable);
+  }
+
+  void set_peer_name(const char* name) override {
+    LinkImpl* link = detail::link_instance();
+    if (link == nullptr || name == nullptr || name[0] == '\0') {
+      return;
+    }
+    link->setPeerName(name);
+    std::snprintf(peer_name_, sizeof(peer_name_), "%s", name);
+  }
+
+  void set_quantum(double beats) override {
+    if (beats >= 1.0 && beats <= 16.0) {
+      quantum_ = beats;
+    }
+  }
 
   int sink_create(const char* name, uint32_t rate, uint8_t channels,
                   uint32_t max_block_frames) override {
@@ -94,17 +144,19 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       if (!ensure_sink_storage(s, channels)) {
         return -1;
       }
-      s.sink = new (std::nothrow) ableton::LinkAudioSink(
-          name, static_cast<std::size_t>(max_block_frames));
+      const size_t max_samples =
+          static_cast<size_t>(max_block_frames) * (channels != 0 ? channels : 2);
+      s.sink = new (std::nothrow) ableton::LinkAudioSink(*link, name, max_samples);
       if (s.sink == nullptr) {
         return -1;
       }
       s.rate = rate;
-      s.channels = channels;
+      s.channels = channels != 0 ? channels : 2;
       s.active = true;
+      s.had_subscribers = false;
       ESP_LOGI(kTag, "publishing \"%s\" (%lu Hz, %u ch)", name,
                static_cast<unsigned long>(rate),
-               static_cast<unsigned>(channels));
+               static_cast<unsigned>(s.channels));
       return i;
     }
     return -1;
@@ -115,7 +167,8 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       return;
     }
     Sink& s = sinks_[sink];
-    s.active = false;   // the audio task stops writing before we delete
+    s.active = false;
+    s.had_subscribers = false;
     vTaskDelay(pdMS_TO_TICKS(10));
     delete s.sink;
     s.sink = nullptr;
@@ -123,11 +176,10 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   }
 
   bool sink_has_subscribers(int sink) const override {
-    if (sink < 0 || sink >= kMaxSinks || !sinks_[sink].active ||
-        sinks_[sink].sink == nullptr) {
+    if (sink < 0 || sink >= kMaxSinks || !sinks_[sink].active) {
       return false;
     }
-    return sinks_[sink].sink->numSubscribers() > 0;
+    return sinks_[sink].had_subscribers;
   }
 
   size_t channels(hal::AudioChannelInfo* out, size_t cap) override {
@@ -136,16 +188,18 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       return 0;
     }
     size_t n = 0;
-    for (const auto& ch : link->audioChannels()) {
+    for (const auto& ch : link->channels()) {
       if (n >= cap) {
         break;
       }
       hal::AudioChannelInfo& info = out[n];
-      std::snprintf(info.id, sizeof(info.id), "%s", ch.id().c_str());
-      std::snprintf(info.name, sizeof(info.name), "%s", ch.name().c_str());
-      info.sample_rate = static_cast<uint32_t>(ch.sampleRate());
-      info.num_channels = static_cast<uint8_t>(ch.numChannels());
-      info.is_local = ch.isLocal() ? 1 : 0;
+      id_to_hex(ch.id, info.id);
+      std::snprintf(info.name, sizeof(info.name), "%s", ch.name.c_str());
+      std::snprintf(info.peer, sizeof(info.peer), "%s", ch.peerName.c_str());
+      info.sample_rate = 0;
+      info.num_channels = 0;
+      info.is_local =
+          (peer_name_[0] != '\0' && ch.peerName == peer_name_) ? 1 : 0;
       ++n;
     }
     return n;
@@ -156,15 +210,20 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     if (link == nullptr || channel_id == nullptr || channel_id[0] == '\0') {
       return false;
     }
+    ableton::ChannelId id{};
+    if (!hex_to_id(channel_id, &id)) {
+      ESP_LOGW(kTag, "subscribe: \"%s\" is not a 16-char channel id",
+               channel_id);
+      return false;
+    }
     unsubscribe();
     if (!ensure_rx_storage()) {
       return false;
     }
     rx_ring_.reset();
     source_ = new (std::nothrow) ableton::LinkAudioSource(
-        channel_id,
-        [this](const ableton::LinkAudioBufferInfo& info, const int16_t* data) {
-          on_receive(info, data);
+        *link, id, [this](ableton::LinkAudioSource::BufferHandle handle) {
+          on_receive(handle);
         });
     if (source_ == nullptr) {
       return false;
@@ -179,7 +238,7 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       return;
     }
     ableton::LinkAudioSource* s = source_;
-    source_ = nullptr;  // the callback checks this before touching the ring
+    source_ = nullptr;
     delete s;
     sub_id_[0] = '\0';
     rx_ring_.reset();
@@ -188,29 +247,36 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   bool subscribed() const override { return source_ != nullptr; }
 
   void pump() override {
+    LinkImpl* link = detail::link_instance();
+    if (link == nullptr) {
+      return;
+    }
     int16_t block[kMaxBlockFrames * 2];
+    const auto state = link->captureAppSessionState();
     for (int i = 0; i < kMaxSinks; ++i) {
       Sink& s = sinks_[i];
       if (!s.active || s.sink == nullptr) {
         continue;
       }
       neon::AudioBlockInfo info;
+      bool saw_sub = false;
       while (s.ring.pop(&info, block, sizeof(block) / sizeof(block[0]))) {
-        if (s.sink->numSubscribers() == 0) {
-          continue;  // Link would drop it anyway; skip the copy
+        ableton::LinkAudioSink::BufferHandle handle(*s.sink);
+        if (!handle) {
+          continue;  // no subscriber; drain so the ring cannot back up
         }
-        ableton::LinkAudioBufferInfo out;
-        out.setBeginBeats(q32_to_beats(info.begin_beat_q32));
-        out.setEndBeats(q32_to_beats(info.end_beat_q32));
-        out.setNumFrames(info.frames);
-        out.setNumChannels(info.channels);
-        out.setSampleRate(info.sample_rate);
-        s.sink->write(out, block);
+        saw_sub = true;
+        const size_t samples =
+            static_cast<size_t>(info.frames) * s.channels;
+        const size_t n =
+            samples < handle.maxNumSamples ? samples : handle.maxNumSamples;
+        std::memcpy(handle.samples, block, n * sizeof(int16_t));
+        handle.commit(state, q32_to_beats(info.begin_beat_q32), quantum_,
+                      info.frames, s.channels, info.sample_rate);
       }
+      s.had_subscribers = saw_sub;
     }
   }
-
-  // ---- RT plane (audio task) ----
 
   void sink_write(int sink, const int16_t* interleaved, uint32_t frames,
                   int64_t begin_beat_q32, int64_t end_beat_q32) override {
@@ -251,28 +317,33 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   uint32_t subscriber_count() const override {
     uint32_t n = 0;
     for (int i = 0; i < kMaxSinks; ++i) {
-      if (sinks_[i].active && sinks_[i].sink != nullptr) {
-        n += static_cast<uint32_t>(sinks_[i].sink->numSubscribers());
+      if (sinks_[i].active && sinks_[i].had_subscribers) {
+        ++n;
       }
     }
     return n;
   }
 
  private:
-  // Link's network thread. Copies into the ring and returns; no
-  // allocation, no blocking, nothing that can reach core 1.
-  void on_receive(const ableton::LinkAudioBufferInfo& info,
-                  const int16_t* data) {
-    if (source_ == nullptr || data == nullptr) {
+  void on_receive(const ableton::LinkAudioSource::BufferHandle& handle) {
+    if (source_ == nullptr || handle.samples == nullptr) {
       return;
     }
     neon::AudioBlockInfo out;
-    out.frames = static_cast<uint32_t>(info.numFrames());
-    out.sample_rate = static_cast<uint32_t>(info.sampleRate());
-    out.channels = static_cast<uint8_t>(info.numChannels());
-    out.begin_beat_q32 = beats_to_q32(info.beginBeats());
-    out.end_beat_q32 = beats_to_q32(info.endBeats());
-    rx_ring_.push(out, data);
+    out.frames = static_cast<uint32_t>(handle.info.numFrames);
+    out.sample_rate = handle.info.sampleRate;
+    out.channels = static_cast<uint8_t>(handle.info.numChannels);
+    LinkImpl* link = detail::link_instance();
+    if (link != nullptr) {
+      const auto state = link->captureAppSessionState();
+      if (const auto begin = handle.info.beginBeats(state, quantum_)) {
+        out.begin_beat_q32 = beats_to_q32(*begin);
+      }
+      if (const auto end = handle.info.endBeats(state, quantum_)) {
+        out.end_beat_q32 = beats_to_q32(*end);
+      }
+    }
+    rx_ring_.push(out, handle.samples);
   }
 
   bool ensure_sink_storage(Sink& s, uint8_t channels) {
@@ -311,6 +382,8 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   Sink sinks_[kMaxSinks];
   ableton::LinkAudioSource* source_ = nullptr;
   char sub_id_[48] = {};
+  char peer_name_[32] = {};
+  double quantum_ = 4.0;
 
   neon::AudioBlockRing rx_ring_;
   int16_t* rx_samples_ = nullptr;
@@ -336,8 +409,6 @@ void link_audio_start_pump() {
   if (g_pump_task != nullptr) {
     return;
   }
-  // Core 0, above the 10 ms services but below the network stack: this is
-  // a copy loop, and it must never be the reason link_svc misses a poll.
   xTaskCreatePinnedToCore(pump_task, "linkaudio", 4096, nullptr, 11,
                           &g_pump_task, 0);
 }

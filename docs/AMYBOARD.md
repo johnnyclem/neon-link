@@ -14,7 +14,7 @@ TRS MIDI, front-panel Grove I2C).
 | Reset In           | CV in 2 (ADS1015 ch1) | Rising edge ≥ 1 V |
 | TRS MIDI out       | MIDI OUT (GPIO 14, Type A) | UART1 @ 31250 baud |
 | OLED 128×128       | Front Grove I2C (SDA 17 / SCL 18) | Same as `amyboard.init_display()` |
-| Encoder / LEDs     | — | Use web editor; I2C encoder later |
+| Encoder / LEDs     | NULLLAB GPIO expander @ 0x24 | E0 = 10k B pot, E1/E2/E3 = EC11; OLED stays on a Grove hub port |
 | Ethernet           | — | Not present; WiFi + setup AP only |
 
 ### Display support (128×128)
@@ -95,25 +95,28 @@ idf.py menuconfig   # NEON LINK configuration → WiFi SSID / password
   — fine for modular clocks, not for audio-rate.
 - External clock following samples the ADS1015 at ~1 kHz; good for tempo
   tracking, not for sample-accurate phase lock.
-- The audio path is the exception: with `CONFIG_NEON_AUDIO` and the I2S pin
-  map set, a jack carrying a clock/reset/run role places its edges to
-  within one sample (~23 µs at 44.1 kHz), because they are rendered from
-  the same `MultiClockEngine` against a `SampleClock`-derived timebase
-  rather than poked out over I2C. See `docs/AUDIOLINK.md`.
+- The audio path is the exception: with `CONFIG_NEON_AUDIO`, a jack
+  carrying a clock/reset/run role places its edges to within one sample
+  (~21 µs at 48 kHz), because they are rendered from the same
+  `MultiClockEngine` against a `SampleClock`-derived timebase rather than
+  poked out over I2C. See `docs/AUDIOLINK.md`.
 
 ## Audio (docs/AUDIOLINK.md)
 
-The PCM5101 DAC and PCM1808 ADC hang off one duplex I2S port sharing BCLK
-and LRCLK, with a 256fs MCLK the ADC needs. **The pin numbers are not in
-this repo** — they come from the shorepine schematic and are entered in
-menuconfig under "I2S pin map"; until they are, the engine reports itself
-as unavailable rather than half-working.
+The LINE jack is a PCM3060 (I2S slave, 32-bit left-justified slots, 256fs
+MCLK) on the tulip/amyboard pin map: MCLK=3, BCLK=8, WS=2, DOUT=6, DIN=9.
+Those are the AMYBOARD Kconfig defaults. TX-only by default — a duplex
+DMA ring ate ~64 kB of internal RAM and the chip rebooted when WiFi
+associated.
 
-- 44.1 kHz stereo, 128-frame blocks, 4 DMA descriptors (~2.9 ms render
-  period, ~11.6 ms worst-case output latency).
+- 48 kHz stereo, 256-frame blocks, 8 DMA descriptors (~5.3 ms render
+  period, ~42 ms of DMA slack so a late write does not auto-clear).
 - The render task runs on core 1 at `configMAX_PRIORITIES - 4`, below the
-  pulse task and the CV mirror: the DMA gives audio ~11 ms of slack and the
-  clock outputs have none.
+  pulse task and the CV mirror.
+- Link's asio service task runs at priority 8 (priority 2 lost to
+  HTTP/OLED and the play ring bled ~40 ms/s). SoftAP (192.168.4.0/24) is
+  hidden from Link discovery whenever STA has a real LAN address, so Live
+  can reach the unicast audio port.
 - 16 MB partition table (`partitions_16mb.csv`, 6 MB OTA slots).
 
 ## Success criteria (FEATURES.md)

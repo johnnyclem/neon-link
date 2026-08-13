@@ -277,7 +277,7 @@ export function Audio(props: PageProps) {
                     .filter((c) => !c.local)
                     .map((c) => ({
                       value: c.id,
-                      label: `${c.name} — ${Math.round(c.rate / 100) / 10} kHz`,
+                      label: c.peer ? `${c.peer} / ${c.name}` : c.name,
                     })),
                   ...(a.sub_channel_id &&
                   !(channels ?? []).some((c) => c.id === a.sub_channel_id)
@@ -290,7 +290,7 @@ export function Audio(props: PageProps) {
                 label="Buffer ms"
                 value={a.jitter_ms}
                 min={5}
-                max={500}
+                max={800}
                 step={5}
                 onChange={(v) => patch((d) => (d.audio.jitter_ms = v))}
               />
@@ -309,6 +309,7 @@ export function Audio(props: PageProps) {
                   : s.sub_state === "buffering"
                     ? "Buffering…"
                     : "Waiting for audio"}
+                {s.fill_ms != null ? ` · fill ${s.fill_ms} ms` : ""}
                 {s.sub_dropped > 0 ? ` · ${s.sub_dropped} dropped` : ""}
               </p>
             ) : null}

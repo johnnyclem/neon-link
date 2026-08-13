@@ -56,7 +56,7 @@ i2c_master_dev_handle_t get_dev(uint8_t addr7) {
       return s.handle;
     }
   }
-  // Full: drop slot 0 and reuse (OLED + DAC + ADC only need 3).
+  // Full: drop slot 0 and reuse (OLED + DAC + ADC + expander need 4).
   if (g_devs[0].handle) {
     i2c_master_bus_rm_device(g_devs[0].handle);
     g_devs[0].handle = nullptr;
