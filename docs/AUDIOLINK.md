@@ -2,7 +2,8 @@
 
 **Version**: 1.0
 **Date**: 2026-08-12
-**Status**: Approved design, ready for implementation
+**Status**: Implemented — see §12 for what shipped, what is gated on
+hardware, and the two submodules that are not in this tree
 **Related**: [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`AMYBOARD.md`](AMYBOARD.md) · [`FEATURES.md`](FEATURES.md) · [`../SOFTWARE.md`](../SOFTWARE.md)
 
 ---
@@ -371,3 +372,79 @@ keep the `stub` leg building with `NEON_AUDIO=y` + `NEON_LINK_STUB=y` +
   tempo/phase/transport locked, metronome sample-aligned with Live's click,
   mix published and audible in Live, a Live channel audible from the module,
   CV/MIDI outputs unaffected throughout.
+
+---
+
+## 12. Implementation status
+
+The design above is what was built; this section is what a reader needs in
+order to know where the edges are. Deviations from §3/§7 are noted where
+they exist — there are two, both structural rather than behavioural.
+
+### Shipped
+
+| Area | Where |
+|---|---|
+| `SampleClock`, `beat_window`, `ClickSynth`, `PulseRender`, `Mixer`, `FrameRing`/`AudioBlockRing`, `LinearResampler`, `JitterBuffer`, `SynthVoiceBank` | `components/neon_core/{include/neon,src}/audio/` |
+| `IAudioIo`, `ILinkAudio` | `components/neon_hal/include/hal/` |
+| I2S duplex driver with ISR DMA marks | `components/neon_hal_esp/src/i2s_audio.cpp` |
+| Render loop (core 1) + control task (core 0) + discovery JSON | `main/audio_service.cpp` |
+| Link Audio impl + pump task, and the no-op that stands in for it | `components/ableton_link/src/link_audio_{esp,stub}.cpp` |
+| Synth seam (AMY or the built-in voice) | `components/amy_synth/` |
+| Config v4, REST, web Audio route, OLED AUDIO screen | see §7 |
+| 16 MB partitions, `NEON_AUDIO*` Kconfig, CI legs | `partitions_16mb.csv`, `main/Kconfig.projbuild`, `.github/workflows/ci.yml` |
+
+Host tests: `test_sample_clock`, `test_audio_click`, `test_pulse_audio`,
+`test_audio_mixer`, `test_frame_ring`, `test_resampler`,
+`test_jitter_buffer`, `test_synth_voice`, plus the v3→v4 migration, clamp,
+JSON round-trip and partial-merge cases in `test_config*` and the AUDIO
+screen cases in `test_ui`.
+
+### Two deviations from §3/§7
+
+1. **The config fields are a nested `AudioConfig`, not flat members.** §7
+   lists them flat. Nested makes the v3→v4 migration a single assignment,
+   and it has to be one: a v3 payload's size ran into its own tail padding,
+   which would otherwise be decoded as audio configuration. That is the
+   exact bug the v2→v3 migration already had to special-case. The JSON is
+   an `"audio"` object either way.
+2. **`AudioRole` / `ClickSound` live in `neon/audio/types.hpp`,** not in
+   `config/model.hpp`, so the DSP headers do not pull the configuration
+   model in. `model.hpp` includes them, so §7's code reads the same.
+
+### Not in this tree
+
+- **Link 4.0.** `third_party/link` is still pinned at Link-3.1.5.
+  `CONFIG_NEON_LINK_AUDIO` is off by default and fails the build with an
+  explanatory message if the submodule predates 4.0. §6's upgrade — the
+  submodule bump, the `Context.hpp` override re-diff, the asio define
+  revalidation — is the remaining work, and it is deliberately isolated:
+  with the flag off, the audio engine, the REST surface and the Audio page
+  all build and run against the no-op `ILinkAudio`.
+- **AMY.** `third_party/amy` is not vendored. `CONFIG_NEON_AUDIO_AMY` is
+  off by default; `components/amy_synth/src/amy_synth.cpp` is written
+  against AMY's API and is not compiled until the submodule is added. Until
+  then the same seam is served by `neon::SynthVoiceBank`, which is a real
+  voice — the Synth role, the MIDI routing and the gain control are all
+  exercised by it, so adding AMY changes the timbre and nothing else.
+- **The I2S pin numbers.** They come from the shorepine AMYboard schematic.
+  They are Kconfig values defaulting to `-1`; an unconfigured build brings
+  everything else up and reports audio as unavailable rather than
+  half-working.
+
+### Hardware gates still outstanding
+
+Everything here is unverifiable without the board, and none of it is
+claimed:
+
+- Scope CLK1 jitter with audio running, and confirm the pulse path is
+  unchanged (PR1 gate).
+- `SampleClock` residual on real hardware; calibrate `kDacLatencyUs` in
+  `main/audio_service.cpp` against the CV outputs (currently 0).
+- PCM1808 MCLK as wired — the driver asks for 256fs when an MCLK pin is
+  configured; if the ADC runs from its own crystal instead, the input side
+  needs its own `SampleClock` instance.
+- Sustained publish to a Live 12.4 subscriber without starving `link_svc`;
+  if it does starve, the mono publish option and the "BLE off while
+  streaming" note are the mitigations already in place.
+- AMY's voice count against the 2.9 ms block budget.

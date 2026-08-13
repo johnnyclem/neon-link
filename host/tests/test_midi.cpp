@@ -31,8 +31,19 @@ struct SinkRecorder final : public neon::IRouterSink {
   std::vector<bool> transports;
   std::vector<uint8_t> trs;
   std::vector<uint8_t> programs;
+  struct NoteCall {
+    uint8_t note;
+    uint8_t velocity;
+    bool on;
+  };
+  std::vector<NoteCall> notes;
+  int all_offs = 0;
 
   void gate(uint8_t target, bool on) override { gates.push_back({target, on}); }
+  void note(uint8_t n, uint8_t v, bool on) override {
+    notes.push_back({n, v, on});
+  }
+  void all_notes_off() override { ++all_offs; }
   void program_change(uint8_t p) override { programs.push_back(p); }
   void pitch_cv(uint16_t r) override { cvs.push_back(r); }
   void latency_offset(int32_t us) override { latencies.push_back(us); }
@@ -289,4 +300,48 @@ TEST_CASE("config sanitize covers the BLE MIDI fields") {
   CHECK(cfg.midi.cc_shuffle_base == neon::MidiRouteConfig::kCcOff);
   CHECK(cfg.midi.clock_policy ==
         neon::MidiRouteConfig::ClockPolicy::kIgnore);
+}
+
+TEST_CASE("every note reaches the synth, gate routing or not") {
+  neon::MidiRouteConfig cfg;
+  cfg.gate_target = neon::MidiRouteConfig::kTargetNone;  // no gate routing
+  SinkRecorder sink;
+  neon::MidiRouter router(cfg, &sink);
+
+  router.on_message({0x90, 60, 100});
+  router.on_message({0x90, 64, 90});
+  router.on_message({0x80, 60, 0});
+
+  REQUIRE(sink.notes.size() == 3);
+  CHECK(sink.notes[0].note == 60);
+  CHECK(sink.notes[0].velocity == 100);
+  CHECK(sink.notes[0].on);
+  CHECK(sink.notes[1].note == 64);   // polyphonic: not a last-note gate
+  CHECK(sink.notes[1].on);
+  CHECK(sink.notes[2].note == 60);
+  CHECK_FALSE(sink.notes[2].on);
+  CHECK(sink.gates.empty());
+}
+
+TEST_CASE("a note-on with velocity zero reaches the synth as a note off") {
+  neon::MidiRouteConfig cfg;
+  SinkRecorder sink;
+  neon::MidiRouter router(cfg, &sink);
+  router.on_message({0x90, 60, 100});
+  router.on_message({0x90, 60, 0});
+  REQUIRE(sink.notes.size() == 2);
+  CHECK(sink.notes[1].on == false);
+  CHECK(sink.notes[1].note == 60);
+}
+
+TEST_CASE("all-notes-off panics the synth as well as the gate") {
+  neon::MidiRouteConfig cfg;
+  cfg.gate_target = 0;
+  SinkRecorder sink;
+  neon::MidiRouter router(cfg, &sink);
+  router.on_message({0x90, 60, 100});
+  router.on_message({0xb0, 123, 0});
+  CHECK(sink.all_offs == 1);
+  REQUIRE(sink.gates.size() == 2);
+  CHECK_FALSE(sink.gates[1].on);
 }

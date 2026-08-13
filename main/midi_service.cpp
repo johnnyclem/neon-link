@@ -13,6 +13,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "blemidi/ble_midi.h"
@@ -54,6 +55,16 @@ class Sink final : public neon::IRouterSink {
                      : target;
     ev.on = on;
     gate_queue_push(ev);
+  }
+  void note(uint8_t note, uint8_t velocity, bool on) override {
+    // Straight through to the audio task. A dropped note is better than a
+    // stalled render block, so the queue never blocks.
+    SynthEvent ev{note, velocity, static_cast<uint8_t>(on ? 1 : 0), 0};
+    synth_queue_push(ev);
+  }
+  void all_notes_off() override {
+    SynthEvent ev{0, 0, 0, 1};
+    synth_queue_push(ev);
   }
   void pitch_cv(uint16_t ratio_q16) override {
     halesp::tempo_cv_set_ratio(ratio_q16);
