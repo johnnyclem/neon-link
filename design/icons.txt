@@ -89,20 +89,32 @@
 ........
 ........
 
-; Warning / attention. Solid triangle with the exclamation knocked out — the
-; one place the "no filled blobs" rule gives way to recognition. An outline
-; triangle with an exclamation inside it leaves 1 px walls at this size, and
-; the interior detail closes up into a shape that reads as a seated figure
-; rather than a hazard sign. Silhouette first, detail second.
+; Error / attention. A bold X spanning the whole cell.
+;
+; Two earlier attempts failed, and the reason is worth recording so nobody
+; retries them. A triangle-with-exclamation needs a container plus interior
+; detail, and 8x8 has room for one or the other: drawn as an outline the
+; 1 px walls close up and it reads as a seated figure; drawn solid with the
+; bang knocked out the tapering silhouette reads as a fir tree.
+;
+; An X inside a circle — the obvious third idea — cannot work at this size
+; either. A circle outline leaves a 4x4 interior, and a 4x4 X has a 2x2
+; centre, so the two strokes merge into a square hole: you get a ring with
+; a box in it, not a cross. The X needs the full cell for its diagonals to
+; be long enough to read as diagonals.
+;
+; So the container goes and the mark stays. Both states that use this icon
+; (no network, no Link session) are failures rather than cautions, and both
+; already carry tone "danger", so a cross is the truer symbol anyway.
 @warning
-...##...
-...##...
-..##.#..
-..##.#..
-.###.##.
+##....##
+###..###
 .######.
-####.###
-########
+..####..
+..####..
+.######.
+###..###
+##....##
 
 ; Success / confirmed.
 @check
