@@ -185,6 +185,26 @@ Style: geometric, closed shapes where possible, consistent stroke weight, no fil
 
 They are authored at **8×8** rather than 16×16, because 8×8 is the size the device header actually renders. The web scales the same master to 16 or 32 px as a pixel grid. Pixel-art icons at 2×/3× are a deliberate style here, not an artefact.
 
+### Judge them at 1×
+
+`design/icons_preview.png` is generated alongside the code and shows every icon at 1×, 2×, 4× and 8×, in the same order as `design/icons.txt`. **A glyph that does not read in the first two columns does not work**, whatever it looks like blown up.
+
+This exists because two icons shipped unreadable before it did, both for the same reason: they were only ever reviewed enlarged. An 8×8 master viewed at 32 px tells you nothing about whether it survives in the panel header.
+
+### What 8×8 can and cannot carry
+
+8×8 gives you roughly twenty meaningful pixels of outline and no usable interior. That supports **silhouettes** — shapes recognised from their outline — and rules out **pictograms**, which are recognised from internal structure.
+
+Three failed attempts at the error icon all hit this same wall, and are worth not repeating:
+
+| Attempt | Why it failed |
+|---|---|
+| Outline triangle with an exclamation inside | The 1px walls close up against the bang; reads as a seated figure |
+| Solid triangle with the exclamation knocked out | The tapering silhouette reads as a fir tree |
+| X inside a circle | A circle outline leaves a 4×4 interior, and a 4×4 X has a 2×2 centre — the strokes merge into a square hole, giving a ring with a box in it |
+
+A container **or** interior detail, never both. The resolution is to drop the container and let the mark use the whole cell.
+
 ---
 
 ## 8. Motion & Feedback

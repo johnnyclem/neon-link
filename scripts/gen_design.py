@@ -17,9 +17,12 @@ firmware build must never depend on a Python environment.
 from __future__ import annotations
 
 import argparse
+import binascii
 import json
 import pathlib
+import struct
 import sys
+import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DESIGN = ROOT / "design"
@@ -295,6 +298,72 @@ def emit_hero_font_ts(spec: dict) -> str:
     )
 
 
+def emit_icons_preview_png(tokens: dict, icons: "dict[str, list[str]]") -> bytes:
+    """A contact sheet of every icon at the sizes it actually ships at.
+
+    Two icons shipped unreadable before this existed, and both times the
+    reason was the same: they were only ever looked at blown up. An 8x8
+    master reviewed at 32 px tells you nothing about whether it survives in
+    the panel header. So the sheet leads with 1x and 2x - if a glyph does
+    not read in the first two columns, it does not work.
+
+    Rows follow design/icons.txt top to bottom, so the two files read side
+    by side. Palette comes from tokens.json, so the sheet always shows an
+    icon on the ground it is actually drawn on.
+    """
+    scales = [1, 2, 4, 8]
+    pad, gap, row_gap = 12, 10, 8
+    cell = max(s * 8 for s in scales)
+    row_h = cell + row_gap
+    width = pad * 2 + sum(s * 8 for s in scales) + gap * (len(scales) - 1)
+    height = pad * 2 + row_h * len(icons) - row_gap
+
+    def rgb(hex_color: str) -> "tuple[int, int, int]":
+        v = hex_color.lstrip("#")
+        return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+
+    colors = strip_meta(tokens["color"])
+    bg = rgb(colors["bg"]["hex"])
+    fg = rgb(colors["neon"]["hex"])
+
+    pixels = [[bg] * width for _ in range(height)]
+    for row, rows in enumerate(icons.values()):
+        top = pad + row * row_h
+        left = pad
+        for scale in scales:
+            # Bottom-align within the row so the size progression reads as a
+            # staircase rather than a scatter.
+            offset = top + (cell - 8 * scale)
+            for y, line in enumerate(rows):
+                for x, ch in enumerate(line):
+                    if ch != "#":
+                        continue
+                    for dy in range(scale):
+                        for dx in range(scale):
+                            pixels[offset + y * scale + dy][left + x * scale + dx] = fg
+            left += 8 * scale + gap
+
+    raw = b"".join(
+        b"\x00" + b"".join(bytes(px) for px in line) for line in pixels
+    )
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        body = tag + payload
+        return (
+            struct.pack(">I", len(payload))
+            + body
+            + struct.pack(">I", binascii.crc32(body) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
 def cpp_ident(name: str) -> str:
     return "".join(part.capitalize() for part in name.replace("-", "_").split("_"))
 
@@ -440,6 +509,7 @@ def main() -> int:
         ROOT / "web" / "src" / "design" / "icons.ts": emit_icons_ts(icons),
         ROOT / "web" / "src" / "design" / "heroFont.ts": emit_hero_font_ts(hero_spec),
         DESIGN / "fonts" / "hero_preview.txt": hero_preview(hero_spec, hero),
+        DESIGN / "icons_preview.png": emit_icons_preview_png(tokens, icons),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "theme_gen.hpp": emit_theme_gen_hpp(tokens, strings),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "icons_gen.hpp": emit_icons_gen_hpp(icons),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "hero_font_gen.hpp": emit_hero_font_hpp(hero_spec, hero),
@@ -448,13 +518,22 @@ def main() -> int:
     stale: list[str] = []
     for path, content in outputs.items():
         rel = path.relative_to(ROOT)
+        binary = isinstance(content, bytes)
+        current = None
+        if path.exists():
+            current = path.read_bytes() if binary else path.read_text(encoding="utf-8")
+
         if args.check:
-            if not path.exists() or path.read_text(encoding="utf-8") != content:
+            if current != content:
                 stale.append(str(rel))
             continue
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and path.read_text(encoding="utf-8") == content:
+        if current == content:
             print(f"  unchanged  {rel}")
+        elif binary:
+            path.write_bytes(content)
+            print(f"  wrote      {rel}")
         else:
             path.write_text(content, encoding="utf-8")
             print(f"  wrote      {rel}")
