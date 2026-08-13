@@ -90,12 +90,14 @@ void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid) {
 
 // ---- chrome -------------------------------------------------------------
 
-void draw_icon(Framebuffer& fb, int x, int y, const Icon& icon) {
-  fb.blit(x, y, icon.rows, kIconSize, kIconSize);
+void draw_icon(Framebuffer& fb, int x, int y, const Icon& icon,
+               const IconClocks& clocks) {
+  fb.blit(x, y, icon_frame(icon, icon_frame_index(icon, clocks)), kIconSize,
+          kIconSize);
 }
 
 void draw_header(Framebuffer& fb, const char* title, const Icon* const* icons,
-                 int icon_count) {
+                 int icon_count, const IconClocks& clocks) {
   draw_label(fb, kMargin, kHeaderTextY, title);
 
   // Icons pack right-to-left against the margin so adding one never shifts
@@ -105,7 +107,7 @@ void draw_header(Framebuffer& fb, const char* title, const Icon* const* icons,
     if (icons[i] == nullptr) {
       continue;
     }
-    draw_icon(fb, x, kHeaderTextY, *icons[i]);
+    draw_icon(fb, x, kHeaderTextY, *icons[i], clocks);
     x -= kIconSize + 2;
   }
 

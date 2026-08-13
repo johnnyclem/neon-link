@@ -27,6 +27,11 @@ struct UiStatus {
   bool ble_on = false;
   // Full-screen 1/2/3/4 while playing. Default on, matching Config.
   bool big_beat_display = true;
+  // Free-running counter at neon::ui::kIconTickHz, driving the icon loops
+  // that have no musical time (a radio beaconing, a stack advertising).
+  // It lives here rather than being read from a clock inside the renderer
+  // so render_ui() stays pure and the golden tests stay meaningful.
+  uint32_t anim_tick = 0;
 };
 
 // Encoder-driven menu state machine (pure logic; host-tested).

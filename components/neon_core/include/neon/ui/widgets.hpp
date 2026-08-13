@@ -32,12 +32,14 @@ void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid);
 
 // ---- chrome -------------------------------------------------------------
 
-void draw_icon(Framebuffer& fb, int x, int y, const Icon& icon);
+void draw_icon(Framebuffer& fb, int x, int y, const Icon& icon,
+               const IconClocks& clocks = {});
 
 // Brand or screen title on the left, up to `icon_count` status icons packed
 // against the right edge, and the rule that closes the header band.
 void draw_header(Framebuffer& fb, const char* title,
-                 const Icon* const* icons = nullptr, int icon_count = 0);
+                 const Icon* const* icons = nullptr, int icon_count = 0,
+                 const IconClocks& clocks = {});
 
 // A row of shared status words (LINK / STOP / AP), centred and spaced so
 // they read as machine state. Empty entries are skipped.

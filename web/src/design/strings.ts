@@ -35,7 +35,7 @@ export const strings = {
       "device": "RUN",
       "web": "Running",
       "long": "Transport running",
-      "icon": "play",
+      "icon": "run",
       "tone": "success"
     },
     "transport_stop": {

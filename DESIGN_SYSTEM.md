@@ -179,7 +179,9 @@ Shared labels (do not invent synonyms): `LINK`, `EXT`, `STOP`, `RUN`, `AP`, `STA
 
 Icons are authored once as pure 1-bit masters and used unchanged by both surfaces.
 
-Set: `link`, `wifi-ap`, `wifi-sta`, `ble`, `play`, `stop`, `run`, `warning`, `check`.
+Set: `link`, `wifi-ap`, `wifi-sta`, `ble`, `stop`, `run`, `warning`, `check`.
+
+Four of them animate — see §8 for which clock each uses and why. An icon that nothing references is dead weight and gets deleted rather than kept "just in case"; `play` went that way when `run`'s marching gate turned out to be the better mark for a running transport.
 
 Style: geometric, closed shapes where possible, consistent stroke weight, no filled blobs unless needed for recognition at 8 px.
 
@@ -209,17 +211,46 @@ A container **or** interior detail, never both. The resolution is to drop the co
 
 ## 8. Motion & Feedback
 
+**Motion is meaning.** Something moves only while the thing it stands for is actually happening. That is the whole rule; everything below follows from it.
+
+The test for any proposed animation is: *if this stopped moving, would I have lost information?* A pulsing Link ring says the session is alive and how fast — stop it and you have lost that. A spinning decoration says nothing — stop it and you have lost nothing, which means it should never have moved.
+
+### Two clocks, and why it matters which
+
+Icon loops declare their own clock in `design/icons.txt`, because the two kinds of motion mean different things:
+
+| Clock | Advances | For |
+|---|---|---|
+| `beat` | Once per musical beat, from the shared phase | Anything tempo-locked: the Link pulse, the run gate |
+| `tick` | A fixed 5 Hz counter | Motion with no musical time: a radio beaconing, a stack advertising |
+| *(none)* | Never | Everything else — still the right answer for most icons |
+
+`beat` is the one that only makes sense on a clock module. Those loops speed up when the tempo does, so the panel visibly *runs* at the tempo rather than reporting it as a number. It is the reason to have animation here at all; a fixed-rate spinner would be generic UI polish.
+
+Beat-locked loops **freeze at frame 0 while the transport is stopped**. The Link timeline keeps advancing whether or not anything is playing, so without this the run gate would march through a bar that is not happening.
+
+### What holds still
+
+Settled states do not move, and this is a rule rather than an oversight:
+
+- `stop` — a stopped transport that animates is a contradiction
+- `check` — a confirmation is a moment, not a state
+- `warning` — a steady error is easier to read than a flashing one
+
 ### Device
 
 - Instant response to the encoder
-- Minimal animation — a blinking cursor or a single-pixel phase tick is enough
-- No fades: hard cuts and inversions only
+- Hard cuts only: no fades, no tweening — a 1-bit panel cannot fade, so the vocabulary does not pretend otherwise
+- 3–6 frames per loop. The UI task flushes at 10 fps whether or not anything changed, so animation costs no extra bus time, but it also caps the frame rate
+- Loop state arrives in `UiStatus`, never from a clock inside the renderer. `render_ui()` stays pure, so the golden tests still mean something now that the panel moves
 
 ### Web
 
-- Subtle, fast transitions (150–200 ms)
+- The same frames, played the same way: a `steps()` animation over a filmstrip, which is a hard cut per frame exactly like the panel
+- Beat-locked loops run at the tempo the page is already polling
+- Subtle, fast transitions elsewhere (150–200 ms)
 - Never decorative motion
-- `prefers-reduced-motion` collapses every transition
+- `prefers-reduced-motion` parks every loop on frame 0, which each icon is drawn to survive, rather than collapsing the duration and landing on an arbitrary frame
 
 ---
 

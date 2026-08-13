@@ -55,6 +55,21 @@ const char* editor_address(const UiStatus& s) {
   return s.setup_ap ? kSetupIp : "";
 }
 
+// Where the animated icons are in their loops.
+//
+// Beat-locked loops freeze at frame 0 while the transport is stopped. The
+// Link timeline keeps advancing whether or not anything is playing, so
+// without this the run gate would march and the play triangle would count
+// a bar that is not happening.
+IconClocks icon_clocks(const UiStatus& s) {
+  IconClocks clocks;
+  clocks.tick = s.anim_tick;
+  if (s.playing) {
+    clocks.beat = s.phase_milli_beats / 1000;
+  }
+  return clocks;
+}
+
 // ---- screens ------------------------------------------------------------
 
 void render_home(const UiStatus& s, Framebuffer& fb) {
@@ -63,8 +78,13 @@ void render_home(const UiStatus& s, Framebuffer& fb) {
     return;
   }
 
-  const Icon* icons[2] = {&net_icon(s), s.ble_on ? &kIconBle : nullptr};
-  draw_header(fb, kBrand, icons, 2);
+  // Link first: a ring pulsing outward on every beat is the panel's "this
+  // session is alive, and here is how fast" indicator, and it is the one
+  // place the tempo shows up as motion rather than as a number. Dropped
+  // when an external clock is driving, where the word EXT carries it.
+  const Icon* icons[3] = {s.ext_clock ? nullptr : &kIconLink, &net_icon(s),
+                          s.ble_on ? &kIconBle : nullptr};
+  draw_header(fb, kBrand, icons, 3, icon_clocks(s));
 
   draw_hero_bpm(fb, s.milli_bpm, s.tempo_valid);
   draw_label(fb, kAlignPanel, kUnitY, "BPM", Align::kCenter);

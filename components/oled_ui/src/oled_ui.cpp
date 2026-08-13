@@ -16,6 +16,7 @@
 #include "halesp/status_leds.hpp"
 #include "neon/gfx/framebuffer.hpp"
 #include "neon/net/preference.hpp"
+#include "neon/ui/icons_gen.hpp"
 #include "neon/ui/menu_model.hpp"
 #include "neon/ui/render.hpp"
 #include "netman/net_manager.h"
@@ -43,7 +44,12 @@ void assemble_status(neon::UiStatus* s) {
   s->playing = tl.playing != 0;
   s->quantum_beats = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
 
-  s->phase_milli_beats = neon::phase_milli_beats(tl, esp_timer_get_time());
+  const int64_t now_us = esp_timer_get_time();
+  s->phase_milli_beats = neon::phase_milli_beats(tl, now_us);
+  // The fixed-rate icon clock, derived from the timebase rather than counted
+  // per frame so it stays honest if the UI task ever misses a tick.
+  s->anim_tick = static_cast<uint32_t>(
+      now_us / (1000000 / neon::ui::kIconTickHz));
 
   const neon::ActiveNet net = netman::preference().active();
   s->active_net = net == neon::ActiveNet::kEthernet ? 1
