@@ -63,6 +63,28 @@ function roleTag(c: ClockConfig): string {
   }
 }
 
+/** Short tag for what an audio output channel carries. */
+function audioRoleTag(role: Config["audio"]["role_l"]): string {
+  switch (role) {
+    case "metronome":
+      return "METRO";
+    case "clock":
+      return "CLK";
+    case "reset":
+      return "RST";
+    case "run":
+      return "RUN";
+    case "synth":
+      return "SYNTH";
+    case "link_in":
+      return "LINK";
+    case "line_in":
+      return "LINE";
+    default:
+      return "MIX";
+  }
+}
+
 /** What NEON LINK actually puts on each hole. */
 export function jackLive(id: JackId, cfg: Config): string {
   switch (id) {
@@ -78,20 +100,24 @@ export function jackLive(id: JackId, cfg: Config): string {
       return cfg.ble.midi_clock_out ? "MCLK" : "MIDI";
     case "midi-in":
       return "IN";
+    case "line-out":
+      if (!cfg.audio.enabled) return "OFF";
+      return cfg.audio.role_l === cfg.audio.role_r
+        ? audioRoleTag(cfg.audio.role_l)
+        : "L·R";
+    case "line-in":
+      return cfg.audio.enabled ? "LINE" : "OFF";
     default:
-      return "—";
+      // SPDIF is on the board but deliberately deferred — say so, rather
+      // than a dash that reads as a rendering fault.
+      return "SOON";
   }
 }
 
 export function jackWired(id: JackId): boolean {
-  return (
-    id === "cv1-out" ||
-    id === "cv2-out" ||
-    id === "cv1-in" ||
-    id === "cv2-in" ||
-    id === "midi-out" ||
-    id === "midi-in"
-  );
+  // Everything but SPDIF is driven now that the audio engine exists; the
+  // line pair is the codec's I/O.
+  return id !== "spdif-in" && id !== "spdif-out";
 }
 
 /**

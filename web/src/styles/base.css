@@ -860,6 +860,19 @@ a.button {
   color: var(--bg);
 }
 
+/* A subnav living as a card's header: the switcher IS the head, edge to
+   edge, so tabbed panes read as one panel rather than nav + stray card. */
+.card__head--tabs {
+  padding: 0;
+  border-bottom: var(--border-hair) solid var(--border);
+}
+
+.card__head--tabs .subnav {
+  margin: 0;
+  border: 0;
+  width: 100%;
+}
+
 /* ---- bottom tab bar (phones) ------------------------------------------- */
 
 .tabbar {
@@ -917,7 +930,7 @@ a.button {
 
   .tabbar {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     position: fixed;
     left: 0;
     right: 0;

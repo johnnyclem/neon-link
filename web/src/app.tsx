@@ -67,6 +67,14 @@ export function App() {
     }
   }, [cfg]);
 
+  // A success confirmation has a shelf life; once read, the save bar it
+  // holds open should give the row back. Errors stay until acted on.
+  useEffect(() => {
+    if (message?.kind !== "ok") return;
+    const timer = setTimeout(() => setMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   if (loadError) {
     return (
       <>
