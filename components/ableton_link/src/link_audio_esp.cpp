@@ -46,7 +46,13 @@ namespace {
 const char* kTag = "link_audio";
 
 constexpr uint32_t kMaxBlockFrames = 512;
-constexpr uint32_t kRxSlots = 16;
+// The receive ring counts *blocks*, so its depth in milliseconds scales
+// with the sender's block size: 16 slots of Live's 128-frame blocks was
+// only ~43 ms, and any WiFi delivery burst longer than that overflowed
+// the ring and dropped audio upstream of the jitter buffer — loss that
+// no la_jitter_ms setting could buy back. 128 slots is 340 ms of
+// 128-frame blocks (1.4 s of 512-frame ones) for ~256 KB of PSRAM.
+constexpr uint32_t kRxSlots = 128;
 constexpr uint32_t kTxSlots = 8;
 constexpr uint32_t kPumpPeriodMs = 4;
 
@@ -260,7 +266,9 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       }
       neon::AudioBlockInfo info;
       bool saw_sub = false;
+      bool popped = false;
       while (s.ring.pop(&info, block, sizeof(block) / sizeof(block[0]))) {
+        popped = true;
         ableton::LinkAudioSink::BufferHandle handle(*s.sink);
         if (!handle) {
           continue;  // no subscriber; drain so the ring cannot back up
@@ -274,7 +282,24 @@ class LinkAudioEsp final : public hal::ILinkAudio {
         handle.commit(state, q32_to_beats(info.begin_beat_q32), quantum_,
                       info.frames, s.channels, info.sample_rate);
       }
-      s.had_subscribers = saw_sub;
+      // The audio task delivers a block every 5.3 ms and this runs every
+      // 4 ms, so an empty cycle is routine — only a cycle that actually
+      // moved audio knows whether anyone was listening.
+      if (popped) {
+        s.had_subscribers = saw_sub;
+      }
+    }
+
+    // Receive-side depth watermark, ~5 s cadence while subscribed. The
+    // high-water against kRxSlots says how close a WiFi burst came to
+    // overflowing the ring — the loss the jitter buffer cannot see.
+    if (source_ != nullptr && pump_log_countdown_-- == 0) {
+      pump_log_countdown_ = 5000 / kPumpPeriodMs;
+      ESP_LOGI(kTag, "rx ring high-water %lu/%lu, dropped %lu",
+               static_cast<unsigned long>(rx_high_water_),
+               static_cast<unsigned long>(kRxSlots),
+               static_cast<unsigned long>(rx_ring_.dropped()));
+      rx_high_water_ = 0;
     }
   }
 
@@ -333,6 +358,24 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     out.frames = static_cast<uint32_t>(handle.info.numFrames);
     out.sample_rate = handle.info.sampleRate;
     out.channels = static_cast<uint8_t>(handle.info.numChannels);
+    // The sender decides the block geometry, and everything downstream is
+    // sized around it — say what actually arrives, once per change.
+    if (out.frames != rx_geom_frames_ || out.sample_rate != rx_geom_rate_ ||
+        out.channels != rx_geom_channels_) {
+      rx_geom_frames_ = out.frames;
+      rx_geom_rate_ = out.sample_rate;
+      rx_geom_channels_ = out.channels;
+      ESP_LOGI(kTag, "rx blocks: %lu frames @ %lu Hz, %u ch",
+               static_cast<unsigned long>(out.frames),
+               static_cast<unsigned long>(out.sample_rate),
+               static_cast<unsigned>(out.channels));
+      if (out.frames > kMaxBlockFrames) {
+        // push() drops these silently, which presents as dead air with a
+        // climbing drop counter — worth naming out loud.
+        ESP_LOGW(kTag, "rx block exceeds %lu frames; every block is dropped",
+                 static_cast<unsigned long>(kMaxBlockFrames));
+      }
+    }
     LinkImpl* link = detail::link_instance();
     if (link != nullptr) {
       const auto state = link->captureAppSessionState();
@@ -344,6 +387,10 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       }
     }
     rx_ring_.push(out, handle.samples);
+    const uint32_t q = rx_ring_.queued();
+    if (q > rx_high_water_) {
+      rx_high_water_ = q;
+    }
   }
 
   bool ensure_sink_storage(Sink& s, uint8_t channels) {
@@ -389,6 +436,14 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   int16_t* rx_samples_ = nullptr;
   neon::AudioBlockInfo* rx_infos_ = nullptr;
   uint32_t sink_dropped_ = 0;
+
+  // Receive-path diagnostics. Written on the Link network thread, read by
+  // the pump task; approximate by design, exact enough for a log line.
+  uint32_t rx_geom_frames_ = 0;
+  uint32_t rx_geom_rate_ = 0;
+  uint8_t rx_geom_channels_ = 0;
+  uint32_t rx_high_water_ = 0;
+  uint32_t pump_log_countdown_ = 0;
 };
 
 LinkAudioEsp g_link_audio;
@@ -409,7 +464,9 @@ void link_audio_start_pump() {
   if (g_pump_task != nullptr) {
     return;
   }
-  xTaskCreatePinnedToCore(pump_task, "linkaudio", 4096, nullptr, 11,
+  // pump() keeps a full 2 KB block on its stack and commit() runs lwIP's
+  // send path underneath it; 4 KB left double-digit headroom in bytes.
+  xTaskCreatePinnedToCore(pump_task, "linkaudio", 6144, nullptr, 11,
                           &g_pump_task, 0);
 }
 

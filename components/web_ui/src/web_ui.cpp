@@ -455,7 +455,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1280];
+  char buf[1408];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -469,7 +469,8 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"audio\":{\"running\":%s,\"underruns\":%u,\"peak_l\":%u,"
       "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
       "\"sub_state\":\"%s\",\"sub_rate\":%u,\"sub_dropped\":%u,"
-      "\"fill_ms\":%u,\"clock_ppm\":%d}}",
+      "\"fill_ms\":%u,\"clock_ppm\":%d,\"rx_dropped\":%u,"
+      "\"jit_underruns\":%u,\"tx_dropped\":%u,\"trim_ppm\":%d}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -494,7 +495,11 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.sub_rate),
       static_cast<unsigned>(audio.sub_dropped),
       static_cast<unsigned>(audio.fill_ms),
-      static_cast<int>(audio.clock_ppm));
+      static_cast<int>(audio.clock_ppm),
+      static_cast<unsigned>(audio.rx_dropped),
+      static_cast<unsigned>(audio.jit_underruns),
+      static_cast<unsigned>(audio.tx_dropped),
+      static_cast<int>(audio.trim_ppm));
   if (n < 0) {
     return httpd_resp_send_500(req);
   }

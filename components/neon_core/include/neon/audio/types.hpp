@@ -77,12 +77,21 @@ struct AudioStatus {
   uint16_t peak_r = 0;
 
   uint32_t underruns = 0;   // I2S write failures / starved blocks
-  uint32_t sub_dropped = 0; // receive-path frames dropped
+  uint32_t sub_dropped = 0; // frames dropped inside the jitter ring
   uint32_t sub_rate = 0;    // sender sample rate, 0 when not receiving
   uint32_t subscribers = 0; // peers listening to our published channels
   uint32_t fill_ms = 0;     // receive-buffer fill, milliseconds
   int32_t clock_ppm = 0;    // SampleClock rate correction
   int32_t clock_residual_us = 0;
+
+  // Each stage of the receive/publish path loses audio for a different
+  // reason, and lumping them into one counter is what made the on-device
+  // crackle undiagnosable. Kept separate so a log line or /api/status can
+  // say *which* stage is bleeding.
+  uint32_t rx_dropped = 0;     // blocks lost network→audio ring (pre-jitter)
+  uint32_t jit_underruns = 0;  // jitter-buffer rebuffer events
+  uint32_t tx_dropped = 0;     // publish blocks lost audio→pump ring
+  int32_t trim_ppm = 0;        // receive resampler servo trim
 };
 
 }  // namespace neon
