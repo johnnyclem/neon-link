@@ -25,6 +25,9 @@ class NoLinkAudio : public hal::ILinkAudio {
   void unsubscribe() override {}
   bool subscribed() const override { return false; }
   void pump() override {}
+  void set_enabled(bool) override {}
+  void set_peer_name(const char*) override {}
+  void set_quantum(double) override {}
 
   void sink_write(int, const int16_t*, uint32_t, int64_t, int64_t) override {}
   uint32_t source_read(int16_t*, uint32_t, uint32_t&, uint8_t&, int64_t&,

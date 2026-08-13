@@ -18,6 +18,9 @@ const char* kTag = "i2s_audio";
 i2s_chan_handle_t g_tx = nullptr;
 i2s_chan_handle_t g_rx = nullptr;
 
+constexpr uint16_t kMaxPackFrames = 512;
+int32_t g_packed[kMaxPackFrames * 2];
+
 // IRAM: this fires from the I2S DMA interrupt, once per descriptor.
 IRAM_ATTR bool on_sent_isr(i2s_chan_handle_t, i2s_event_data_t* event,
                            void* user) {
@@ -31,8 +34,8 @@ IRAM_ATTR bool on_sent_isr(i2s_chan_handle_t, i2s_event_data_t* event,
 }  // namespace
 
 void I2sAudio::on_dma_sent(uint32_t bytes) {
-  // 4 bytes per stereo int16 frame.
-  isr_frames_ += bytes / 4u;
+  // PCM3060 slots are 32-bit: 8 bytes per stereo frame.
+  isr_frames_ += bytes / 8u;
   const uint32_t s = mark_seq_.load(std::memory_order_relaxed);
   mark_seq_.store(s + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
@@ -110,11 +113,13 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
               .invert_flags = {false, false, false},
           },
   };
+  // PCM3060: 32-bit slots, 16-bit left-justified data, 256fs MCLK.
+  std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+  std_cfg.slot_cfg.ws_width = 32;
+  std_cfg.slot_cfg.left_align = true;
   if (pins_.mclk < 0) {
     std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
   } else {
-    // The PCM1808 wants 256fs; the PCM5101 is happy with it too, so one
-    // MCLK serves both sides of the duplex pair.
     std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
   }
 
@@ -191,14 +196,24 @@ bool I2sAudio::write_block(const int16_t* interleaved) {
   if (!running_ || g_tx == nullptr || interleaved == nullptr) {
     return false;
   }
-  const size_t bytes = static_cast<size_t>(cfg_.block_frames) * 4u;
+  // Pack stereo int16 into 32-bit left-justified slots the PCM3060 wants.
+  const uint32_t frames = cfg_.block_frames;
+  if (frames > kMaxPackFrames) {
+    ++write_failures_;
+    return false;
+  }
+  for (uint32_t i = 0; i < frames; ++i) {
+    g_packed[i * 2] = static_cast<int32_t>(interleaved[i * 2]) << 16;
+    g_packed[i * 2 + 1] = static_cast<int32_t>(interleaved[i * 2 + 1]) << 16;
+  }
+  const size_t bytes = static_cast<size_t>(frames) * 2u * sizeof(int32_t);
   size_t written = 0;
   // The timeout is the whole DMA ring: if the driver cannot take a block in
   // that long, something has gone wrong upstream and the caller should
   // count an underrun rather than block the task forever.
   const uint32_t timeout_ms =
       1 + (1000u * cfg_.block_frames * cfg_.dma_desc) / cfg_.sample_rate;
-  const esp_err_t err = i2s_channel_write(g_tx, interleaved, bytes, &written,
+  const esp_err_t err = i2s_channel_write(g_tx, g_packed, bytes, &written,
                                           pdMS_TO_TICKS(timeout_ms));
   if (err != ESP_OK || written != bytes) {
     ++write_failures_;
@@ -212,14 +227,22 @@ bool I2sAudio::read_block(int16_t* interleaved) {
   if (!input_running_ || g_rx == nullptr || interleaved == nullptr) {
     return false;
   }
-  const size_t bytes = static_cast<size_t>(cfg_.block_frames) * 4u;
+  const uint32_t frames = cfg_.block_frames;
+  if (frames > kMaxPackFrames) {
+    return false;
+  }
+  const size_t bytes = static_cast<size_t>(frames) * 2u * sizeof(int32_t);
   size_t got = 0;
-  const esp_err_t err = i2s_channel_read(g_rx, interleaved, bytes, &got, 0);
+  const esp_err_t err = i2s_channel_read(g_rx, g_packed, bytes, &got, 0);
   if (err != ESP_OK || got != bytes) {
     if (err != ESP_ERR_TIMEOUT) {
       ++read_failures_;
     }
     return false;
+  }
+  for (uint32_t i = 0; i < frames; ++i) {
+    interleaved[i * 2] = static_cast<int16_t>(g_packed[i * 2] >> 16);
+    interleaved[i * 2 + 1] = static_cast<int16_t>(g_packed[i * 2 + 1] >> 16);
   }
   return true;
 }

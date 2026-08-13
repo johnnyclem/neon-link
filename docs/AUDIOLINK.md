@@ -387,7 +387,7 @@ they exist — there are two, both structural rather than behavioural.
 |---|---|
 | `SampleClock`, `beat_window`, `ClickSynth`, `PulseRender`, `Mixer`, `FrameRing`/`AudioBlockRing`, `LinearResampler`, `JitterBuffer`, `SynthVoiceBank` | `components/neon_core/{include/neon,src}/audio/` |
 | `IAudioIo`, `ILinkAudio` | `components/neon_hal/include/hal/` |
-| I2S duplex driver with ISR DMA marks | `components/neon_hal_esp/src/i2s_audio.cpp` |
+| I2S TX driver (PCM3060 32-bit slots, ISR DMA marks) | `components/neon_hal_esp/src/i2s_audio.cpp` |
 | Render loop (core 1) + control task (core 0) + discovery JSON | `main/audio_service.cpp` |
 | Link Audio impl + pump task, and the no-op that stands in for it | `components/ableton_link/src/link_audio_{esp,stub}.cpp` |
 | Synth seam (AMY or the built-in voice) | `components/amy_synth/` |
@@ -411,26 +411,28 @@ screen cases in `test_ui`.
 2. **`AudioRole` / `ClickSound` live in `neon/audio/types.hpp`,** not in
    `config/model.hpp`, so the DSP headers do not pull the configuration
    model in. `model.hpp` includes them, so §7's code reads the same.
+3. **48 kHz, not 44.1; PCM3060, not PCM5101/PCM1808.** The LINE codec is
+   the AMYboard's PCM3060 (I2S slave, 32-bit left-justified slots). Live's
+   default rate is 48 kHz; locking the DAC there and resampling the
+   incoming stream is what actually held fill on hardware. The I2S pin
+   map is the tulip/amyboard one (MCLK=3 BCLK=8 WS=2 DOUT=6 DIN=9) and
+   is the AMYBOARD Kconfig default. Duplex is off: the RX DMA ring OOM'd
+   the S3 when WiFi associated.
+4. **`ILinkAudio` talks to the real Link-4.0 API.** Channel ids are the
+   16-hex `ChannelId`, sinks take a `LinkAudio&`, and a `BufferHandle`
+   is only valid while someone is subscribed. `third_party/link` is
+   pinned at `Link-4.0`. The Link asio task runs at priority 8 / 16 kB
+   (priority 2 lost packets to HTTP/OLED). `ScanIpIfAddrs` hides the
+   SoftAP when STA has a LAN address so Live can reach the unicast port.
 
 ### Not in this tree
 
-- **Link 4.0.** `third_party/link` is still pinned at Link-3.1.5.
-  `CONFIG_NEON_LINK_AUDIO` is off by default and fails the build with an
-  explanatory message if the submodule predates 4.0. §6's upgrade — the
-  submodule bump, the `Context.hpp` override re-diff, the asio define
-  revalidation — is the remaining work, and it is deliberately isolated:
-  with the flag off, the audio engine, the REST surface and the Audio page
-  all build and run against the no-op `ILinkAudio`.
 - **AMY.** `third_party/amy` is not vendored. `CONFIG_NEON_AUDIO_AMY` is
   off by default; `components/amy_synth/src/amy_synth.cpp` is written
   against AMY's API and is not compiled until the submodule is added. Until
   then the same seam is served by `neon::SynthVoiceBank`, which is a real
   voice — the Synth role, the MIDI routing and the gain control are all
   exercised by it, so adding AMY changes the timbre and nothing else.
-- **The I2S pin numbers.** They come from the shorepine AMYboard schematic.
-  They are Kconfig values defaulting to `-1`; an unconfigured build brings
-  everything else up and reports audio as unavailable rather than
-  half-working.
 
 ### Hardware gates still outstanding
 
@@ -441,10 +443,9 @@ claimed:
   unchanged (PR1 gate).
 - `SampleClock` residual on real hardware; calibrate `kDacLatencyUs` in
   `main/audio_service.cpp` against the CV outputs (currently 0).
-- PCM1808 MCLK as wired — the driver asks for 256fs when an MCLK pin is
-  configured; if the ADC runs from its own crystal instead, the input side
-  needs its own `SampleClock` instance.
+- PCM3060 input path — duplex is compiled but off; if it is turned on,
+  confirm the heap still has room once WiFi is up.
 - Sustained publish to a Live 12.4 subscriber without starving `link_svc`;
   if it does starve, the mono publish option and the "BLE off while
   streaming" note are the mitigations already in place.
-- AMY's voice count against the 2.9 ms block budget.
+- AMY's voice count against the 5.3 ms block budget.

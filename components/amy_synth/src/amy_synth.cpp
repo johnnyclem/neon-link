@@ -3,9 +3,9 @@
 // AMY renders in blocks of AMY_BLOCK_SIZE frames at AMY_SAMPLE_RATE into
 // its own interleaved int16 buffer; we pull whole AMY blocks, keep the
 // remainder, and hand the audio task exactly the frames it asked for. AMY
-// runs at 44.1 kHz natively, which is why the engine does too.
+// is initialised at the engine rate (48 kHz on the AMYboard).
 //
-// Voices are clamped: the block budget at 2.9 ms is what it is, and a
+// Voices are clamped: the block budget at 5.3 ms is what it is, and a
 // synth that overruns it takes the clock outputs with it.
 
 #include "amysynth/synth.h"

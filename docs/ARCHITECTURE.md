@@ -229,14 +229,15 @@ the ESP side is one I2S driver and one service.
   new timeline snapshot takes effect within one block (≤2.9 ms). A
   transport stop fades a sounding click over 1 ms rather than cutting it.
 - **Link Audio.** `hal::ILinkAudio` (`ablink::link_audio()`) is the seam,
-  with beats crossing as Q32.32. The real implementation needs Link 4.0
-  (`CONFIG_NEON_LINK_AUDIO`); a no-op stands in otherwise and reports
+  with beats crossing as Q32.32. The real implementation is compiled when
+  `CONFIG_NEON_LINK_AUDIO` is on (the AMYboard default, against the
+  Link-4.0 submodule); a no-op stands in otherwise and reports
   `available() == false`, which the editor says out loud. Neither
   direction touches the network from core 1: SPSC rings carry blocks to
   and from a core-0 pump task.
 - **Receive.** `JitterBuffer` holds `jitter_ms` of audio and trims a linear
   resampler ±500 ppm from the fill level, absorbing both WiFi jitter and
-  the 48 kHz-vs-44.1 kHz rate mismatch.
+  any sender-rate mismatch.
 
 ## Bidirectional operation (milestone 5)
 

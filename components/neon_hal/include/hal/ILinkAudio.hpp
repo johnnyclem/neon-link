@@ -15,8 +15,9 @@ namespace hal {
 // A channel offered by a peer (or by us), as Link Audio discovery reports
 // it. `id` is what subscribe() takes; `name` is what a person reads.
 struct AudioChannelInfo {
-  char id[48] = {};
+  char id[48] = {};       // 16 hex chars of ChannelId; empty when unknown
   char name[32] = {};
+  char peer[32] = {};     // publishing peer's display name
   uint32_t sample_rate = 0;
   uint8_t num_channels = 0;
   uint8_t is_local = 0;   // one of ours, so the UI can grey it out
@@ -50,6 +51,13 @@ class ILinkAudio {
   // Moves queued audio between the rings and the network. Called by the
   // pump task on core 0; never from the audio task.
   virtual void pump() = 0;
+
+  // Session-level controls. Core 0 only. set_enabled is LinkAudio's
+  // enableLinkAudio — leave it off until something is publishing or
+  // subscribed so a clock-only session does not pay the WiFi tax.
+  virtual void set_enabled(bool enable) = 0;
+  virtual void set_peer_name(const char* name) = 0;
+  virtual void set_quantum(double beats) = 0;
 
   // ---- RT plane. Audio task only; lock-free. ----
 

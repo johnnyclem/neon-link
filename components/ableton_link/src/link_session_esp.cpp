@@ -5,6 +5,8 @@
 
 #include "sdkconfig.h"
 
+#include <string>
+
 #if CONFIG_NEON_LINK_AUDIO
 // Link 4.0: LinkAudio is a superset of Link, so the session behaviour below
 // is unchanged and one instance backs both facades (see ablink/audio.hpp).
@@ -36,10 +38,30 @@ class LinkSessionEsp final : public hal::ILinkSession {
  public:
   void start(double initial_bpm) override {
     if (link_ == nullptr) {
+#if CONFIG_NEON_LINK_AUDIO
+      // LinkAudio(bpm, name). Audio stays off until the audio service
+      // turns it on — a clock-only session must not pay the stream tax.
+      link_ = new LinkImpl(initial_bpm, peer_name_);
+      link_->enableLinkAudio(false);
+#else
       link_ = new LinkImpl(initial_bpm);
+#endif
       link_->enableStartStopSync(start_stop_sync_);
     }
     link_->enable(true);
+  }
+
+  void set_peer_name(const char* name) {
+    if (name == nullptr || name[0] == '\0') {
+      peer_name_ = "neon-link";
+    } else {
+      peer_name_ = name;
+    }
+#if CONFIG_NEON_LINK_AUDIO
+    if (link_ != nullptr) {
+      link_->setPeerName(peer_name_);
+    }
+#endif
   }
 
   bool capture(hal::LinkState& out) override {
@@ -107,6 +129,7 @@ class LinkSessionEsp final : public hal::ILinkSession {
   // sockets and its asio service task, which must not happen from static
   // initialization order.
   LinkImpl* link_ = nullptr;
+  std::string peer_name_ = "neon-link";
   bool start_stop_sync_ = true;
   double quantum_ = 4.0;
 

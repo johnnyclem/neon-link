@@ -54,7 +54,7 @@ class JitterBuffer {
 
   static constexpr uint32_t kStageFrames = 512;
   static constexpr uint32_t kMinJitterMs = 5;
-  static constexpr uint32_t kMaxJitterMs = 500;
+  static constexpr uint32_t kMaxJitterMs = 800;
 
  private:
   void update_servo();

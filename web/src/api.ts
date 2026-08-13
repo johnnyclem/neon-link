@@ -104,6 +104,8 @@ export interface AudioConfig {
 export interface AudioChannel {
   id: string;
   name: string;
+  /** Publishing peer's display name. */
+  peer?: string;
   rate: number;
   channels: number;
   /** One of ours — subscribing to it would be a loop. */
@@ -123,6 +125,8 @@ export interface AudioStatus {
   /** Sender rate of the subscribed channel, 0 when not receiving. */
   sub_rate: number;
   sub_dropped: number;
+  /** Receive-buffer fill, milliseconds. */
+  fill_ms?: number;
   /** Sample-clock drift against the module's own timebase. */
   clock_ppm: number;
 }

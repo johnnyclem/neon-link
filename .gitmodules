@@ -1,3 +1,6 @@
 [submodule "third_party/link"]
 	path = third_party/link
 	url = https://github.com/Ableton/link.git
+[submodule "gpio_expansion_board"]
+	path = gpio_expansion_board
+	url = https://github.com/nulllaborg/gpio_expansion_board.git

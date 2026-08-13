@@ -2,9 +2,10 @@
 
 // Linear-interpolation sample-rate conversion for the receive path.
 //
-// Live publishes at 48 kHz; the module renders at 44.1 kHz, and the two
-// clocks are not the same crystal either. Linear interpolation is coarse
-// for mastering and entirely adequate for monitoring and jamming, which is
+// Live publishes at 48 kHz and so does the module, but senders are
+// allowed any rate and the two crystals are not the same. Linear
+// interpolation is coarse for mastering and entirely adequate for
+// monitoring and jamming, which is
 // what a Link Audio subscription is for — and it costs two multiplies per
 // output sample. A windowed-sinc upgrade slots in behind this interface
 // without touching the callers.

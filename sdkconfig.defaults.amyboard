@@ -35,11 +35,17 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 # fit Link 4 plus the audio engine, and the flash is there.
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16mb.csv"
 
-# Audio engine (docs/AUDIOLINK.md). The I2S pins still have to come from
-# the board schematic — see the "I2S pin map" menu; until they are set the
-# engine reports itself as unavailable instead of half-working.
+# Audio engine (docs/AUDIOLINK.md). Pins are the AMYboard PCM3060 LINE
+# map (tulip/amyboard/pins.h). Input stays off: duplex DMA ran the S3
+# out of internal RAM the moment WiFi associated.
 CONFIG_NEON_AUDIO=y
-CONFIG_NEON_AUDIO_INPUT=y
+# CONFIG_NEON_AUDIO_INPUT is not set
+CONFIG_NEON_LINK_AUDIO=y
+CONFIG_NEON_I2S_MCLK=3
+CONFIG_NEON_I2S_BCLK=8
+CONFIG_NEON_I2S_LRCLK=2
+CONFIG_NEON_I2S_DOUT=6
+CONFIG_NEON_I2S_DIN=9
 
 # Link Audio's receive path holds ~250 ms of 48 kHz stereo, and publishing
 # a mix keeps a socket busy alongside Link's own discovery traffic.

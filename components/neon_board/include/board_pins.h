@@ -15,11 +15,11 @@
 
 #include "sdkconfig.h"
 
-// I2S audio (docs/AUDIOLINK.md). The AMYboard's PCM5101 DAC and PCM1808
-// ADC share BCLK and LRCLK on one duplex port; the ADC also needs a 256fs
-// MCLK. The numbers come from the board schematic rather than from this
-// repo, so they are Kconfig values with a -1 default: an unconfigured
-// build brings everything up except the codecs, and the editor says why.
+// I2S audio (docs/AUDIOLINK.md). The AMYboard LINE jack is a PCM3060
+// (I2S slave, 32-bit slots, 256fs MCLK) on the same pins as
+// tulip/amyboard/pins.h. Kconfig carries the numbers so a custom board
+// can override; AMYBOARD defaults are the real map. -1 leaves the
+// codecs idle and the editor says why.
 #ifdef CONFIG_NEON_I2S_MCLK
 inline constexpr int kPinI2sMclk = CONFIG_NEON_I2S_MCLK;
 inline constexpr int kPinI2sBclk = CONFIG_NEON_I2S_BCLK;
@@ -83,8 +83,9 @@ inline constexpr int kPinDispCs = -1;
 inline constexpr int kPinDispDc = -1;
 inline constexpr int kPinDispRes = -1;
 
-// No dedicated GPIO encoder / status LEDs on stock AMYboard. Use the web
-// editor (or a Grove I2C encoder later). -1 = disabled.
+// No dedicated GPIO encoder / status LEDs on stock AMYboard. encoder_init
+// falls back to the NULLLAB I2C GPIO expander @ 0x24 (E0 pot, E1/E2/E3
+// EC11) when these pins are -1. -1 = no native GPIO.
 inline constexpr int kPinEncA = -1;
 inline constexpr int kPinEncB = -1;
 inline constexpr int kPinEncSw = -1;

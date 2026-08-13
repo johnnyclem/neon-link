@@ -344,7 +344,7 @@ TEST_CASE("audio values out of range are clamped") {
   CHECK(cfg.audio.role_r == neon::AudioRole::kMix);
   CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
   CHECK(cfg.audio.amy_patch == 0);
-  CHECK(cfg.audio.la_jitter_ms == 500);
+  CHECK(cfg.audio.la_jitter_ms == 800);
   CHECK(cfg.audio.enabled == 1);
 
   cfg.audio.la_jitter_ms = 1;
