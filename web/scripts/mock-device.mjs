@@ -68,6 +68,26 @@ let config = {
   device_name: "neon-link",
   display_brightness: 255,
   big_beat_display: true,
+  audio: {
+    enabled: true,
+    role_l: "mix",
+    role_r: "mix",
+    metro_enabled: true,
+    metro_sound: "sine",
+    metro_gain: 200,
+    metro_accent: true,
+    amy_enabled: false,
+    amy_gain: 200,
+    amy_patch: 0,
+    linein_monitor_gain: 0,
+    publish_mix: true,
+    publish_linein: false,
+    publish_mono: false,
+    sub_gain: 200,
+    jitter_ms: 60,
+    channel_name: "",
+    sub_channel_id: "",
+  },
   tempo_milli_bpm: 128000,
   wifi: {
     networks: [
@@ -120,8 +140,37 @@ const status = () => {
     ap_ssid: setupAp ? "NEON-LINK-1234" : "",
     set_bpm: config.tempo_milli_bpm / 1000,
     pulse: { edges: Math.floor(beats * 4), late_max_us: 184, late_avg_us: 12 },
+    audio: {
+      running: config.audio.enabled,
+      underruns: 0,
+      // A meter that moves, so the page can be judged in motion.
+      peak_l: Math.floor(400 + 300 * Math.abs(Math.sin(elapsed * 2))),
+      peak_r: Math.floor(400 + 300 * Math.abs(Math.sin(elapsed * 2 + 0.4))),
+      publishing: config.audio.publish_mix,
+      subscribers: config.audio.publish_mix ? 1 : 0,
+      sub_state: config.audio.sub_channel_id ? "playing" : "idle",
+      sub_rate: config.audio.sub_channel_id ? 48000 : 0,
+      sub_dropped: 0,
+      clock_ppm: 43,
+    },
   };
 };
+
+// Channels a Live 12.4 on the same network would be offering, plus our own.
+const audioChannels = () => ({
+  available: true,
+  channels: [
+    { id: "8f2a/master", name: "Live Master", rate: 48000, channels: 2, local: false },
+    { id: "8f2a/track3", name: "Live Drums", rate: 48000, channels: 2, local: false },
+    {
+      id: "self/out",
+      name: `${config.audio.channel_name || config.device_name} Out`,
+      rate: 44100,
+      channels: 2,
+      local: true,
+    },
+  ],
+});
 
 const json = (res, body) => {
   res.writeHead(200, { "Content-Type": "application/json" });
@@ -150,6 +199,7 @@ createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === "/api/audio/channels") return json(res, audioChannels());
   if (url.pathname === "/api/scan") {
     return json(res, [
       { ssid: "Studio 2.4", rssi: -42, open: false },
