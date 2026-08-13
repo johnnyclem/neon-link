@@ -455,7 +455,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1408];
+  char buf[1536];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -464,7 +464,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"hostname\":\"%s.local\",\"device_name\":\"%s\",\"ip\":\"%s\","
       "\"setup_ap\":%s,\"ap_ssid\":\"%s\","
       "\"wifi_ssid\":\"%s\",\"wifi_pass_len\":%u,\"wifi_fail_reason\":%u,"
-      "\"firmware\":\"%s\",\"set_bpm\":%u.%03u,"
+      "\"firmware\":\"%s\",\"rev\":%u,\"set_bpm\":%u.%03u,"
       "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u},"
       "\"audio\":{\"running\":%s,\"underruns\":%u,\"peak_l\":%u,"
       "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
@@ -483,6 +483,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       tl.tempo_mpb_q32 != 0 ? "true" : "false", cfg.device_name,
       cfg.device_name, ip, setup_ap ? "true" : "false", ap_ssid, ssid,
       static_cast<unsigned>(std::strlen(cfg.wifi[0].pass)), disc, fw,
+      static_cast<unsigned>(neon_config_rev()),
       static_cast<unsigned>(cfg.tempo_milli_bpm / 1000),
       static_cast<unsigned>(cfg.tempo_milli_bpm % 1000),
       static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),

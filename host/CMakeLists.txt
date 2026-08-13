@@ -66,3 +66,23 @@ target_link_libraries(neon_sim PRIVATE neon_core)
 # writes design/screens.json, which the style guide's simulator displays.
 add_executable(neon_screens sim/neon_screens.cpp)
 target_link_libraries(neon_screens PRIVATE neon_core)
+
+# Portable plugin HTTP client. No JUCE. Same sanitizers as neon_tests.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../plugin/client/CMakeLists.txt")
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../plugin/client neon_client)
+  add_executable(neon_client_tests
+    tests/doctest_main.cpp
+    ../plugin/client/tests/test_bind.cpp
+    ../plugin/client/tests/test_status.cpp
+    ../plugin/client/tests/test_patch.cpp
+    ../plugin/client/tests/test_http.cpp
+    ../plugin/client/tests/test_client.cpp
+    ../plugin/client/tests/test_backoff.cpp
+  )
+  target_include_directories(neon_client_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest)
+  target_compile_definitions(neon_client_tests PRIVATE
+    NEON_CLIENT_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../plugin/client/tests/fixtures")
+  target_link_libraries(neon_client_tests PRIVATE neon_client Threads::Threads)
+  add_test(NAME neon_client_tests COMMAND neon_client_tests)
+endif()

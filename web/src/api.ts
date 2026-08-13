@@ -200,6 +200,11 @@ export interface Status {
   wifi_fail_reason: number;
   /** Running firmware version, for the update card. */
   firmware: string;
+  /**
+   * Config generation. Increments on apply/save. Absent on firmware
+   * that predates the plugin work — treat as 0.
+   */
+  rev?: number;
   device_name: string;
   /** SSID the access point is advertising, "" when it is down. */
   ap_ssid: string;

@@ -60,7 +60,15 @@ if(NOT CONFIG_NEON_LINK_STUB)
     ${CMAKE_CURRENT_SOURCE_DIR}/link_overrides
     ${LINK_ROOT}/include
     ${LINK_ROOT}/modules/asio-standalone/asio/include)
-  target_compile_options(${COMPONENT_LIB} PRIVATE -fexceptions)
+  # GCC 13 + -O2 (IDF's PERF) false-positives on AudioBuffer's implicit
+  # move: it thinks the large std::array `bytes` is used uninitialized.
+  # IDF promotes that warning to -Werror=uninitialized; upstream Link
+  # does not, so this is ours to swallow. Keep it on this component —
+  # do not silence the warning project-wide.
+  target_compile_options(${COMPONENT_LIB} PRIVATE
+    -fexceptions
+    -Wno-error=uninitialized
+    -Wno-error=maybe-uninitialized)
   target_compile_definitions(${COMPONENT_LIB} PRIVATE
     # Keep Link's asio service task off the real-time core.
     LINK_ESP_TASK_CORE_ID=0

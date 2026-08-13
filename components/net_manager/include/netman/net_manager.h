@@ -21,11 +21,13 @@ bool ethernet_start();
 
 // Advertise <hostname>.local via mDNS (call once after init_common()).
 // Registers hostname + _http._tcp so browsers/OS can find the editor.
+// Instance name is the DNS-safe device_name (unique per renamed unit).
+// TXT: path=/, fw=<app version>, name=<device_name>, id=<last 3 MAC bytes>.
 // `hostname` comes from Config::device_name and is already DNS-safe.
 void mdns_start(const char* hostname);
 
-// Update the advertised hostname after the user renames the module, so
-// the editor URL follows without a reboot.
+// Update the advertised hostname, instance name, and TXT `name` after
+// the user renames the module, so the editor URL follows without a reboot.
 void mdns_set_hostname(const char* hostname);
 
 // Access point parameters, derived from the stored config.

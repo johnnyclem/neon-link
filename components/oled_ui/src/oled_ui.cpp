@@ -64,7 +64,9 @@ void assemble_status(neon::UiStatus* s) {
 }
 
 void ui_task(void*) {
-  const oledui::PanelKind kind = oledui::panel_init();
+  const oledui::PanelKind kind = oledui::panel_kind() != oledui::PanelKind::kNone
+                                     ? oledui::panel_kind()
+                                     : oledui::panel_init();
   const bool have_display = kind != oledui::PanelKind::kNone;
   if (!have_display) {
     ESP_LOGW(kTag, "no OLED detected; UI task drives LEDs only");
@@ -151,6 +153,23 @@ void ui_task(void*) {
 }
 
 }  // namespace
+
+void oledui_bringup() {
+  const oledui::PanelKind kind = oledui::panel_init();
+  if (kind == oledui::PanelKind::kNone) {
+    ESP_LOGW(kTag, "bringup: no panel");
+    return;
+  }
+  neon::Framebuffer fb;
+  fb.clear();
+  oledui::panel_set_brightness(255);
+  if (!oledui::panel_flush(fb)) {
+    ESP_LOGW(kTag, "bringup: first flush failed (kind=%d)",
+             static_cast<int>(kind));
+  } else {
+    ESP_LOGI(kTag, "bringup: panel kind=%d cleared", static_cast<int>(kind));
+  }
+}
 
 void oledui_start() {
   // 128×128 FB (2 KB) + SSD1327 pack buffer lives in panel128; give the
