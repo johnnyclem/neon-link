@@ -137,11 +137,27 @@ TEST_CASE("soft_clip: monotone, unity below the knee, bounded above it") {
   CHECK(neon::soft_clip(1000.0f) > 0.95f);
 }
 
-TEST_CASE("mixer: a bounded single source passes through untouched") {
-  // A Link Audio stream at unity gain cannot exceed full scale, so the
-  // saturator must not touch it — shaving the top of hot program
-  // material adds intermodulation that reads as crackly distortion on
-  // dense tonal content (the very symptom it was blamed for on device).
+TEST_CASE("mixer: a full-scale Link tap is not crushed") {
+  const auto hot = constant(0.99f);
+  neon::MixSources src;
+  src.link_in_l = hot.data();
+  src.link_in_r = hot.data();
+  neon::MixerConfig cfg;
+  cfg.role_l = neon::AudioRole::kLinkIn;
+  cfg.role_r = neon::AudioRole::kLinkIn;
+  cfg.sub_gain = neon::kUnityGainByte;
+  std::vector<float> l(kFrames), r(kFrames);
+  neon::mix_block(cfg, src, kFrames, l.data(), r.data());
+  CHECK(l[0] == doctest::Approx(0.99f));
+  CHECK(r[0] == doctest::Approx(0.99f));
+}
+
+TEST_CASE("mixer: a bounded mix passes through untouched") {
+  // The same guarantee on the default kMix routing: a Link Audio stream
+  // at unity gain is the only active source, so the mix cannot exceed
+  // full scale and the saturator must stay out of it — shaving the top
+  // of hot program material adds intermodulation that reads as crackly
+  // distortion on dense tonal content.
   const auto hot = constant(0.98f);
   neon::MixSources src;
   src.link_in_l = hot.data();
@@ -153,11 +169,6 @@ TEST_CASE("mixer: a bounded single source passes through untouched") {
     CHECK(l[i] == doctest::Approx(0.98f));
     CHECK(r[i] == doctest::Approx(0.98f));
   }
-
-  // The same stream as a solo kLinkIn tap is equally untouched.
-  cfg.role_l = neon::AudioRole::kLinkIn;
-  neon::mix_block(cfg, src, kFrames, l.data(), r.data());
-  CHECK(l[0] == doctest::Approx(0.98f));
 }
 
 TEST_CASE("mixer: a hot mix saturates rather than wrapping") {

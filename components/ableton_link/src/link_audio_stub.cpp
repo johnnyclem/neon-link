@@ -38,6 +38,7 @@ class NoLinkAudio : public hal::ILinkAudio {
   uint32_t sink_dropped() const override { return 0; }
   uint32_t subscriber_count() const override { return 0; }
   bool available() const override { return false; }
+  bool session_ready() const override { return false; }
 };
 
 }  // namespace

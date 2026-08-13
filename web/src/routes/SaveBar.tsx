@@ -19,9 +19,11 @@ export function SaveBar({ save, dirty, saving, message }: PageProps) {
   return (
     <div class="savebar">
       <div class="btn-row" style="margin-top:0">
-        <Button type="button" onClick={() => void save()} disabled={!dirty || saving}>
-          {saving ? "Saving…" : dirty ? "Save" : "Saved"}
-        </Button>
+        {dirty || saving ? (
+          <Button type="button" onClick={() => void save()} disabled={!dirty || saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        ) : null}
         {message ? (
           <span
             class={`btn-row__msg btn-row__msg--${message.kind === "ok" ? "ok" : "err"}`}

@@ -16,6 +16,7 @@
 #include "halesp/status_leds.hpp"
 #include "neon/gfx/framebuffer.hpp"
 #include "neon/net/preference.hpp"
+#include "neon/transport.hpp"
 #include "neon/ui/icons_gen.hpp"
 #include "neon/ui/menu_model.hpp"
 #include "neon/ui/render.hpp"
@@ -36,7 +37,7 @@ void assemble_status(neon::UiStatus* s) {
   timeline_bus().read(tl);
   const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
   s->milli_bpm =
-      mpb_us != 0 ? static_cast<uint32_t>(60000000000ull / mpb_us) : 120000;
+      mpb_us != 0 ? neon::milli_bpm_from_mpb_us(mpb_us) : 120000;
   // Before the first sync the hero readout shows its placeholder rather
   // than a default tempo the module is not actually running at.
   s->tempo_valid = tl.tempo_mpb_q32 != 0;
@@ -64,7 +65,9 @@ void assemble_status(neon::UiStatus* s) {
 }
 
 void ui_task(void*) {
-  const oledui::PanelKind kind = oledui::panel_init();
+  const oledui::PanelKind kind = oledui::panel_kind() != oledui::PanelKind::kNone
+                                     ? oledui::panel_kind()
+                                     : oledui::panel_init();
   const bool have_display = kind != oledui::PanelKind::kNone;
   if (!have_display) {
     ESP_LOGW(kTag, "no OLED detected; UI task drives LEDs only");
@@ -151,6 +154,23 @@ void ui_task(void*) {
 }
 
 }  // namespace
+
+void oledui_bringup() {
+  const oledui::PanelKind kind = oledui::panel_init();
+  if (kind == oledui::PanelKind::kNone) {
+    ESP_LOGW(kTag, "bringup: no panel");
+    return;
+  }
+  neon::Framebuffer fb;
+  fb.clear();
+  oledui::panel_set_brightness(255);
+  if (!oledui::panel_flush(fb)) {
+    ESP_LOGW(kTag, "bringup: first flush failed (kind=%d)",
+             static_cast<int>(kind));
+  } else {
+    ESP_LOGI(kTag, "bringup: panel kind=%d cleared", static_cast<int>(kind));
+  }
+}
 
 void oledui_start() {
   // 128×128 FB (2 KB) + SSD1327 pack buffer lives in panel128; give the

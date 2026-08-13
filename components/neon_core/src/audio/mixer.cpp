@@ -4,15 +4,12 @@ namespace neon {
 
 namespace {
 
-// The saturator's job is preventing wrap when several sources sum past
-// full scale — it is a safety net, not a stage. A knee at 0.75 put the
-// top 2.5 dB of ordinary program material permanently inside the curve,
-// and on dense harmonic content (piano, guitar) the resulting
-// intermodulation reads as crackly glitching even with a loss-free
-// stream. 0.95 keeps the net while leaving normal levels untouched —
-// and render_channel skips the pass entirely when the active sources
-// cannot exceed full scale in the first place.
-constexpr float kKnee = 0.95f;
+// Wrap protection only. 0.75 was a "warm" monitor saturator: sticks and
+// clicks live below it (low RMS), a Rhodes or guitar sits on it all day
+// and comes out like a crushed low-bitrate file. float_to_int16 already
+// hard-clips true overs — and render_channel skips this pass entirely
+// when the active sources cannot sum past full scale in the first place.
+constexpr float kKnee = 0.97f;
 
 // Source selection for one output channel. Returns false when the role has
 // nothing to render (the caller then writes silence).
@@ -113,13 +110,15 @@ void render_channel(AudioRole role, const MixerConfig& cfg,
       // every time or a downstream trigger input starts missing edges.
       return;
     }
-    bound = t.gain;
+    // A solo program tap (Link in, line in, metro, synth) is already
+    // int16-bounded. Crushing it again is the Rhodes/guitar "garble".
+    return;
   }
   if (bound <= 1.0f) {
-    // The active sources cannot sum past full scale, so the saturator
-    // has nothing to protect against — stay bit-transparent. This is the
-    // common monitoring case: a Link Audio subscription (or line-in)
-    // playing on its own at unity gain.
+    // The active mix sources cannot sum past full scale, so the
+    // saturator has nothing to protect against — stay bit-transparent.
+    // This is the common monitoring case: a Link Audio subscription
+    // riding the default kMix routing on its own at unity gain.
     return;
   }
   for (uint32_t i = 0; i < frames; ++i) {

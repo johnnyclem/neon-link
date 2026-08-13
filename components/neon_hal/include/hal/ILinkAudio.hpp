@@ -55,9 +55,20 @@ class ILinkAudio {
   // Session-level controls. Core 0 only. set_enabled is LinkAudio's
   // enableLinkAudio — leave it off until something is publishing or
   // subscribed so a clock-only session does not pay the WiFi tax.
+  //
+  // These no-op until the Link session exists (session.start() runs
+  // after the STA wait). Callers must not cache a "done" flag across a
+  // failed attempt — see session_ready().
   virtual void set_enabled(bool enable) = 0;
   virtual void set_peer_name(const char* name) = 0;
   virtual void set_quantum(double beats) = 0;
+
+  // True once session.start() has constructed the LinkAudio instance.
+  // available() is compile-time (this firmware has Link 4.0); this is
+  // runtime. The control loop must wait for this before caching enable
+  // / peer-name / quantum, or the first 250 ms tick burns the one-shot
+  // against a null session and Link Audio never turns on.
+  virtual bool session_ready() const = 0;
 
   // ---- RT plane. Audio task only; lock-free. ----
 
