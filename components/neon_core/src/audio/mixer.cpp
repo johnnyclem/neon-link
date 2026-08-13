@@ -4,7 +4,15 @@ namespace neon {
 
 namespace {
 
-constexpr float kKnee = 0.75f;
+// The saturator's job is preventing wrap when several sources sum past
+// full scale — it is a safety net, not a stage. A knee at 0.75 put the
+// top 2.5 dB of ordinary program material permanently inside the curve,
+// and on dense harmonic content (piano, guitar) the resulting
+// intermodulation reads as crackly glitching even with a loss-free
+// stream. 0.95 keeps the net while leaving normal levels untouched —
+// and render_channel skips the pass entirely when the active sources
+// cannot exceed full scale in the first place.
+constexpr float kKnee = 0.95f;
 
 // Source selection for one output channel. Returns false when the role has
 // nothing to render (the caller then writes silence).
@@ -37,19 +45,27 @@ Tap tap_for(AudioRole role, const MixerConfig& cfg, const MixSources& src,
   }
 }
 
-void render_mix(const MixerConfig& cfg, const MixSources& src, uint32_t frames,
-                bool right, float* out) {
+// Returns the worst-case sum of the active sources' gains: every source
+// is bounded to ±1 before its gain (int16 conversion for link/line, the
+// per-voice normalisation in SynthVoiceBank, the click envelope), so a
+// bound ≤ 1 proves the mix cannot leave full scale and needs no
+// saturation at all.
+float render_mix(const MixerConfig& cfg, const MixSources& src,
+                 uint32_t frames, bool right, float* out) {
+  float bound = 0.0f;
   for (uint32_t i = 0; i < frames; ++i) {
     out[i] = 0.0f;
   }
   if (cfg.metro_enabled && src.metro != nullptr) {
     const float g = gain_from_byte(cfg.metro_gain);
+    bound += g;
     for (uint32_t i = 0; i < frames; ++i) {
       out[i] += src.metro[i] * g;
     }
   }
   if (cfg.amy_enabled && src.amy != nullptr) {
     const float g = gain_from_byte(cfg.amy_gain);
+    bound += g;
     for (uint32_t i = 0; i < frames; ++i) {
       out[i] += src.amy[i] * g;
     }
@@ -57,6 +73,7 @@ void render_mix(const MixerConfig& cfg, const MixSources& src, uint32_t frames,
   const float* link = right ? src.link_in_r : src.link_in_l;
   if (link != nullptr) {
     const float g = gain_from_byte(cfg.sub_gain);
+    bound += g;
     for (uint32_t i = 0; i < frames; ++i) {
       out[i] += link[i] * g;
     }
@@ -64,17 +81,20 @@ void render_mix(const MixerConfig& cfg, const MixSources& src, uint32_t frames,
   const float* line = right ? src.line_in_r : src.line_in_l;
   if (line != nullptr && cfg.linein_gain != 0) {
     const float g = gain_from_byte(cfg.linein_gain);
+    bound += g;
     for (uint32_t i = 0; i < frames; ++i) {
       out[i] += line[i] * g;
     }
   }
+  return bound;
 }
 
 void render_channel(AudioRole role, const MixerConfig& cfg,
                     const MixSources& src, uint32_t frames, bool right,
                     float* out) {
+  float bound = 0.0f;
   if (role == AudioRole::kMix) {
-    render_mix(cfg, src, frames, right, out);
+    bound = render_mix(cfg, src, frames, right, out);
   } else {
     const Tap t = tap_for(role, cfg, src, right);
     const bool pulse = role == AudioRole::kClock || role == AudioRole::kReset ||
@@ -93,6 +113,14 @@ void render_channel(AudioRole role, const MixerConfig& cfg,
       // every time or a downstream trigger input starts missing edges.
       return;
     }
+    bound = t.gain;
+  }
+  if (bound <= 1.0f) {
+    // The active sources cannot sum past full scale, so the saturator
+    // has nothing to protect against — stay bit-transparent. This is the
+    // common monitoring case: a Link Audio subscription (or line-in)
+    // playing on its own at unity gain.
+    return;
   }
   for (uint32_t i = 0; i < frames; ++i) {
     out[i] = soft_clip(out[i]);

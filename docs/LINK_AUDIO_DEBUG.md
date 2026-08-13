@@ -43,7 +43,7 @@ pump task (4 ms) → `LinkAudioSink` commit.
 |---|---|---|
 | Crackle / splices, fill bleeding down, periodic silence-then-recovery | `rx_dropped` climbs; rx high-water pegs at the ring size | WiFi delivers in bursts longer than the **block ring**, upstream of the jitter buffer. Raising `la_jitter_ms` cannot help — the audio is gone before the jitter buffer sees it. Deepen `kRxSlots` (done: 16 → 128) or move to direct-push (below). |
 | Stutter: ~`jitter_ms` of silence, then audio, repeating | `jit_underruns` climbs, `rx_dropped` quiet | Genuine late packets or sender gaps; raise `la_jitter_ms` (this is what it is for), check RF environment, disable the SoftAP while testing (`APSTA` beacons cost airtime). |
-| Continuous harmonic distortion, no dropouts, counters all quiet | nothing — peaks near 1000 | The mixer's `soft_clip` (knee 0.75) saturating hot program material at unity `la_sub_gain` (200). **No-reflash A/B**: set the subscribe gain to ≤150 (≈ −2.5 dB). If the distortion vanishes, it was the saturator, not the network. |
+| Distortion only on dense tonal material (piano, guitar) while sparse percussion stays clean; counters all quiet | nothing — peaks near 1000 | The mixer's saturator doing intermodulation on program material above the knee. Sticks poke past it for milliseconds (inaudible); sustained harmonic content sits in the curve continuously. Fixed: the knee moved 0.75 → 0.95 and the clip pass is skipped entirely whenever the active sources cannot sum past full scale (a subscription playing alone is now bit-transparent). On firmware predating the fix, the **no-reflash A/B** is setting the subscribe gain to ≤150 (≈ −2.5 dB): if the distortion vanishes, it was the saturator, not the network. |
 | Pitch-stable but gritty top end on music | nothing | Linear-interpolation SRC operating at a non-1.0 ratio (sender rate ≠ 48 kHz, or servo trim active). Expected ceiling of the current resampler; windowed-sinc is the upgrade path. |
 | Everything distorted, including the local metronome / synth | nothing | Not Link Audio at all: I2S slot format vs the PCM3060 strap (32-bit left-justified vs standard I2S one-BCLK delay). Verify with the metronome alone; if it is dirty too, fix `i2s_audio.cpp` slot config first — no network test is meaningful until the local path is clean. |
 | Dead air, `sub_state` stuck buffering | `rx_dropped` climbs fast; log says `rx block exceeds 512 frames` | Sender block size above `kMaxBlockFrames`; every block is dropped. Reduce the sender's buffer size or raise `kMaxBlockFrames`. |
@@ -60,7 +60,10 @@ pump task (4 ms) → `LinkAudioSink` commit.
 3. **`rx ring high-water`** near `kRxSlots` with drops = burst overflow
    (the pre-jitter-buffer loss that motivated this branch's fixes).
 4. **Gain A/B** (`la_sub_gain` 200 → 150) any time "distorted" is part of
-   the complaint — it is free and rules the saturator in or out.
+   the complaint — it is free and rules the saturator in or out. (On
+   firmware with the transparency fix, a subscription playing alone is
+   never clipped; if this A/B still changes the sound, the distortion is
+   upstream of the mixer.)
 5. Test STA-only (SoftAP off) and with BLE MIDI idle before blaming
    anything in this codebase: 2.4 GHz airtime is the whole game.
 
