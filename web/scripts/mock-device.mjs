@@ -114,6 +114,7 @@ let config = {
 const setupAp = process.env.MOCK_SETUP === "1";
 const bpm = 128;
 let playing = true;
+let rev = 0;
 
 const status = () => {
   const elapsed = (Date.now() - started) / 1000;
@@ -136,6 +137,7 @@ const status = () => {
     wifi_pass_len: 0,
     wifi_fail_reason: 0,
     firmware: "mock-1.0",
+    rev,
     device_name: config.device_name,
     ap_ssid: setupAp ? "NEON-LINK-1234" : "",
     set_bpm: config.tempo_milli_bpm / 1000,
@@ -211,6 +213,7 @@ createServer((req, res) => {
       next.wifi.pass = "";
       next.ap = { ...next.ap, has_pass: next.ap.pass !== "" || next.ap.has_pass === true, pass: "" };
       config = next;
+      rev += 1;
       json(res, config);
     });
     return;

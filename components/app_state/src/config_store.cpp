@@ -28,6 +28,7 @@ void publish_buses() {
 
 bool g_save_pending = false;
 int64_t g_last_change_us = 0;
+uint32_t g_rev = 0;
 
 bool persist(const neon::Config& cfg) {
   uint8_t buf[kConfigBlobBuf];
@@ -60,6 +61,7 @@ void neon_config_apply(const neon::Config& cfg) {
   publish_buses();
   g_save_pending = true;
   g_last_change_us = 0;  // stamped by the next flush call
+  ++g_rev;
 }
 
 void neon_config_flush(int64_t now_us) {
@@ -106,10 +108,13 @@ bool neon_config_save(const neon::Config& cfg) {
   publish_buses();
   g_save_pending = false;
   g_last_change_us = 0;
+  ++g_rev;
   ESP_LOGI(kTag, "config saved (ssid=\"%s\" pass_len=%u)", g_config.wifi[0].ssid,
            static_cast<unsigned>(std::strlen(g_config.wifi[0].pass)));
   return true;
 }
+
+uint32_t neon_config_rev() { return g_rev; }
 
 bool neon_config_factory_reset() {
   g_save_pending = false;
@@ -118,6 +123,7 @@ bool neon_config_factory_reset() {
   g_config = neon::Config{};
   neon::config_sanitize(&g_config);
   publish_buses();
+  ++g_rev;
   ESP_LOGW(kTag, "factory reset %s", ok ? "complete" : "FAILED (NVS error)");
   return ok;
 }

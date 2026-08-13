@@ -29,21 +29,23 @@ if [[ -z "$PORT" ]]; then
   exit 1
 fi
 
-if [[ ! -f build/neon_link.bin ]]; then
-  echo "Building AMYboard firmware..."
-  idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" set-target esp32s3
-  idf.py build
-fi
+# Always rebuild so a leftover neon_link.bin cannot flash yesterday's
+# tree. export.sh above is what puts idf.py on PATH.
+echo "Building AMYboard firmware..."
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" build
 
 echo "Flashing to $PORT ..."
-# OTA partition table: app at 0x20000 (not the old 0x10000). flash_args
-# paths are relative to build/.
-python -m esptool --chip esp32s3 -p "$PORT" -b 115200 \
+# OTA partition table: app at 0x20000 (not the old 0x10000). The same
+# image is written to ota_1 (0x620000) so a rollback cannot land on
+# erased flash — that is the blank OLED / two-pixels-lit brick after
+# a USB flash + reboot.
+python -m esptool --chip esp32s3 -p "$PORT" -b 460800 \
   --before default_reset --after hard_reset \
   write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB \
   0x0 build/bootloader/bootloader.bin \
   0x8000 build/partition_table/partition-table.bin \
   0xf000 build/ota_data_initial.bin \
-  0x20000 build/neon_link.bin
+  0x20000 build/neon_link.bin \
+  0x620000 build/neon_link.bin
 
 echo "Done. Monitor with: idf.py -p $PORT monitor"

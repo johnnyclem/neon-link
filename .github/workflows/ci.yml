@@ -140,3 +140,21 @@ jobs:
             echo "::error::The app image no longer fits the 6 MB OTA slot."
             exit 1
           fi
+
+  plugin-macos:
+    name: Plugin (macOS VST3)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S plugin -B build-plugin -DCMAKE_BUILD_TYPE=Release
+      - name: Build VST3
+        run: cmake --build build-plugin -j --target NeonLink_VST3
+      - name: Artifact exists
+        run: |
+          found=$(find build-plugin -name "NEON LINK.vst3" -type d | head -1)
+          echo "vst3=$found"
+          test -n "$found"
+

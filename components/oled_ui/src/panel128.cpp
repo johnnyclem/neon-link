@@ -348,12 +348,41 @@ bool sh1107_flush_spi(const neon::Framebuffer& fb) {
 
 // ---- probe / public API ------------------------------------------------
 
-bool try_addr(uint8_t addr) { return halesp::i2c_probe(addr, 30); }
+// Short timeout: a NACK is instant on a live bus. The full 30 ms was
+// only paid when the bus had not settled (cold power-on). Scanning 112
+// addresses at 30 ms each is 3.3 s of CPU0 spin — the idle-task WDT
+// is 5 s, so a second attempt panics. USB-flash boots survived because
+// the Grove rail had been up the whole time the ROM loader ran.
+bool try_addr(uint8_t addr) { return halesp::i2c_probe(addr, 5); }
+
+bool try_known_panels() {
+  if (try_addr(kSsd1327Addr)) {
+    if (ssd1327_init()) {
+      g_kind = PanelKind::kSsd1327I2c;
+      return true;
+    }
+    ESP_LOGW(kTag, "SSD1327 @ 0x3d ACKed but init failed");
+  }
+  if (try_addr(kSh1107Addr)) {
+    if (sh1107_init_i2c()) {
+      g_kind = PanelKind::kSh1107I2c;
+      return true;
+    }
+    if (ssd1306_init_i2c()) {
+      g_kind = PanelKind::kSsd1306I2c;
+      return true;
+    }
+    ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
+  }
+  return false;
+}
 
 }  // namespace
 
 PanelKind panel_init() {
-  g_kind = PanelKind::kNone;
+  if (g_kind != PanelKind::kNone) {
+    return g_kind;
+  }
   if (halesp::i2c_bus() == nullptr) {
     if (kPinI2cSda >= 0) {
       halesp::i2c_bus_init(kPinI2cSda, kPinI2cScl);
@@ -361,41 +390,13 @@ PanelKind panel_init() {
   }
 
   if (halesp::i2c_bus() != nullptr) {
-    // Retry: Grove OLED can miss the first probe right after power-up /
-    // while ADS1015+GP8413 are settling on the same front bus.
-    for (int attempt = 0; attempt < 4 && g_kind == PanelKind::kNone;
+    // Prefer the stock amyboard.init_display() order. Do not sweep the
+    // whole address space on this path — see try_addr().
+    for (int attempt = 0; attempt < 6 && g_kind == PanelKind::kNone;
          ++attempt) {
-      vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 50 : 100));
-
-      char seen[80] = {};
-      size_t n = 0;
-      for (uint8_t a = 0x08; a < 0x78 && n + 4 < sizeof(seen); ++a) {
-        if (try_addr(a)) {
-          n += static_cast<size_t>(
-              snprintf(seen + n, sizeof(seen) - n, "%s%02x", n ? "," : "", a));
-        }
-      }
-      ESP_LOGI(kTag, "I2C scan attempt %d (SDA=%d SCL=%d): %s", attempt + 1,
-               kPinI2cSda, kPinI2cScl, n ? seen : "(none)");
-
-      // Prefer the stock amyboard.init_display() order.
-      if (try_addr(kSsd1327Addr)) {
-        if (ssd1327_init()) {
-          g_kind = PanelKind::kSsd1327I2c;
-          return g_kind;
-        }
-        ESP_LOGW(kTag, "SSD1327 @ 0x3d ACKed but init failed");
-      }
-      if (try_addr(kSh1107Addr)) {
-        if (sh1107_init_i2c()) {
-          g_kind = PanelKind::kSh1107I2c;
-          return g_kind;
-        }
-        if (ssd1306_init_i2c()) {
-          g_kind = PanelKind::kSsd1306I2c;
-          return g_kind;
-        }
-        ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
+      vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 200 : 80));
+      if (try_known_panels()) {
+        return g_kind;
       }
     }
   }

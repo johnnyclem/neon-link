@@ -4,7 +4,11 @@ namespace neon {
 
 namespace {
 
-constexpr float kKnee = 0.75f;
+// Wrap protection only. 0.75 was a "warm" monitor saturator: sticks and
+// clicks live below it (low RMS), a Rhodes or guitar sits on it all day
+// and comes out like a crushed low-bitrate file. float_to_int16 already
+// hard-clips true overs.
+constexpr float kKnee = 0.97f;
 
 // Source selection for one output channel. Returns false when the role has
 // nothing to render (the caller then writes silence).
@@ -93,6 +97,9 @@ void render_channel(AudioRole role, const MixerConfig& cfg,
       // every time or a downstream trigger input starts missing edges.
       return;
     }
+    // A solo program tap (Link in, line in, metro, synth) is already
+    // int16-bounded. Crushing it again is the Rhodes/guitar "garble".
+    return;
   }
   for (uint32_t i = 0; i < frames; ++i) {
     out[i] = soft_clip(out[i]);

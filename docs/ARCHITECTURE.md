@@ -295,7 +295,7 @@ reset.
 
   | Route | Purpose |
   |---|---|
-  | `GET /api/status` | BPM, transport, network, peers, ext-clock, loop phase, firmware version, pulse jitter |
+  | `GET /api/status` | BPM, transport, network, peers, ext-clock, loop phase, firmware version, `rev`, pulse jitter |
   | `GET /api/config` · `PUT /api/config` | The whole config document |
   | `POST /api/transport?op=play\|stop\|toggle\|play_now\|stop_now` | Loop-quantized (or immediate) transport |
   | `POST /api/tempo?bpm=` · `?op=tap\|nudge&delta=\|double\|half` | Tempo control |
@@ -412,8 +412,12 @@ esp_lcd driver line-up covers it; the render path is unaffected.
   or 60 s when configured networks stay down, and the timer resets on any
   connectivity. The AP itself arrives with the web editor milestone —
   milestone 4 logs the decision.
-- **mDNS**: `neon-link.local` (espressif/mdns registry component), for the
-  web editor and general discovery.
+- **mDNS**: `<device_name>.local` (espressif/mdns registry component), for
+  the web editor and the VST3 plugin. Instance name is the DNS-safe
+  `device_name` (not the literal `"NEON LINK"`). TXT records: `path=/`,
+  `fw` (app version), `name` (device_name), `id` (last three STA MAC
+  bytes). `GET /api/status` emits `"rev"` (increments on apply/save) so
+  a bound client can notice remote edits.
 
 ## Proposed ESP32-S3 pinout
 

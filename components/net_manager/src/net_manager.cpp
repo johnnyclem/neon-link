@@ -6,6 +6,7 @@
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "esp_app_desc.h"
 #include "esp_eth.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -176,7 +177,23 @@ bool ip_from_ifkey(const char* ifkey, char* buf, size_t len) {
 }
 
 char g_hostname[32] = "neon-link";
+char g_mdns_fw[24] = "unknown";
+char g_mdns_id[8] = {};
 bool g_mdns_up = false;
+bool g_mdns_svc = false;
+
+void mdns_device_id(char* out, size_t cap) {
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  std::snprintf(out, cap, "%02x%02x%02x", mac[3], mac[4], mac[5]);
+}
+
+void mdns_refresh_txt() {
+  if (!g_mdns_svc) {
+    return;
+  }
+  (void)mdns_service_txt_item_set("_http", "_tcp", "name", g_hostname);
+}
 
 void mdns_set_hostname(const char* hostname) {
   if (hostname == nullptr || hostname[0] == '\0') {
@@ -187,6 +204,11 @@ void mdns_set_hostname(const char* hostname) {
     return;
   }
   mdns_hostname_set(g_hostname);
+  mdns_instance_name_set(g_hostname);
+  if (g_mdns_svc) {
+    (void)mdns_service_instance_name_set("_http", "_tcp", g_hostname);
+    mdns_refresh_txt();
+  }
   ESP_LOGI(kTag, "mDNS hostname now %s.local", g_hostname);
 }
 
@@ -200,14 +222,30 @@ void mdns_start(const char* hostname) {
   }
   g_mdns_up = true;
   mdns_hostname_set(g_hostname);
-  mdns_instance_name_set("NEON LINK");
-  // Advertise the web editor so Finder/Bonjour/Android discovery tools
-  // can resolve more than a bare hostname probe.
-  if (mdns_service_add("NEON LINK", "_http", "_tcp", 80, nullptr, 0) !=
-      ESP_OK) {
-    ESP_LOGW(kTag, "mDNS HTTP service add failed (hostname still set)");
+  mdns_instance_name_set(g_hostname);
+
+  const esp_app_desc_t* desc = esp_app_get_description();
+  if (desc != nullptr && desc->version[0] != '\0') {
+    copy_str(g_mdns_fw, sizeof(g_mdns_fw), desc->version);
   }
-  ESP_LOGI(kTag, "mDNS: %s.local (_http._tcp:80)", g_hostname);
+  mdns_device_id(g_mdns_id, sizeof(g_mdns_id));
+
+  mdns_txt_item_t txt[] = {
+      {"path", "/"},
+      {"fw", g_mdns_fw},
+      {"name", g_hostname},
+      {"id", g_mdns_id},
+  };
+  // Instance name is the DNS-safe device_name so two modules on one LAN
+  // are distinguishable once the user has renamed them.
+  if (mdns_service_add(g_hostname, "_http", "_tcp", 80, txt,
+                       sizeof(txt) / sizeof(txt[0])) != ESP_OK) {
+    ESP_LOGW(kTag, "mDNS HTTP service add failed (hostname still set)");
+  } else {
+    g_mdns_svc = true;
+  }
+  ESP_LOGI(kTag, "mDNS: %s.local (_http._tcp:80 id=%s)", g_hostname,
+           g_mdns_id);
 }
 
 char g_ap_ssid[33] = {};

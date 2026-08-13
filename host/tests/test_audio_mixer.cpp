@@ -137,6 +137,21 @@ TEST_CASE("soft_clip: monotone, unity below the knee, bounded above it") {
   CHECK(neon::soft_clip(1000.0f) > 0.95f);
 }
 
+TEST_CASE("mixer: a full-scale Link tap is not crushed") {
+  const auto hot = constant(0.99f);
+  neon::MixSources src;
+  src.link_in_l = hot.data();
+  src.link_in_r = hot.data();
+  neon::MixerConfig cfg;
+  cfg.role_l = neon::AudioRole::kLinkIn;
+  cfg.role_r = neon::AudioRole::kLinkIn;
+  cfg.sub_gain = neon::kUnityGainByte;
+  std::vector<float> l(kFrames), r(kFrames);
+  neon::mix_block(cfg, src, kFrames, l.data(), r.data());
+  CHECK(l[0] == doctest::Approx(0.99f));
+  CHECK(r[0] == doctest::Approx(0.99f));
+}
+
 TEST_CASE("mixer: a hot mix saturates rather than wrapping") {
   const auto hot = constant(0.9f);
   neon::MixSources src;

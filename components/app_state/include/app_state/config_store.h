@@ -32,6 +32,13 @@ bool neon_config_flush_now();
 // Immediate persist + adopt (used at explicit save points).
 bool neon_config_save(const neon::Config& cfg);
 
+// Generation counter. Increments on neon_config_apply and
+// neon_config_save (not on the later NVS flush of an already-applied
+// change). Starts at 0 after boot / load. Emitted as "rev" on
+// GET /api/status so the plugin can notice OLED / web / MIDI-PC edits
+// without a deep JSON compare.
+uint32_t neon_config_rev();
+
 // Preset slots (milestone 9): full-config snapshots in NVS, recalled from
 // the web editor or via MIDI Program Change. slot is 0..3.
 inline constexpr int kPresetSlots = 4;
