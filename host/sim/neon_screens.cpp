@@ -167,6 +167,19 @@ int main() {
             "External clock drives the session; the source word changes and the "
             "rest of the layout holds still.",
             m, ext);
+
+    // The only screen that shows the warning icon. Without a fixture for it
+    // the icon was only ever reviewed in the style guide's icon grid, which
+    // is how a badly-drawn one survived — a hazard sign has to be judged at
+    // 8 px in the header, not at 32 px on its own.
+    neon::UiStatus offline = base_status();
+    offline.big_beat_display = false;
+    offline.active_net = 0;
+    offline.setup_ap = false;
+    capture("live-offline", "Live — no network",
+            "No access point and no network joined: the header carries the "
+            "warning icon and the state row reads OFF.",
+            m, offline);
   }
 
   // ---- menus ----------------------------------------------------------

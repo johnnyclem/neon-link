@@ -89,15 +89,19 @@
 ........
 ........
 
-; Warning / attention.
+; Warning / attention. Solid triangle with the exclamation knocked out — the
+; one place the "no filled blobs" rule gives way to recognition. An outline
+; triangle with an exclamation inside it leaves 1 px walls at this size, and
+; the interior detail closes up into a shape that reads as a seated figure
+; rather than a hazard sign. Silhouette first, detail second.
 @warning
-........
 ...##...
-..#..#..
-..####..
-.#.##.#.
-.#....#.
-#..##..#
+...##...
+..##.#..
+..##.#..
+.###.##.
+.######.
+####.###
 ########
 
 ; Success / confirmed.
