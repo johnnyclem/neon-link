@@ -131,6 +131,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[SOFTWARE.md](SOFTWARE.md)** | Software / Firmware Architect | Full software architecture handoff — dual-core strategy, Link integration, BLE MIDI routing matrix, UI requirements, milestones, risks |
 | **[FEATURES.md](FEATURES.md)** | Everyone | **Authoritative feature priority list** (Must / Should / Nice / Deferred) after AMYboard pivot |
 | **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
+| **[docs/AUDIOLINK.md](docs/AUDIOLINK.md)** | Software / Firmware | **AudioLink design spec** — Link 4.0 upgrade, sample-accurate audio engine on the AMYboard codec (metronome, pulses-as-audio, AMY synth), and Link Audio streaming to/from Live 12.4 |
 | **[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)** | Everyone | Row-by-row audit against the Circuit Happy ML:2m and Missing Link Junior manuals |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
