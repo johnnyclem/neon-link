@@ -33,6 +33,7 @@ void MidiRouter::on_message(const MidiMessage& m) {
     case 0x90:  // note on (velocity 0 == off)
       if (m.data2 > 0) {
         active_note_ = m.data1;
+        sink_->note(m.data1, m.data2, true);
         if (cfg_.pitch_cv) {
           sink_->pitch_cv(pitch_to_cv_q16(m.data1));
         }
@@ -43,6 +44,7 @@ void MidiRouter::on_message(const MidiMessage& m) {
       }
       [[fallthrough]];
     case 0x80:  // note off
+      sink_->note(m.data1, 0, false);
       if (m.data1 == active_note_) {
         active_note_ = 255;
         if (cfg_.gate_target != MidiRouteConfig::kTargetNone) {
@@ -53,6 +55,7 @@ void MidiRouter::on_message(const MidiMessage& m) {
     case 0xb0: {  // control change
       const uint8_t cc = m.data1;
       if (cc == 123) {  // all notes off
+        sink_->all_notes_off();
         if (active_note_ != 255 &&
             cfg_.gate_target != MidiRouteConfig::kTargetNone) {
           sink_->gate(cfg_.gate_target, false);

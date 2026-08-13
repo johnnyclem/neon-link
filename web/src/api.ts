@@ -19,6 +19,17 @@ export type ApPolicy = "fallback" | "always" | "off";
 export type ClockSource = "auto" | "link" | "external";
 export type ClockPolicy = "ignore" | "replace" | "merge";
 export type NetworkKind = "ethernet" | "wifi" | "none";
+export type AudioRole =
+  | "mix"
+  | "metronome"
+  | "clock"
+  | "reset"
+  | "run"
+  | "synth"
+  | "link_in"
+  | "line_in";
+export type ClickSound = "sine" | "noise" | "wood";
+export type SubState = "idle" | "buffering" | "playing";
 
 export interface ClockConfig {
   enabled: boolean;
@@ -59,6 +70,63 @@ export interface ScanResult {
   open: boolean;
 }
 
+export interface AudioConfig {
+  /** Master switch. Takes effect on the next boot: it starts the I2S task. */
+  enabled: boolean;
+  /** What each output jack carries — the mix, or a solo tap of one source. */
+  role_l: AudioRole;
+  role_r: AudioRole;
+  metro_enabled: boolean;
+  metro_sound: ClickSound;
+  /** 0..255, where 200 is unity. */
+  metro_gain: number;
+  metro_accent: boolean;
+  amy_enabled: boolean;
+  amy_gain: number;
+  amy_patch: number;
+  /** 0 leaves the line input unmonitored. */
+  linein_monitor_gain: number;
+  /** Publish the master mix as a Link Audio channel. */
+  publish_mix: boolean;
+  /** Publish the line input as a second channel. */
+  publish_linein: boolean;
+  /** Halve the bitrate on a busy network. */
+  publish_mono: boolean;
+  sub_gain: number;
+  /** Receive buffer depth: latency traded against WiFi jitter. */
+  jitter_ms: number;
+  /** Empty derives the published names from the device name. */
+  channel_name: string;
+  /** Empty means not subscribed. */
+  sub_channel_id: string;
+}
+
+export interface AudioChannel {
+  id: string;
+  name: string;
+  rate: number;
+  channels: number;
+  /** One of ours — subscribing to it would be a loop. */
+  local: boolean;
+}
+
+export interface AudioStatus {
+  running: boolean;
+  underruns: number;
+  /** Output peak, 0..1000 milli-full-scale. */
+  peak_l: number;
+  peak_r: number;
+  /** At least one peer is listening to something we publish. */
+  publishing: boolean;
+  subscribers: number;
+  sub_state: SubState;
+  /** Sender rate of the subscribed channel, 0 when not receiving. */
+  sub_rate: number;
+  sub_dropped: number;
+  /** Sample-clock drift against the module's own timebase. */
+  clock_ppm: number;
+}
+
 export interface Config {
   engine: {
     clocks: ClockConfig[];
@@ -94,6 +162,7 @@ export interface Config {
   display_brightness: number;
   /** Full-screen 1/2/3/4 on the panel while the transport is running. */
   big_beat_display: boolean;
+  audio: AudioConfig;
   tempo_milli_bpm: number;
   wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };
   ap: {
@@ -133,6 +202,7 @@ export interface Status {
   /** The tempo the module holds when no peer is dictating one. */
   set_bpm: number;
   pulse: { edges: number; late_max_us: number; late_avg_us: number };
+  audio: AudioStatus;
 }
 
 async function json<T>(input: string, init?: RequestInit): Promise<T> {
@@ -180,6 +250,16 @@ export const api = {
 
   /** Blocking on the device — a full scan takes a couple of seconds. */
   scan: () => json<ScanResult[]>("/api/scan"),
+
+  /**
+   * Link Audio channels visible on the session right now, ours included.
+   * `available` is false when the firmware has no Link Audio behind it, so
+   * the page can say that rather than showing an empty list.
+   */
+  audioChannels: () =>
+    json<{ available: boolean; channels: AudioChannel[] }>(
+      "/api/audio/channels",
+    ),
 
   factoryReset: async () => {
     try {

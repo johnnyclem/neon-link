@@ -24,7 +24,10 @@ NEON LINK is an 8–10HP Eurorack module that provides bidirectional Ableton Lin
 - Keep component cost under $75 for the complete bill of materials (qty 1 pricing).
 
 ### 1.3 Out of Scope (v1 Hardware)
-- Audio signal path / Link Audio streaming
+- ~~Audio signal path / Link Audio streaming~~ — **in scope as of the
+  AudioLink work** (`docs/AUDIOLINK.md`). Ableton shipped Link Audio in
+  Link 4.0, and the AMYboard already carries the converters, so the
+  deferral no longer bought anything. S/PDIF stays out.
 - Battery operation
 - USB host functionality beyond possible device-mode MIDI later
 - Touch interfaces

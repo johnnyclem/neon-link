@@ -95,6 +95,26 @@ idf.py menuconfig   # NEON LINK configuration → WiFi SSID / password
   — fine for modular clocks, not for audio-rate.
 - External clock following samples the ADS1015 at ~1 kHz; good for tempo
   tracking, not for sample-accurate phase lock.
+- The audio path is the exception: with `CONFIG_NEON_AUDIO` and the I2S pin
+  map set, a jack carrying a clock/reset/run role places its edges to
+  within one sample (~23 µs at 44.1 kHz), because they are rendered from
+  the same `MultiClockEngine` against a `SampleClock`-derived timebase
+  rather than poked out over I2C. See `docs/AUDIOLINK.md`.
+
+## Audio (docs/AUDIOLINK.md)
+
+The PCM5101 DAC and PCM1808 ADC hang off one duplex I2S port sharing BCLK
+and LRCLK, with a 256fs MCLK the ADC needs. **The pin numbers are not in
+this repo** — they come from the shorepine schematic and are entered in
+menuconfig under "I2S pin map"; until they are, the engine reports itself
+as unavailable rather than half-working.
+
+- 44.1 kHz stereo, 128-frame blocks, 4 DMA descriptors (~2.9 ms render
+  period, ~11.6 ms worst-case output latency).
+- The render task runs on core 1 at `configMAX_PRIORITIES - 4`, below the
+  pulse task and the CV mirror: the DMA gives audio ~11 ms of slack and the
+  clock outputs have none.
+- 16 MB partition table (`partitions_16mb.csv`, 6 MB OTA slots).
 
 ## Success criteria (FEATURES.md)
 

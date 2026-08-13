@@ -44,8 +44,9 @@ See [`FEATURES.md`](FEATURES.md) for the full prioritized list and success crite
   - 2× CV out (±10 V, GP8413 DAC)
   - 2× CV in (±10 V, ADS1015 ADC)
   - TRS MIDI in + out
-  - Stereo audio in/out (switchable line / modular levels)
-  - S/PDIF in/out
+  - Stereo audio in/out (switchable line / modular levels) — used by the
+    audio engine (`docs/AUDIOLINK.md`)
+  - S/PDIF in/out — still unused
   - Front-panel I2C (Grove) for OLED + encoder
   - MicroSD
 - **Outputs for v1**: Tempo CV on one CV out; primary clock/gate on the second CV out (or buffered GPIO if needed)
@@ -79,7 +80,9 @@ Ethernet (W5500) remains an optional later add-on. Custom multi-output PCBs are 
 - Onboard Ethernet (external module later)
 - Complex polyphonic MIDI-to-CV voice allocation
 - Custom multi-output PCB before software is proven on AMYboard
-- Ableton Link Audio streaming
+- ~~Ableton Link Audio streaming~~ — **in scope as of the AudioLink
+  work** (`docs/AUDIOLINK.md`): the I2S path, the metronome, pulses as
+  audio, and publish/subscribe over Link 4.0. S/PDIF stays deferred.
 - Touch screen
 - Battery / portable mode as a primary goal
 

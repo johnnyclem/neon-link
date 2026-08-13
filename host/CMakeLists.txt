@@ -40,6 +40,14 @@ add_executable(neon_tests
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
   tests/test_transport.cpp
+  tests/test_sample_clock.cpp
+  tests/test_audio_click.cpp
+  tests/test_pulse_audio.cpp
+  tests/test_audio_mixer.cpp
+  tests/test_frame_ring.cpp
+  tests/test_resampler.cpp
+  tests/test_jitter_buffer.cpp
+  tests/test_synth_voice.cpp
 )
 target_include_directories(neon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest

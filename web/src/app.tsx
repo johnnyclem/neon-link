@@ -9,6 +9,7 @@ import { Live } from "./routes/Live";
 import { Outputs } from "./routes/Outputs";
 import { Network } from "./routes/Network";
 import { Midi } from "./routes/Midi";
+import { Audio } from "./routes/Audio";
 import { System } from "./routes/System";
 import { Setup } from "./routes/Setup";
 
@@ -128,6 +129,7 @@ export function App() {
         {route === "outputs" ? <Outputs {...props} /> : null}
         {route === "network" ? <Network {...props} /> : null}
         {route === "midi" ? <Midi {...props} /> : null}
+        {route === "audio" ? <Audio {...props} /> : null}
         {route === "system" ? <System {...props} /> : null}
       </main>
       <TabBar route={inSetup ? "live" : route} />

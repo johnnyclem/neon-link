@@ -64,5 +64,8 @@ extern "C" void app_main(void) {
   // Networking / application side.
   neon_start_link_service();
   neon_start_midi_service();
+  // Audio last: it wants the config loaded and the Link facade in place,
+  // and it is the one subsystem that is allowed to fail quietly.
+  neon_start_audio_service();
   neon_start_core0_tasks();
 }

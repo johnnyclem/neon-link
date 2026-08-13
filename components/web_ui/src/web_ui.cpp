@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "halesp/pulse_hw_gptimer.hpp"
@@ -26,6 +27,8 @@ extern "C" void neon_wifi_apply_credentials(void);
 extern "C" uint8_t neon_wifi_last_disconnect_reason(void);
 extern "C" const char* neon_wifi_current_ssid(void);
 extern "C" int neon_wifi_scan_json(char* buf, int cap);
+// Provided by main/audio_service.cpp.
+extern "C" int neon_audio_channels_json(char* buf, int cap);
 
 namespace {
 
@@ -361,6 +364,35 @@ esp_err_t handle_ota(httpd_req_t* req) {
   return ESP_OK;
 }
 
+// JitterBuffer::State, as a word the editor and the panel both show.
+const char* sub_state_str(uint8_t state) {
+  switch (state) {
+    case 1:
+      return "buffering";
+    case 2:
+      return "playing";
+    default:
+      return "idle";
+  }
+}
+
+// GET /api/audio/channels — Link Audio discovery for the subscribe picker.
+esp_err_t handle_audio_channels(httpd_req_t* req) {
+  constexpr size_t kCap = 2048;
+  char* buf = static_cast<char*>(std::malloc(kCap));
+  if (buf == nullptr) {
+    return httpd_resp_send_500(req);
+  }
+  const int n = neon_audio_channels_json(buf, static_cast<int>(kCap));
+  httpd_resp_set_type(req, "application/json");
+  const esp_err_t err =
+      n > 0 ? httpd_resp_send(req, buf, n)
+            : httpd_resp_send(req, "{\"available\":false,\"channels\":[]}",
+                              HTTPD_RESP_USE_STRLEN);
+  std::free(buf);
+  return err;
+}
+
 esp_err_t handle_status(httpd_req_t* req) {
   neon::TimelineSnapshot tl;
   timeline_bus().read(tl);
@@ -387,7 +419,9 @@ esp_err_t handle_status(httpd_req_t* req) {
   const uint32_t quantum = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
 
   const halesp::PulseStats ps = halesp::pulse_stats();
-  char buf[1024];
+  neon::AudioStatus audio;
+  audio_status_bus().read(audio);
+  char buf[1280];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -397,7 +431,11 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"setup_ap\":%s,\"ap_ssid\":\"%s\","
       "\"wifi_ssid\":\"%s\",\"wifi_pass_len\":%u,\"wifi_fail_reason\":%u,"
       "\"firmware\":\"%s\",\"set_bpm\":%u.%03u,"
-      "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u}}",
+      "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u},"
+      "\"audio\":{\"running\":%s,\"underruns\":%u,\"peak_l\":%u,"
+      "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
+      "\"sub_state\":\"%s\",\"sub_rate\":%u,\"sub_dropped\":%u,"
+      "\"clock_ppm\":%d}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -413,7 +451,15 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(cfg.tempo_milli_bpm / 1000),
       static_cast<unsigned>(cfg.tempo_milli_bpm % 1000),
       static_cast<unsigned>(ps.edges), static_cast<unsigned>(ps.late_max_us),
-      static_cast<unsigned>(ps.late_avg_us));
+      static_cast<unsigned>(ps.late_avg_us),
+      audio.running != 0 ? "true" : "false",
+      static_cast<unsigned>(audio.underruns),
+      static_cast<unsigned>(audio.peak_l), static_cast<unsigned>(audio.peak_r),
+      audio.publishing != 0 ? "true" : "false",
+      static_cast<unsigned>(audio.subscribers), sub_state_str(audio.sub_state),
+      static_cast<unsigned>(audio.sub_rate),
+      static_cast<unsigned>(audio.sub_dropped),
+      static_cast<int>(audio.clock_ppm));
   if (n < 0) {
     return httpd_resp_send_500(req);
   }
@@ -518,6 +564,10 @@ void webui_start() {
                                  .method = HTTP_POST,
                                  .handler = handle_factory_reset,
                                  .user_ctx = nullptr};
+  const httpd_uri_t channels_uri = {.uri = "/api/audio/channels",
+                                    .method = HTTP_GET,
+                                    .handler = handle_audio_channels,
+                                    .user_ctx = nullptr};
   const httpd_uri_t ota_uri = {.uri = "/api/ota",
                                .method = HTTP_POST,
                                .handler = handle_ota,
@@ -533,6 +583,7 @@ void webui_start() {
   httpd_register_uri_handler(server, &resync_uri);
   httpd_register_uri_handler(server, &scan_uri);
   httpd_register_uri_handler(server, &reset_uri);
+  httpd_register_uri_handler(server, &channels_uri);
   httpd_register_uri_handler(server, &ota_uri);
 
   // Mark this image good once the editor is serving: a bad OTA that never

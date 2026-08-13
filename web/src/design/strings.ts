@@ -119,6 +119,10 @@ export const strings = {
       "device": "MIDI",
       "web": "MIDI / BLE"
     },
+    "audio": {
+      "device": "AUDIO",
+      "web": "Audio"
+    },
     "system": {
       "device": "SYSTEM",
       "web": "System"

@@ -35,6 +35,10 @@ class IRouterSink {
  public:
   virtual ~IRouterSink() = default;
   virtual void gate(uint8_t target, bool on) = 0;
+  // Every note, regardless of the mono gate routing: the synth voice is
+  // polyphonic and wants the whole stream, not the last-note gate.
+  virtual void note(uint8_t note, uint8_t velocity, bool on) = 0;
+  virtual void all_notes_off() = 0;
   virtual void pitch_cv(uint16_t ratio_q16) = 0;
   virtual void latency_offset(int32_t latency_us) = 0;
   virtual void shuffle(uint8_t clock_index, uint8_t pct) = 0;

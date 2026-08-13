@@ -241,3 +241,144 @@ TEST_CASE("out-of-range roles, tempo, and retries are clamped") {
   CHECK(cfg.midi_nudge_us == 100000);
   CHECK(cfg.ap_channel == 13);
 }
+
+TEST_CASE("audio defaults are off and quiet") {
+  const neon::Config cfg;
+  CHECK(cfg.audio.enabled == 0);
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(cfg.audio.role_l == neon::AudioRole::kMix);
+  CHECK(cfg.audio.role_r == neon::AudioRole::kMix);
+  CHECK(cfg.audio.metro_gain == neon::kUnityGainByte);
+  CHECK(cfg.audio.linein_monitor_gain == 0);
+  CHECK(cfg.audio.la_publish_mix == 0);
+  CHECK(cfg.audio.la_jitter_ms == 60);
+  CHECK(cfg.audio.la_channel_name[0] == '\0');
+  CHECK(cfg.audio.la_sub_channel_id[0] == '\0');
+}
+
+TEST_CASE("the audio block survives an encode/decode round trip") {
+  neon::Config a;
+  a.audio.enabled = 1;
+  a.audio.role_l = neon::AudioRole::kMix;
+  a.audio.role_r = neon::AudioRole::kClock;
+  a.audio.metro_enabled = 1;
+  a.audio.metro_sound = neon::ClickSound::kWood;
+  a.audio.metro_gain = 137;
+  a.audio.metro_accent = 0;
+  a.audio.amy_enabled = 1;
+  a.audio.amy_patch = 2;
+  a.audio.linein_monitor_gain = 90;
+  a.audio.la_publish_mix = 1;
+  a.audio.la_publish_mono = 1;
+  a.audio.la_jitter_ms = 120;
+  std::strcpy(a.audio.la_channel_name, "tourbus");
+  std::strcpy(a.audio.la_sub_channel_id, "peer:1234/Live Master");
+
+  std::vector<uint8_t> buf(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
+  neon::Config b;
+  REQUIRE(neon::config_decode(buf.data(), buf.size(), &b));
+
+  CHECK(b.audio.enabled == 1);
+  CHECK(b.audio.role_r == neon::AudioRole::kClock);
+  CHECK(b.audio.metro_sound == neon::ClickSound::kWood);
+  CHECK(b.audio.metro_gain == 137);
+  CHECK(b.audio.metro_accent == 0);
+  CHECK(b.audio.amy_patch == 2);
+  CHECK(b.audio.linein_monitor_gain == 90);
+  CHECK(b.audio.la_publish_mix == 1);
+  CHECK(b.audio.la_publish_mono == 1);
+  CHECK(b.audio.la_jitter_ms == 120);
+  CHECK(std::string(b.audio.la_channel_name) == "tourbus");
+  CHECK(std::string(b.audio.la_sub_channel_id) == "peer:1234/Live Master");
+}
+
+TEST_CASE("a v3 config blob keeps its settings and defaults the audio block") {
+  neon::Config a;
+  std::strcpy(a.wifi[0].ssid, "greenroom");
+  a.big_beat_display = 0;
+  a.tempo_milli_bpm = 143000;
+  // Values a v3 blob could never have carried: the migration must wipe
+  // them, because whatever a v3 payload puts here is its tail padding.
+  a.audio.enabled = 1;
+  a.audio.metro_gain = 3;
+  a.audio.la_jitter_ms = 500;
+  std::strcpy(a.audio.la_sub_channel_id, "stale");
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 3;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(std::string(b.wifi[0].ssid) == "greenroom");
+  CHECK(b.big_beat_display == 0);
+  CHECK(b.tempo_milli_bpm == 143000);
+  CHECK(b.audio.enabled == 0);
+  CHECK(b.audio.metro_gain == neon::kUnityGainByte);
+  CHECK(b.audio.la_jitter_ms == 60);
+  CHECK(b.audio.la_sub_channel_id[0] == '\0');
+}
+
+TEST_CASE("audio values out of range are clamped") {
+  neon::Config cfg;
+  cfg.audio.role_l = static_cast<neon::AudioRole>(99);
+  cfg.audio.role_r = static_cast<neon::AudioRole>(8);
+  cfg.audio.metro_sound = static_cast<neon::ClickSound>(7);
+  cfg.audio.amy_patch = 200;
+  cfg.audio.la_jitter_ms = 5000;
+  cfg.audio.enabled = 200;
+  neon::config_sanitize(&cfg);
+  CHECK(cfg.audio.role_l == neon::AudioRole::kMix);
+  CHECK(cfg.audio.role_r == neon::AudioRole::kMix);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+  CHECK(cfg.audio.amy_patch == 0);
+  CHECK(cfg.audio.la_jitter_ms == 500);
+  CHECK(cfg.audio.enabled == 1);
+
+  cfg.audio.la_jitter_ms = 1;
+  neon::config_sanitize(&cfg);
+  CHECK(cfg.audio.la_jitter_ms == 5);
+}
+
+TEST_CASE("audio_engine_config carries only the live-applied fields") {
+  neon::Config cfg;
+  cfg.quantum_beats = 3;
+  cfg.audio.enabled = 1;
+  cfg.audio.metro_enabled = 1;
+  cfg.audio.metro_gain = 210;
+  cfg.audio.role_r = neon::AudioRole::kReset;
+  cfg.audio.la_jitter_ms = 90;
+  const neon::AudioEngineConfig ec = neon::audio_engine_config(cfg);
+  CHECK(ec.enabled == 1);
+  CHECK(ec.metro_enabled == 1);
+  CHECK(ec.metro_gain == 210);
+  CHECK(ec.role_r == neon::AudioRole::kReset);
+  CHECK(ec.la_jitter_ms == 90);
+  CHECK(ec.quantum_beats == 3);
+}
+
+TEST_CASE("published channel names derive from the device name") {
+  neon::Config cfg;
+  std::strcpy(cfg.device_name, "neon-link");
+  char name[64] = {};
+  neon::audio_channel_name(cfg, /*line_in=*/false, name, sizeof(name));
+  CHECK(std::string(name) == "neon-link Out");
+  neon::audio_channel_name(cfg, /*line_in=*/true, name, sizeof(name));
+  CHECK(std::string(name) == "neon-link In");
+
+  std::strcpy(cfg.audio.la_channel_name, "Tour Bus");
+  neon::audio_channel_name(cfg, false, name, sizeof(name));
+  CHECK(std::string(name) == "Tour Bus Out");
+}

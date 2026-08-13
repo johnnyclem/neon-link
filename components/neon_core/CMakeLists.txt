@@ -23,6 +23,13 @@ set(NEON_CORE_SRCS
   src/midi_encoder.cpp
   src/midi_router.cpp
   src/transport.cpp
+  src/audio/sample_clock.cpp
+  src/audio/click.cpp
+  src/audio/pulse_render.cpp
+  src/audio/mixer.cpp
+  src/audio/resampler.cpp
+  src/audio/jitter_buffer.cpp
+  src/audio/synth_voice.cpp
 )
 
 if(ESP_PLATFORM)

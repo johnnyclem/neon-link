@@ -355,9 +355,9 @@ TEST_CASE("menu navigation walks the shallow screen graph") {
   CHECK(m.screen() == S::kHome);
 
   // Every menu destination is reachable and reports its own title.
-  const S expected[5] = {S::kHome, S::kOutputs, S::kNetwork, S::kMidi,
-                         S::kSystem};
-  for (int i = 0; i < 5; ++i) {
+  const S expected[6] = {S::kHome,  S::kOutputs, S::kNetwork,
+                         S::kMidi,  S::kAudio,   S::kSystem};
+  for (int i = 0; i < 6; ++i) {
     neon::MenuModel nav(&cfg);
     nav.on_click();
     nav.on_rotate(i);
@@ -403,7 +403,7 @@ TEST_CASE("reboot goes through a confirmation screen") {
 
   auto to_reboot = [&]() {
     m.on_click();                                    // Menu
-    m.on_rotate(4);                                  // System
+    m.on_rotate(5);                                  // System
     m.on_click();
     m.on_rotate(neon::MenuModel::kSystemRebootItem);  // REBOOT
     m.on_click();
@@ -429,7 +429,7 @@ TEST_CASE("reboot goes through a confirmation screen") {
 
   // Long press abandons the confirmation.
   m.on_click();
-  m.on_rotate(4);
+  m.on_rotate(5);
   m.on_click();
   m.on_rotate(neon::MenuModel::kSystemRebootItem);
   m.on_click();
@@ -471,7 +471,7 @@ TEST_CASE("system edit covers latency, enums and quantum") {
   neon::Config cfg;
   neon::MenuModel m(&cfg);
   m.on_click();    // Menu
-  m.on_rotate(4);  // System
+  m.on_rotate(5);  // System
   m.on_click();
 
   m.on_click();    // edit latency
@@ -545,8 +545,8 @@ TEST_CASE("every screen renders distinct, non-empty output") {
   };
   const Nav kNavs[] = {
       {"outputs", 1, false}, {"network", 2, false},
-      {"midi", 3, false},    {"system", 4, false},
-      {"clk edit", 1, true},
+      {"midi", 3, false},    {"audio", 4, false},
+      {"system", 5, false},  {"clk edit", 1, true},
   };
 
   std::string previous;
@@ -573,7 +573,7 @@ TEST_CASE("every screen renders distinct, non-empty output") {
   // inversion, so YES and NO cannot render identically.
   neon::MenuModel confirm(&cfg);
   confirm.on_click();
-  confirm.on_rotate(4);
+  confirm.on_rotate(5);
   confirm.on_click();
   confirm.on_rotate(neon::MenuModel::kSystemRebootItem);
   confirm.on_click();
@@ -660,7 +660,7 @@ TEST_CASE("system screen reaches reset edge, MIDI nudge, sync, brightness") {
   neon::Config cfg;
   neon::MenuModel m(&cfg);
   m.on_click();    // Menu
-  m.on_rotate(4);  // System
+  m.on_rotate(5);  // System
   m.on_click();
 
   m.on_rotate(6);  // RST EDGE
@@ -694,7 +694,7 @@ TEST_CASE("reset mode cycles through the at-stop option") {
   neon::Config cfg;
   neon::MenuModel m(&cfg);
   m.on_click();    // Menu
-  m.on_rotate(4);  // System
+  m.on_rotate(5);  // System
   m.on_click();
   m.on_rotate(1);  // RESET
   m.on_click();
@@ -713,7 +713,7 @@ TEST_CASE("REBOOT stays the last system row after the parity additions") {
   neon::Config cfg;
   neon::MenuModel m(&cfg);
   m.on_click();    // Menu
-  m.on_rotate(4);  // System
+  m.on_rotate(5);  // System
   m.on_click();
   m.on_rotate(neon::MenuModel::kSystemRebootItem);
   CHECK(std::string(m.item_label(m.cursor())) == "REBOOT");
@@ -726,7 +726,7 @@ TEST_CASE("system menu can disable the big beat display") {
   CHECK(cfg.big_beat_display == 1);
   neon::MenuModel m(&cfg);
   m.on_click();    // Menu
-  m.on_rotate(4);  // System
+  m.on_rotate(5);  // System
   m.on_click();
   m.on_rotate(10);  // BEAT
   CHECK(std::string(m.item_label(m.cursor())) == "BEAT");
@@ -793,4 +793,115 @@ TEST_CASE("giant beat is only the live screen while playing") {
   neon::render_ui(menu, st, fb);
   // Menu header rule is a full-width line; a giant 1 is not.
   CHECK(lit_in_row(fb, neon::ui::kHeaderRuleY) == neon::Framebuffer::kWidth);
+}
+
+// ---------------------------------------------------------------------------
+// audio screen
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Menu item 4 is AUDIO.
+neon::MenuModel audio_menu(neon::Config* cfg) {
+  neon::MenuModel m(cfg);
+  m.on_click();
+  m.on_rotate(4);
+  m.on_click();
+  return m;
+}
+
+}  // namespace
+
+TEST_CASE("the audio screen edits the metronome and the output roles") {
+  neon::Config cfg;
+  neon::MenuModel m = audio_menu(&cfg);
+  CHECK(m.screen() == neon::MenuModel::Screen::kAudio);
+  CHECK(m.item_count() == neon::MenuModel::kAudioItems);
+
+  char buf[24];
+  m.item_value(0, buf, sizeof(buf));
+  CHECK(std::string(buf) == "OFF");
+
+  m.on_click();      // edit AUDIO
+  m.on_rotate(1);    // on
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(m.take_dirty());
+  m.on_click();
+
+  m.on_rotate(1);    // METRO
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.audio.metro_enabled == 1);
+  m.on_click();
+
+  m.on_rotate(1);    // CLICK volume
+  m.on_click();
+  m.on_rotate(-4);
+  CHECK(cfg.audio.metro_gain == neon::kUnityGainByte - 20);
+  m.on_rotate(1000);
+  CHECK(cfg.audio.metro_gain == 255);  // clamped, never wrapped
+  m.on_click();
+
+  m.on_rotate(1);    // SOUND cycles and wraps
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
+  m.on_rotate(1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
+  m.on_rotate(1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+  m.on_click();
+
+  m.on_rotate(1);    // OUT L
+  m.on_click();
+  m.on_rotate(2);
+  CHECK(cfg.audio.role_l == neon::AudioRole::kClock);
+  m.on_rotate(-2);
+  CHECK(cfg.audio.role_l == neon::AudioRole::kMix);
+  m.on_rotate(-1);   // wraps to the last role
+  CHECK(cfg.audio.role_l == neon::AudioRole::kLineIn);
+  m.on_click();
+}
+
+TEST_CASE("the audio screen shows values a user can read at the rack") {
+  neon::Config cfg;
+  cfg.audio.enabled = 1;
+  cfg.audio.metro_enabled = 1;
+  cfg.audio.metro_gain = neon::kUnityGainByte;  // 100 %
+  cfg.audio.metro_sound = neon::ClickSound::kWood;
+  cfg.audio.role_l = neon::AudioRole::kMix;
+  cfg.audio.role_r = neon::AudioRole::kRun;
+  cfg.audio.la_publish_mix = 1;
+  neon::MenuModel m = audio_menu(&cfg);
+
+  const char* kLabels[] = {"AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
+                           "OUT R", "LINE IN", "PUBLISH", "SUB"};
+  const char* kValues[] = {"ON",  "ON",   "100%", "WOOD", "MIX",
+                           "RUN", "OFF",  "ON",   "OFF"};
+  char buf[24];
+  for (int i = 0; i < neon::MenuModel::kAudioItems; ++i) {
+    CHECK(std::string(m.item_label(i)) == kLabels[i]);
+    m.item_value(i, buf, sizeof(buf));
+    CHECK(std::string(buf) == kValues[i]);
+  }
+}
+
+TEST_CASE("the panel can clear a subscription but not choose one") {
+  neon::Config cfg;
+  std::strcpy(cfg.audio.la_sub_channel_id, "peer/Live Master");
+  neon::MenuModel m = audio_menu(&cfg);
+  m.on_rotate(8);  // SUB
+  m.on_click();
+  m.on_rotate(1);  // forwards does nothing: there is no list here
+  CHECK(std::string(cfg.audio.la_sub_channel_id) == "peer/Live Master");
+  m.on_rotate(-1);
+  CHECK(cfg.audio.la_sub_channel_id[0] == '\0');
+}
+
+TEST_CASE("long press leaves the audio screen with the cursor on AUDIO") {
+  neon::Config cfg;
+  neon::MenuModel m = audio_menu(&cfg);
+  m.on_long_press();
+  CHECK(m.screen() == neon::MenuModel::Screen::kMenu);
+  CHECK(m.cursor() == 4);
 }

@@ -30,3 +30,17 @@ CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 # CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
 # CONFIG_ESP_CONSOLE_UART is not set
+
+# 16 MB partition table: 6 MB OTA slots. The 8 MB table's 3 MB slots do not
+# fit Link 4 plus the audio engine, and the flash is there.
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16mb.csv"
+
+# Audio engine (docs/AUDIOLINK.md). The I2S pins still have to come from
+# the board schematic — see the "I2S pin map" menu; until they are set the
+# engine reports itself as unavailable instead of half-working.
+CONFIG_NEON_AUDIO=y
+CONFIG_NEON_AUDIO_INPUT=y
+
+# Link Audio's receive path holds ~250 ms of 48 kHz stereo, and publishing
+# a mix keeps a socket busy alongside Link's own discovery traffic.
+CONFIG_LWIP_MAX_SOCKETS=20

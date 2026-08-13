@@ -51,7 +51,10 @@ config logic live here so they can be tested without hardware.
   task, BLE, web server, OLED, encoder. The ESP-IDF main task and esp_timer
   callbacks are pinned here (`sdkconfig.defaults`).
 - **Core 1** — real-time: the pulse task and the GPTimer alarm ISR. Nothing
-  else is scheduled at its priority on this core.
+  else is scheduled at its priority on this core. The audio render task
+  (`CONFIG_NEON_AUDIO`) also lives here, four priorities down: I2S DMA
+  gives it ~11 ms of slack, and core 0's WiFi/asio/httpd bursts are the
+  worse neighbour to have.
 
 ## Pulse engine
 
@@ -185,7 +188,10 @@ transport messages; core 1 still takes no mutexes.
 
 - `third_party/link` is the official Ableton Link repo, pinned at
   **Link-3.1.5**, vendored as a recursive submodule (brings standalone
-  asio). Link is header-only; its ESP32 platform (esp_timer clock, asio
+  asio). Link Audio needs **Link-4.0**: `CONFIG_NEON_LINK_AUDIO` fails the
+  build with a message saying so if the submodule predates it, and
+  `ableton::LinkAudio` then replaces `ableton::Link` behind the *same*
+  `ILinkSession` — one instance backs both facades. Link is header-only; its ESP32 platform (esp_timer clock, asio
   service task) is auto-selected via ESP-IDF's global `ESP_PLATFORM`
   define.
 - `components/ableton_link` wraps it behind `hal::ILinkSession`
@@ -200,6 +206,37 @@ transport messages; core 1 still takes no mutexes.
 - WiFi STA credentials come from `CONFIG_NEON_WIFI_SSID/PASSWORD`
   (menuconfig) until the web editor lands in milestone 8; without them the
   module still forms a local Link session.
+
+## Audio engine (docs/AUDIOLINK.md)
+
+Off unless `CONFIG_NEON_AUDIO` is set *and* the stored config enables it.
+Everything portable is in `neon_core/audio` and runs under the host tests;
+the ESP side is one I2S driver and one service.
+
+- **Pacing.** `IAudioIo::write_block()` blocks on DMA space. That is the
+  entire clock of the render loop — no timer, no sleep.
+- **Placement.** `neon::SampleClock` keeps an integer affine map between
+  the codec's frame count and the esp_timer microsecond domain, fed by
+  `(µs, cumulative frames)` marks taken in the I2S completion ISR. The map
+  says when the block about to be handed over will actually leave the
+  converter; `neon::beat_window` turns that into the session beats it
+  covers, in Q32.32. Doubles never enter core 1.
+- **Sources.** `ClickSynth` (metronome), `PulseRender` (which drives the
+  *same* `MultiClockEngine` the jacks use and maps its edges to sample
+  offsets), the synth voice, the Link Audio receive path, and line in.
+  Each output channel carries an `AudioRole`: the mix, or a solo tap.
+- **Re-anchoring.** Click and pulse scheduling is stateless per block, so a
+  new timeline snapshot takes effect within one block (≤2.9 ms). A
+  transport stop fades a sounding click over 1 ms rather than cutting it.
+- **Link Audio.** `hal::ILinkAudio` (`ablink::link_audio()`) is the seam,
+  with beats crossing as Q32.32. The real implementation needs Link 4.0
+  (`CONFIG_NEON_LINK_AUDIO`); a no-op stands in otherwise and reports
+  `available() == false`, which the editor says out loud. Neither
+  direction touches the network from core 1: SPSC rings carry blocks to
+  and from a core-0 pump task.
+- **Receive.** `JitterBuffer` holds `jitter_ms` of audio and trims a linear
+  resampler ±500 ppm from the fill level, absorbing both WiFi jitter and
+  the 48 kHz-vs-44.1 kHz rate mismatch.
 
 ## Bidirectional operation (milestone 5)
 
@@ -421,6 +458,8 @@ Implementation follows SOFTWARE.md §8 exactly, one PR per milestone:
 1. Skeleton + CI *(this document's baseline)* → 2. Link peer → 3.
 multi-output + latency → 4. Ethernet → 5. external clock in → 6. OLED +
 encoder → 7. BLE MIDI → 8. web editor → 9. polish / Rhythm Explorer.
+
+Audio is tracked separately in [`AUDIOLINK.md`](AUDIOLINK.md).
 
 ## Licensing
 

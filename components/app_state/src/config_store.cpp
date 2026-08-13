@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "halesp/storage_nvs.hpp"
 
+#include "app_state/audio_bus.h"
 #include "app_state/timeline_bus.h"
 
 namespace {
@@ -15,6 +16,16 @@ constexpr int64_t kSaveDebounceUs = 2000000;
 
 halesp::StorageNvs g_storage;
 neon::Config g_config;
+
+// Both core-1 consumers see a config change through their own seqlock:
+// the pulse engine reads engine_config_bus, the audio task reads
+// audio_config_bus. Publishing them together keeps them from disagreeing
+// about a change for a block or two.
+void publish_buses() {
+  engine_config_bus().publish(g_config.engine);
+  audio_config_bus().publish(neon::audio_engine_config(g_config));
+}
+
 bool g_save_pending = false;
 int64_t g_last_change_us = 0;
 
@@ -37,7 +48,7 @@ void neon_config_load() {
     neon::config_sanitize(&g_config);
     ESP_LOGW(kTag, "no valid stored config; using defaults");
   }
-  engine_config_bus().publish(g_config.engine);
+  publish_buses();
 }
 
 const neon::Config& neon_config() { return g_config; }
@@ -46,7 +57,7 @@ void neon_config_apply(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
   g_config = clean;
-  engine_config_bus().publish(g_config.engine);
+  publish_buses();
   g_save_pending = true;
   g_last_change_us = 0;  // stamped by the next flush call
 }
@@ -92,7 +103,7 @@ bool neon_config_save(const neon::Config& cfg) {
     return false;
   }
   g_config = clean;
-  engine_config_bus().publish(g_config.engine);
+  publish_buses();
   g_save_pending = false;
   g_last_change_us = 0;
   ESP_LOGI(kTag, "config saved (ssid=\"%s\" pass_len=%u)", g_config.wifi[0].ssid,
@@ -106,7 +117,7 @@ bool neon_config_factory_reset() {
   const bool ok = g_storage.erase_all();
   g_config = neon::Config{};
   neon::config_sanitize(&g_config);
-  engine_config_bus().publish(g_config.engine);
+  publish_buses();
   ESP_LOGW(kTag, "factory reset %s", ok ? "complete" : "FAILED (NVS error)");
   return ok;
 }
