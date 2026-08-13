@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "neon/audio/types.hpp"
 #include "neon/midi/router.hpp"
 #include "neon/multi_engine.hpp"
 #include "neon/output_config.hpp"
@@ -31,6 +32,40 @@ struct WifiNetwork {
 };
 
 inline constexpr int kWifiSlots = 4;
+
+// Everything the audio engine owns, in one block so the v3 → v4 migration
+// is a single assignment rather than a list of fields to remember. Sizes
+// are laid out by hand: 16 bytes of flags before the 16-bit jitter figure,
+// so there is no implicit padding to reason about.
+struct AudioConfig {
+  // Master switch. Restart-scoped: turning audio on starts the I2S task.
+  uint8_t enabled = 0;
+  AudioRole role_l = AudioRole::kMix;
+  AudioRole role_r = AudioRole::kMix;
+  uint8_t metro_enabled = 0;
+
+  ClickSound metro_sound = ClickSound::kSine;
+  uint8_t metro_gain = kUnityGainByte;
+  uint8_t metro_accent = 1;
+  uint8_t amy_enabled = 0;
+
+  uint8_t amy_gain = kUnityGainByte;
+  uint8_t amy_patch = 0;
+  uint8_t linein_monitor_gain = 0;  // 0 = line in is not monitored
+  uint8_t la_publish_mix = 0;       // publish "<name> Out" (the master mix)
+
+  uint8_t la_publish_linein = 0;    // publish "<name> In" (the line-in tap)
+  uint8_t la_publish_mono = 0;      // halve the bitrate on a busy network
+  uint8_t la_sub_gain = kUnityGainByte;
+  uint8_t pad_[1] = {};
+
+  uint16_t la_jitter_ms = 60;
+
+  // Published channel name; empty derives it from device_name.
+  char la_channel_name[24] = "";
+  // The channel we subscribe to; empty means not subscribed.
+  char la_sub_channel_id[48] = "";
+};
 
 // When the module creates its own network.
 enum class ApPolicy : uint8_t {
@@ -97,10 +132,14 @@ struct Config {
   // Appended in v3 so a v2 NVS blob still decodes (new field keeps default).
   // On by default: 1 and 3 are white on black, 2 and 4 are black on white.
   uint8_t big_beat_display = 1;
+
+  // Appended in v4 (docs/AUDIOLINK.md). A v3 blob decodes with the whole
+  // block back at its defaults — see config_decode.
+  AudioConfig audio;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 3;
+inline constexpr uint16_t kConfigVersion = 4;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;
@@ -133,5 +172,15 @@ void config_sanitize(Config* cfg);
 
 // CRC-32 (IEEE, reflected), for the config blob and later preset slots.
 uint32_t crc32(const uint8_t* data, size_t len);
+
+// The live-applied slice the audio task reads through its seqlock. The
+// restart-scoped fields (publish flags, subscription) stay behind on
+// core 0, which is the only place that can act on them.
+AudioEngineConfig audio_engine_config(const Config& cfg);
+
+// The name the module publishes its mix under: the explicit
+// audio.la_channel_name when set, otherwise "<Device Name> Out" / " In".
+size_t audio_channel_name(const Config& cfg, bool line_in, char* out,
+                          size_t cap);
 
 }  // namespace neon

@@ -188,3 +188,80 @@ TEST_CASE("enum strings decode case-sensitively and reject unknowns") {
   REQUIRE(neon::config_from_json(doc2, std::strlen(doc2), &cfg));
   CHECK(cfg.clock_source == neon::ClockSource::kExternalMaster);
 }
+
+TEST_CASE("the audio block round-trips through JSON") {
+  neon::Config a;
+  a.audio.enabled = 1;
+  a.audio.role_l = neon::AudioRole::kMix;
+  a.audio.role_r = neon::AudioRole::kRun;
+  a.audio.metro_enabled = 1;
+  a.audio.metro_sound = neon::ClickSound::kNoise;
+  a.audio.metro_gain = 180;
+  a.audio.metro_accent = 0;
+  a.audio.amy_enabled = 1;
+  a.audio.amy_gain = 220;
+  a.audio.amy_patch = 3;
+  a.audio.linein_monitor_gain = 64;
+  a.audio.la_publish_mix = 1;
+  a.audio.la_publish_linein = 1;
+  a.audio.la_publish_mono = 1;
+  a.audio.la_sub_gain = 150;
+  a.audio.la_jitter_ms = 45;
+  std::strcpy(a.audio.la_channel_name, "Studio B");
+  std::strcpy(a.audio.la_sub_channel_id, "abc123/Live Master");
+
+  char buf[8192];
+  REQUIRE(neon::config_to_json(a, buf, sizeof(buf)) > 0);
+
+  neon::Config b;
+  REQUIRE(neon::config_from_json(buf, std::strlen(buf), &b));
+  CHECK(b.audio.enabled == 1);
+  CHECK(b.audio.role_r == neon::AudioRole::kRun);
+  CHECK(b.audio.metro_sound == neon::ClickSound::kNoise);
+  CHECK(b.audio.metro_gain == 180);
+  CHECK(b.audio.metro_accent == 0);
+  CHECK(b.audio.amy_gain == 220);
+  CHECK(b.audio.amy_patch == 3);
+  CHECK(b.audio.linein_monitor_gain == 64);
+  CHECK(b.audio.la_publish_linein == 1);
+  CHECK(b.audio.la_sub_gain == 150);
+  CHECK(b.audio.la_jitter_ms == 45);
+  CHECK(std::string(b.audio.la_channel_name) == "Studio B");
+  CHECK(std::string(b.audio.la_sub_channel_id) == "abc123/Live Master");
+}
+
+TEST_CASE("an audio partial update leaves the rest of the config alone") {
+  neon::Config cfg;
+  cfg.quantum_beats = 7;
+  cfg.audio.metro_gain = 100;
+  cfg.audio.la_jitter_ms = 200;
+
+  const char* doc = R"({"audio":{"metro_enabled":true,"role_l":"clock"}})";
+  REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.role_l == neon::AudioRole::kClock);
+  CHECK(cfg.audio.metro_gain == 100);
+  CHECK(cfg.audio.la_jitter_ms == 200);
+  CHECK(cfg.quantum_beats == 7);
+}
+
+TEST_CASE("audio roles are names, and an unknown one changes nothing") {
+  neon::Config cfg;
+  cfg.audio.role_l = neon::AudioRole::kLineIn;
+  const char* doc = R"({"audio":{"role_l":"theremin","role_r":"link_in"}})";
+  REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
+  CHECK(cfg.audio.role_l == neon::AudioRole::kLineIn);
+  CHECK(cfg.audio.role_r == neon::AudioRole::kLinkIn);
+
+  char buf[8192];
+  REQUIRE(neon::config_to_json(cfg, buf, sizeof(buf)) > 0);
+  CHECK(std::string(buf).find("\"role_r\":\"link_in\"") != std::string::npos);
+}
+
+TEST_CASE("an out-of-range jitter figure is clamped on the way in") {
+  neon::Config cfg;
+  const char* doc = R"({"audio":{"jitter_ms":100000,"amy_patch":9}})";
+  REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
+  CHECK(cfg.audio.la_jitter_ms == 500);
+  CHECK(cfg.audio.amy_patch == 1);
+}

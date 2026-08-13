@@ -15,6 +15,25 @@
 
 #include "sdkconfig.h"
 
+// I2S audio (docs/AUDIOLINK.md). The AMYboard's PCM5101 DAC and PCM1808
+// ADC share BCLK and LRCLK on one duplex port; the ADC also needs a 256fs
+// MCLK. The numbers come from the board schematic rather than from this
+// repo, so they are Kconfig values with a -1 default: an unconfigured
+// build brings everything up except the codecs, and the editor says why.
+#ifdef CONFIG_NEON_I2S_MCLK
+inline constexpr int kPinI2sMclk = CONFIG_NEON_I2S_MCLK;
+inline constexpr int kPinI2sBclk = CONFIG_NEON_I2S_BCLK;
+inline constexpr int kPinI2sLrclk = CONFIG_NEON_I2S_LRCLK;
+inline constexpr int kPinI2sDout = CONFIG_NEON_I2S_DOUT;
+inline constexpr int kPinI2sDin = CONFIG_NEON_I2S_DIN;
+#else
+inline constexpr int kPinI2sMclk = -1;
+inline constexpr int kPinI2sBclk = -1;
+inline constexpr int kPinI2sLrclk = -1;
+inline constexpr int kPinI2sDout = -1;
+inline constexpr int kPinI2sDin = -1;
+#endif
+
 #if CONFIG_NEON_BOARD_AMYBOARD
 
 // Virtual pulse channels (not real GPIOs). Bits 0..5 in the pulse level

@@ -3,7 +3,15 @@
 // bundled standalone asio, platform auto-selected via ESP_PLATFORM, and the
 // lwIP interface-name shims the example also provides.
 
+#include "sdkconfig.h"
+
+#if CONFIG_NEON_LINK_AUDIO
+// Link 4.0: LinkAudio is a superset of Link, so the session behaviour below
+// is unchanged and one instance backs both facades (see ablink/audio.hpp).
+#include <ableton/LinkAudio.hpp>
+#else
 #include <ableton/Link.hpp>
+#endif
 
 #include "ablink/session.hpp"
 
@@ -15,13 +23,20 @@ extern "C" char* if_indextoname(unsigned int /*ifIndex*/, char* /*ifName*/) {
 }
 
 namespace ablink {
+
+#if CONFIG_NEON_LINK_AUDIO
+using LinkImpl = ableton::LinkAudio;
+#else
+using LinkImpl = ableton::Link;
+#endif
+
 namespace {
 
 class LinkSessionEsp final : public hal::ILinkSession {
  public:
   void start(double initial_bpm) override {
     if (link_ == nullptr) {
-      link_ = new ableton::Link(initial_bpm);
+      link_ = new LinkImpl(initial_bpm);
       link_->enableStartStopSync(start_stop_sync_);
     }
     link_->enable(true);
@@ -91,9 +106,14 @@ class LinkSessionEsp final : public hal::ILinkSession {
   // Heap-allocated on first start(): constructing ableton::Link spins up
   // sockets and its asio service task, which must not happen from static
   // initialization order.
-  ableton::Link* link_ = nullptr;
+  LinkImpl* link_ = nullptr;
   bool start_stop_sync_ = true;
   double quantum_ = 4.0;
+
+ public:
+  // The Link Audio facade needs the same instance — it publishes and
+  // subscribes on the session this owns. Null until start().
+  LinkImpl* instance() const { return link_; }
 };
 
 LinkSessionEsp g_session;
@@ -101,5 +121,9 @@ LinkSessionEsp g_session;
 }  // namespace
 
 hal::ILinkSession& session() { return g_session; }
+
+namespace detail {
+LinkImpl* link_instance() { return g_session.instance(); }
+}  // namespace detail
 
 }  // namespace ablink

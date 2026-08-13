@@ -66,6 +66,44 @@ const char* clock_source_name(ClockSource s) {
   }
 }
 
+const char* audio_role_name(AudioRole r) {
+  switch (r) {
+    case AudioRole::kMetronome:
+      return "METRO";
+    case AudioRole::kClock:
+      return "CLK";
+    case AudioRole::kReset:
+      return "RST";
+    case AudioRole::kRun:
+      return "RUN";
+    case AudioRole::kAmy:
+      return "SYNTH";
+    case AudioRole::kLinkIn:
+      return "LNK IN";
+    case AudioRole::kLineIn:
+      return "LINE";
+    default:
+      return "MIX";
+  }
+}
+
+const char* click_sound_name(ClickSound s) {
+  switch (s) {
+    case ClickSound::kNoise:
+      return "NOISE";
+    case ClickSound::kWood:
+      return "WOOD";
+    default:
+      return "SINE";
+  }
+}
+
+// Percent of the unity gain byte, which is what the web slider shows too.
+unsigned gain_pct(uint8_t g) {
+  return static_cast<unsigned>((static_cast<uint32_t>(g) * 100u) /
+                               kUnityGainByte);
+}
+
 void gate_target_name(uint8_t target, char* buf, int cap) {
   if (target == MidiRouteConfig::kTargetNone) {
     std::snprintf(buf, cap, "OFF");
@@ -88,6 +126,8 @@ int MenuModel::item_count() const {
       return kOutputEditItems;
     case Screen::kMidi:
       return kMidiItems;
+    case Screen::kAudio:
+      return kAudioItems;
     case Screen::kSystem:
       return kSystemItems;
     default:
@@ -110,6 +150,8 @@ const char* MenuModel::screen_title() const {
       return ui::kTitleNetwork;
     case Screen::kMidi:
       return ui::kTitleMidi;
+    case Screen::kAudio:
+      return ui::kTitleAudio;
     case Screen::kSystem:
       return ui::kTitleSystem;
     case Screen::kConfirm:
@@ -131,6 +173,8 @@ void MenuModel::on_rotate(int detents) {
       adjust_output_param(cursor_, detents);
     } else if (screen_ == Screen::kMidi) {
       adjust_midi(cursor_, detents);
+    } else if (screen_ == Screen::kAudio) {
+      adjust_audio(cursor_, detents);
     } else if (screen_ == Screen::kSystem) {
       adjust_system(cursor_, detents);
     }
@@ -164,6 +208,9 @@ void MenuModel::on_click() {
         case 3:
           screen_ = Screen::kMidi;
           break;
+        case 4:
+          screen_ = Screen::kAudio;
+          break;
         default:
           screen_ = Screen::kSystem;
           break;
@@ -179,6 +226,7 @@ void MenuModel::on_click() {
 
     case Screen::kOutputEdit:
     case Screen::kMidi:
+    case Screen::kAudio:
       editing_ = !editing_;
       break;
 
@@ -247,9 +295,13 @@ void MenuModel::on_long_press() {
       screen_ = Screen::kMenu;
       cursor_ = 3;
       break;
-    case Screen::kSystem:
+    case Screen::kAudio:
       screen_ = Screen::kMenu;
       cursor_ = 4;
+      break;
+    case Screen::kSystem:
+      screen_ = Screen::kMenu;
+      cursor_ = 5;
       break;
   }
 }
@@ -271,7 +323,7 @@ const char* MenuModel::item_label(int index) const {
     case Screen::kMenu: {
       static const char* kItems[kMenuItems] = {
           ui::kTitleLive, ui::kTitleOutputs, ui::kTitleNetwork, ui::kTitleMidi,
-          ui::kTitleSystem};
+          ui::kTitleAudio, ui::kTitleSystem};
       return kItems[clamp_int(index, 0, kMenuItems - 1)];
     }
     case Screen::kOutputs: {
@@ -291,6 +343,12 @@ const char* MenuModel::item_label(int index) const {
       static const char* kItems[kMidiItems] = {"BLE", "CLK OUT", "CHANNEL",
                                                "GATE", "PITCH CV"};
       return kItems[clamp_int(index, 0, kMidiItems - 1)];
+    }
+    case Screen::kAudio: {
+      static const char* kItems[kAudioItems] = {
+          "AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
+          "OUT R", "LINE IN", "PUBLISH", "SUB"};
+      return kItems[clamp_int(index, 0, kAudioItems - 1)];
     }
     case Screen::kSystem: {
       static const char* kItems[kSystemItems] = {
@@ -433,7 +491,93 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
       default:
         break;
     }
+  } else if (screen_ == Screen::kAudio) {
+    const AudioConfig& a = cfg_->audio;
+    switch (index) {
+      case 0:
+        std::snprintf(buf, cap, "%s", a.enabled ? "ON" : "OFF");
+        break;
+      case 1:
+        std::snprintf(buf, cap, "%s", a.metro_enabled ? "ON" : "OFF");
+        break;
+      case 2:
+        std::snprintf(buf, cap, "%u%%", gain_pct(a.metro_gain));
+        break;
+      case 3:
+        std::snprintf(buf, cap, "%s", click_sound_name(a.metro_sound));
+        break;
+      case 4:
+        std::snprintf(buf, cap, "%s", audio_role_name(a.role_l));
+        break;
+      case 5:
+        std::snprintf(buf, cap, "%s", audio_role_name(a.role_r));
+        break;
+      case 6:
+        if (a.linein_monitor_gain == 0) {
+          std::snprintf(buf, cap, "OFF");
+        } else {
+          std::snprintf(buf, cap, "%u%%", gain_pct(a.linein_monitor_gain));
+        }
+        break;
+      case 7:
+        std::snprintf(buf, cap, "%s", a.la_publish_mix ? "ON" : "OFF");
+        break;
+      case 8:
+        std::snprintf(buf, cap, "%s",
+                      a.la_sub_channel_id[0] != '\0' ? "ON" : "OFF");
+        break;
+      default:
+        break;
+    }
   }
+}
+
+void MenuModel::adjust_audio(int index, int delta) {
+  AudioConfig& a = cfg_->audio;
+  switch (index) {
+    case 0:
+      a.enabled = delta > 0 ? 1 : 0;
+      break;
+    case 1:
+      a.metro_enabled = delta > 0 ? 1 : 0;
+      break;
+    case 2:
+      a.metro_gain = static_cast<uint8_t>(
+          clamp_int(static_cast<int>(a.metro_gain) + delta * 5, 0, 255));
+      break;
+    case 3:
+      a.metro_sound = static_cast<ClickSound>(wrap_int(
+          static_cast<int>(a.metro_sound) + delta,
+          static_cast<int>(ClickSound::kSoundCount)));
+      break;
+    case 4:
+      a.role_l = static_cast<AudioRole>(
+          wrap_int(static_cast<int>(a.role_l) + delta,
+                   static_cast<int>(AudioRole::kRoleCount)));
+      break;
+    case 5:
+      a.role_r = static_cast<AudioRole>(
+          wrap_int(static_cast<int>(a.role_r) + delta,
+                   static_cast<int>(AudioRole::kRoleCount)));
+      break;
+    case 6:
+      a.linein_monitor_gain = static_cast<uint8_t>(clamp_int(
+          static_cast<int>(a.linein_monitor_gain) + delta * 5, 0, 255));
+      break;
+    case 7:
+      a.la_publish_mix = delta > 0 ? 1 : 0;
+      break;
+    case 8:
+      // The panel can only clear a subscription: picking one needs the
+      // discovered channel list, which lives in the editor.
+      if (delta < 0) {
+        a.la_sub_channel_id[0] = '\0';
+      }
+      break;
+    default:
+      return;
+  }
+  mark_dirty();
 }
 
 void MenuModel::adjust_output_param(int index, int delta) {

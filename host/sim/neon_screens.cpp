@@ -222,15 +222,25 @@ int main() {
     capture("midi", "MIDI / BLE", "Routing that is worth reaching without a phone.",
             midi, st);
 
+    neon::Config audio_cfg;
+    audio_cfg.audio.enabled = 1;
+    audio_cfg.audio.metro_enabled = 1;
+    neon::MenuModel audio(&audio_cfg);
+    navigate(audio, 4);
+    capture("audio", "Audio",
+            "The metronome, what each output jack carries, and whether the "
+            "mix is published over Link Audio.",
+            audio, st);
+
     neon::Config sys_cfg;
     neon::MenuModel system(&sys_cfg);
-    navigate(system, 4);
+    navigate(system, 5);
     capture("system", "System", "Timing offsets, clock source and reboot.",
             system, st);
 
     neon::Config confirm_cfg;
     neon::MenuModel confirm(&confirm_cfg);
-    navigate(confirm, 4);
+    navigate(confirm, 5);
     confirm.on_rotate(neon::MenuModel::kSystemRebootItem);
     confirm.on_click();
     capture("confirm-no", "Confirm — default",

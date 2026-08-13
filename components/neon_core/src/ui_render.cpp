@@ -146,6 +146,7 @@ void render_ui(const MenuModel& menu, const UiStatus& status,
     case MenuModel::Screen::kMenu:
     case MenuModel::Screen::kOutputs:
     case MenuModel::Screen::kMidi:
+    case MenuModel::Screen::kAudio:
     case MenuModel::Screen::kSystem:
       render_list(menu, menu.screen_title(), fb);
       break;

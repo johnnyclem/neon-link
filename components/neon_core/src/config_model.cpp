@@ -143,6 +143,62 @@ void config_sanitize(Config* cfg) {
   std::memcpy(cfg->device_name, host, sizeof(host));
 
   cfg->big_beat_display = cfg->big_beat_display ? 1 : 0;
+
+  AudioConfig& a = cfg->audio;
+  a.enabled = a.enabled ? 1 : 0;
+  if (a.role_l >= AudioRole::kRoleCount) {
+    a.role_l = AudioRole::kMix;
+  }
+  if (a.role_r >= AudioRole::kRoleCount) {
+    a.role_r = AudioRole::kMix;
+  }
+  a.metro_enabled = a.metro_enabled ? 1 : 0;
+  if (a.metro_sound >= ClickSound::kSoundCount) {
+    a.metro_sound = ClickSound::kSine;
+  }
+  a.metro_accent = a.metro_accent ? 1 : 0;
+  a.amy_enabled = a.amy_enabled ? 1 : 0;
+  a.amy_patch = static_cast<uint8_t>(a.amy_patch % 4);
+  a.la_publish_mix = a.la_publish_mix ? 1 : 0;
+  a.la_publish_linein = a.la_publish_linein ? 1 : 0;
+  a.la_publish_mono = a.la_publish_mono ? 1 : 0;
+  clamp<uint16_t>(&a.la_jitter_ms, 5, 500);
+  a.la_channel_name[sizeof(a.la_channel_name) - 1] = '\0';
+  a.la_sub_channel_id[sizeof(a.la_sub_channel_id) - 1] = '\0';
+  a.pad_[0] = 0;
+}
+
+AudioEngineConfig audio_engine_config(const Config& cfg) {
+  const AudioConfig& a = cfg.audio;
+  AudioEngineConfig out;
+  out.enabled = a.enabled;
+  out.role_l = a.role_l;
+  out.role_r = a.role_r;
+  out.metro_enabled = a.metro_enabled;
+  out.metro_sound = a.metro_sound;
+  out.metro_gain = a.metro_gain;
+  out.metro_accent = a.metro_accent;
+  out.amy_enabled = a.amy_enabled;
+  out.amy_gain = a.amy_gain;
+  out.amy_patch = a.amy_patch;
+  out.linein_monitor_gain = a.linein_monitor_gain;
+  out.la_sub_gain = a.la_sub_gain;
+  out.la_publish_mono = a.la_publish_mono;
+  out.la_jitter_ms = a.la_jitter_ms;
+  out.quantum_beats = cfg.quantum_beats;
+  return out;
+}
+
+size_t audio_channel_name(const Config& cfg, bool line_in, char* out,
+                          size_t cap) {
+  if (out == nullptr || cap == 0) {
+    return 0;
+  }
+  const char* base = cfg.audio.la_channel_name[0] != '\0'
+                         ? cfg.audio.la_channel_name
+                         : cfg.device_name;
+  std::snprintf(out, cap, "%s %s", base, line_in ? "In" : "Out");
+  return std::strlen(out);
 }
 
 size_t sanitize_hostname(const char* in, char* out, size_t cap) {
@@ -247,6 +303,12 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   // on big_beat_display and would silently turn the new default off.
   if (h.version < 3) {
     out->big_beat_display = 1;
+  }
+  if (h.version < 4) {
+    // Same trap one version on: a v3 payload's size ran past
+    // big_beat_display into its own tail padding, and that padding would
+    // land on the audio block. None of it is configuration.
+    out->audio = AudioConfig{};
   }
   config_sanitize(out);
   return true;

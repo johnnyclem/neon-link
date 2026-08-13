@@ -13,6 +13,64 @@ config NEON_BOARD_AMYBOARD
     bool "AMYboard (GP8413 CV outs, ADS1015 CV ins, TRS MIDI)"
 endchoice
 
+config NEON_AUDIO
+    bool "Audio engine (I2S out, metronome, pulses as audio)"
+    default y if NEON_BOARD_AMYBOARD
+    default n
+    help
+        Brings up the AMYboard's I2S audio path: a 44.1 kHz stereo render
+        loop on core 1, the metronome, clock/reset/run as sample-accurate
+        audio, and the Link Audio taps. Off leaves the codecs idle and
+        costs nothing.
+
+config NEON_AUDIO_INPUT
+    bool "Audio input (PCM1808 line in)"
+    depends on NEON_AUDIO
+    default y if NEON_BOARD_AMYBOARD
+    default n
+    help
+        Enables the I2S receive side: line-in monitoring, input meters,
+        and the "<name> In" Link Audio channel. Needs NEON_I2S_DIN wired
+        and a working 256fs MCLK for the ADC.
+
+config NEON_AUDIO_AMY
+    bool "AMY synth voice (third_party/amy)"
+    depends on NEON_AUDIO
+    default n
+    help
+        Renders incoming MIDI notes through shorepine's AMY (MIT), which
+        must be checked out at third_party/amy. With this off the audio
+        engine uses its own small built-in voice instead, so the Synth
+        role and the MIDI routing behave the same either way.
+
+menu "I2S pin map"
+    depends on NEON_AUDIO
+
+comment "-1 disables a pin. Take these from the board schematic:"
+comment "audio stays silent (and says so) until DOUT/BCLK/LRCLK are set."
+
+config NEON_I2S_MCLK
+    int "MCLK (master clock, 256fs — the PCM1808 needs it)"
+    default -1
+
+config NEON_I2S_BCLK
+    int "BCLK (bit clock, shared by both converters)"
+    default -1
+
+config NEON_I2S_LRCLK
+    int "LRCLK / WS (word select, shared by both converters)"
+    default -1
+
+config NEON_I2S_DOUT
+    int "DOUT (to the PCM5101 DAC)"
+    default -1
+
+config NEON_I2S_DIN
+    int "DIN (from the PCM1808 ADC)"
+    default -1
+
+endmenu
+
 config NEON_WIFI_SSID
     string "WiFi SSID"
     default ""

@@ -32,13 +32,13 @@ struct UiStatus {
 // Encoder-driven menu state machine (pure logic; host-tested).
 //
 // The tree is deliberately shallow (DESIGN_SYSTEM.md §11): one menu with
-// five destinations, at most one level below it, and long-press as the
+// six destinations, at most one level below it, and long-press as the
 // universal way back.
 //
-//   Home --click--> Menu [Live, Outputs, Network, MIDI, System]
+//   Home --click--> Menu [Live, Outputs, Network, MIDI, Audio, System]
 //     Outputs [CLK1..4] --click--> OutputEdit (param list)
 //     Network              read-only; credentials are the web UI's job
-//     MIDI, System         param lists
+//     MIDI, Audio, System  param lists
 //     System > REBOOT   --click--> Confirm
 //
 // Interaction (§11): rotate moves focus or changes the focused value,
@@ -56,6 +56,7 @@ class MenuModel {
     kOutputEdit,
     kNetwork,
     kMidi,
+    kAudio,
     kSystem,
     kConfirm,
   };
@@ -67,7 +68,7 @@ class MenuModel {
     kReboot,
   };
 
-  static constexpr int kMenuItems = 5;     // Live, Outputs, Network, MIDI, System
+  static constexpr int kMenuItems = 6;  // Live, Outputs, Network, MIDI, Audio, System
   static constexpr int kOutputsItems = 4;  // CLK1..4
   // ENABLED, PPQN, MULT, DIV, MODE, TRIG MS, DUTY, SHUF, then the parity
   // set: ROLE, FREE RUN, RHYTHM, STEPS, FILLS, ROT, CHANCE, JITTER,
@@ -75,6 +76,10 @@ class MenuModel {
   // user reaches for at the rack; the pattern editor lives in the web UI.
   static constexpr int kOutputEditItems = 17;
   static constexpr int kMidiItems = 5;
+  // AUDIO, METRO, CLICK, SOUND, OUT L, OUT R, LINE IN, PUBLISH, SUB.
+  // Subscribing from the panel cycles the channels Link Audio discovered;
+  // naming one is the web editor's job, where there is a keyboard.
+  static constexpr int kAudioItems = 9;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
   // MIDI NDG, SS SYNC, BRIGHT, BEAT, REBOOT — REBOOT stays last.
   static constexpr int kSystemItems = 12;
@@ -108,6 +113,7 @@ class MenuModel {
  private:
   void adjust_output_param(int index, int delta);
   void adjust_midi(int index, int delta);
+  void adjust_audio(int index, int delta);
   void adjust_system(int index, int delta);
   void mark_dirty() { dirty_ = true; }
 

@@ -9,4 +9,19 @@ config NEON_LINK_STUB
         for debugging: everything downstream of the timeline snapshot
         behaves identically.
 
+config NEON_LINK_AUDIO
+    bool "Link Audio streaming (needs Ableton Link 4.0)"
+    depends on !NEON_LINK_STUB
+    default n
+    help
+        Publish the module's mix (and line input) as named Link Audio
+        channels, and play a channel published by Live 12.4 or another
+        peer. Requires the Ableton Link submodule checked out at tag
+        Link-4.0 — ableton::LinkAudio does not exist before that, and the
+        build fails with a message telling you so.
+
+        With this off, everything downstream still builds and runs: the
+        Link Audio facade is a no-op whose available() is false, and the
+        editor says streaming is not in this firmware.
+
 endmenu

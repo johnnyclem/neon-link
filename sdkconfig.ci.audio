@@ -1,0 +1,8 @@
+# CI matrix leg: the audio engine compiled in, with the AMY seam on its
+# built-in voice. Link Audio itself stays off here — it needs the Link-4.0
+# submodule, and this leg exists to prove the audio path builds against a
+# no-op ILinkAudio just as well as against the real one.
+# Combined with sdkconfig.defaults and sdkconfig.defaults.amyboard.
+CONFIG_NEON_AUDIO=y
+CONFIG_NEON_AUDIO_INPUT=y
+# CONFIG_NEON_AUDIO_AMY is not set

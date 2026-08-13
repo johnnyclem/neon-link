@@ -71,6 +71,38 @@ const char* source_str(ClockSource s) {
   }
 }
 
+const char* audio_role_str(AudioRole r) {
+  switch (r) {
+    case AudioRole::kMetronome:
+      return "metronome";
+    case AudioRole::kClock:
+      return "clock";
+    case AudioRole::kReset:
+      return "reset";
+    case AudioRole::kRun:
+      return "run";
+    case AudioRole::kAmy:
+      return "synth";
+    case AudioRole::kLinkIn:
+      return "link_in";
+    case AudioRole::kLineIn:
+      return "line_in";
+    default:
+      return "mix";
+  }
+}
+
+const char* click_sound_str(ClickSound s) {
+  switch (s) {
+    case ClickSound::kNoise:
+      return "noise";
+    case ClickSound::kWood:
+      return "wood";
+    default:
+      return "sine";
+  }
+}
+
 const char* policy_str(MidiRouteConfig::ClockPolicy p) {
   switch (p) {
     case MidiRouteConfig::ClockPolicy::kReplace:
@@ -143,6 +175,29 @@ void get_secret(const cJSON* obj, const char* key, char* out, size_t cap) {
 bool str_eq(const cJSON* v, const char* s) {
   return cJSON_IsString(v) && v->valuestring != nullptr &&
          std::strcmp(v->valuestring, s) == 0;
+}
+
+// Roles travel as names, so an added role never silently reinterprets a
+// stored number.
+void get_audio_role(const cJSON* obj, const char* key, AudioRole* out) {
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
+  if (str_eq(v, "mix")) {
+    *out = AudioRole::kMix;
+  } else if (str_eq(v, "metronome")) {
+    *out = AudioRole::kMetronome;
+  } else if (str_eq(v, "clock")) {
+    *out = AudioRole::kClock;
+  } else if (str_eq(v, "reset")) {
+    *out = AudioRole::kReset;
+  } else if (str_eq(v, "run")) {
+    *out = AudioRole::kRun;
+  } else if (str_eq(v, "synth")) {
+    *out = AudioRole::kAmy;
+  } else if (str_eq(v, "link_in")) {
+    *out = AudioRole::kLinkIn;
+  } else if (str_eq(v, "line_in")) {
+    *out = AudioRole::kLineIn;
+  }
 }
 
 // The 64-step pattern mask travels as hex: JSON numbers are doubles and
@@ -266,6 +321,27 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   // Flat aliases for slot 0 keep older clients (and the OLED menu) working.
   cJSON_AddStringToObject(wifi, "ssid", cfg.wifi[0].ssid);
   cJSON_AddStringToObject(wifi, "pass", "");
+
+  const AudioConfig& ac = cfg.audio;
+  cJSON* audio = cJSON_AddObjectToObject(root, "audio");
+  cJSON_AddBoolToObject(audio, "enabled", ac.enabled != 0);
+  cJSON_AddStringToObject(audio, "role_l", audio_role_str(ac.role_l));
+  cJSON_AddStringToObject(audio, "role_r", audio_role_str(ac.role_r));
+  cJSON_AddBoolToObject(audio, "metro_enabled", ac.metro_enabled != 0);
+  cJSON_AddStringToObject(audio, "metro_sound", click_sound_str(ac.metro_sound));
+  cJSON_AddNumberToObject(audio, "metro_gain", ac.metro_gain);
+  cJSON_AddBoolToObject(audio, "metro_accent", ac.metro_accent != 0);
+  cJSON_AddBoolToObject(audio, "amy_enabled", ac.amy_enabled != 0);
+  cJSON_AddNumberToObject(audio, "amy_gain", ac.amy_gain);
+  cJSON_AddNumberToObject(audio, "amy_patch", ac.amy_patch);
+  cJSON_AddNumberToObject(audio, "linein_monitor_gain", ac.linein_monitor_gain);
+  cJSON_AddBoolToObject(audio, "publish_mix", ac.la_publish_mix != 0);
+  cJSON_AddBoolToObject(audio, "publish_linein", ac.la_publish_linein != 0);
+  cJSON_AddBoolToObject(audio, "publish_mono", ac.la_publish_mono != 0);
+  cJSON_AddNumberToObject(audio, "sub_gain", ac.la_sub_gain);
+  cJSON_AddNumberToObject(audio, "jitter_ms", ac.la_jitter_ms);
+  cJSON_AddStringToObject(audio, "channel_name", ac.la_channel_name);
+  cJSON_AddStringToObject(audio, "sub_channel_id", ac.la_sub_channel_id);
 
   cJSON* ap = cJSON_AddObjectToObject(root, "ap");
   cJSON_AddStringToObject(ap, "policy", ap_policy_str(cfg.ap_policy));
@@ -444,6 +520,38 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       get_secret(wifi, "pass", cfg->wifi[0].pass, sizeof(cfg->wifi[0].pass));
     }
     get_u8(wifi, "retries", &cfg->wifi_retries);
+  }
+
+  const cJSON* audio = cJSON_GetObjectItemCaseSensitive(root, "audio");
+  if (cJSON_IsObject(audio)) {
+    AudioConfig& ac = cfg->audio;
+    get_bool_u8(audio, "enabled", &ac.enabled);
+    get_audio_role(audio, "role_l", &ac.role_l);
+    get_audio_role(audio, "role_r", &ac.role_r);
+    get_bool_u8(audio, "metro_enabled", &ac.metro_enabled);
+    const cJSON* snd = cJSON_GetObjectItemCaseSensitive(audio, "metro_sound");
+    if (str_eq(snd, "sine")) {
+      ac.metro_sound = ClickSound::kSine;
+    } else if (str_eq(snd, "noise")) {
+      ac.metro_sound = ClickSound::kNoise;
+    } else if (str_eq(snd, "wood")) {
+      ac.metro_sound = ClickSound::kWood;
+    }
+    get_u8(audio, "metro_gain", &ac.metro_gain);
+    get_bool_u8(audio, "metro_accent", &ac.metro_accent);
+    get_bool_u8(audio, "amy_enabled", &ac.amy_enabled);
+    get_u8(audio, "amy_gain", &ac.amy_gain);
+    get_u8(audio, "amy_patch", &ac.amy_patch);
+    get_u8(audio, "linein_monitor_gain", &ac.linein_monitor_gain);
+    get_bool_u8(audio, "publish_mix", &ac.la_publish_mix);
+    get_bool_u8(audio, "publish_linein", &ac.la_publish_linein);
+    get_bool_u8(audio, "publish_mono", &ac.la_publish_mono);
+    get_u8(audio, "sub_gain", &ac.la_sub_gain);
+    get_u16(audio, "jitter_ms", &ac.la_jitter_ms);
+    get_str(audio, "channel_name", ac.la_channel_name,
+            sizeof(ac.la_channel_name));
+    get_str(audio, "sub_channel_id", ac.la_sub_channel_id,
+            sizeof(ac.la_sub_channel_id));
   }
 
   const cJSON* ap = cJSON_GetObjectItemCaseSensitive(root, "ap");

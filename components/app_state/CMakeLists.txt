@@ -1,5 +1,5 @@
 idf_component_register(
-  SRCS src/config_store.cpp src/timeline_bus.cpp
+  SRCS src/config_store.cpp src/timeline_bus.cpp src/audio_bus.cpp
   INCLUDE_DIRS include
   REQUIRES neon_core neon_hal_esp
   PRIV_REQUIRES esp_timer

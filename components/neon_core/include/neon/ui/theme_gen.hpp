@@ -50,6 +50,7 @@ inline constexpr const char kTitleLive[] = "LIVE";
 inline constexpr const char kTitleOutputs[] = "OUTPUTS";
 inline constexpr const char kTitleNetwork[] = "NETWORK";
 inline constexpr const char kTitleMidi[] = "MIDI";
+inline constexpr const char kTitleAudio[] = "AUDIO";
 inline constexpr const char kTitleSystem[] = "SYSTEM";
 
 inline constexpr const char kBrand[] = "NEON";
