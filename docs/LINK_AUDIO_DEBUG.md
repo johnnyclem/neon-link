@@ -43,7 +43,7 @@ pump task (4 ms) → `LinkAudioSink` commit.
 |---|---|---|
 | Crackle / splices, fill bleeding down, periodic silence-then-recovery | `rx_dropped` climbs; rx high-water pegs at the ring size | WiFi delivers in bursts longer than the **block ring**, upstream of the jitter buffer. Raising `la_jitter_ms` cannot help — the audio is gone before the jitter buffer sees it. Deepen `kRxSlots` (done: 16 → 128) or move to direct-push (below). |
 | Stutter: ~`jitter_ms` of silence, then audio, repeating | `jit_underruns` climbs, `rx_dropped` quiet | Genuine late packets or sender gaps; raise `la_jitter_ms` (this is what it is for), check RF environment, disable the SoftAP while testing (`APSTA` beacons cost airtime). |
-| Continuous harmonic distortion, no dropouts, counters all quiet; drums/clicks fine, Rhodes/guitar crushed | nothing — peaks near 1000 | Was the mixer's `soft_clip` (knee 0.75) on the solo Link tap. Solo program taps now bypass it; the mix bus still has a 0.97 safety knee. If you still hear this on an old image: set subscribe gain to ≤150. |
+| Continuous harmonic distortion, no dropouts, counters all quiet; drums/clicks fine, Rhodes/guitar crushed | nothing — peaks near 1000 | Was the mixer's `soft_clip` (knee 0.75) doing intermodulation on sustained program material — sticks poke past the knee for milliseconds (inaudible), tonal content sits in the curve continuously. Fixed twice over: solo program taps bypass the saturator entirely, and the mix bus skips it whenever the active sources cannot sum past full scale (a subscription riding kMix alone is bit-transparent); when the mix genuinely can clip, the knee is 0.97. If you still hear this on an old image: set subscribe gain to ≤150. |
 | Pitch-stable but gritty top end on music | nothing | Linear-interpolation SRC operating at a non-1.0 ratio (sender rate ≠ 48 kHz, or servo trim active). Expected ceiling of the current resampler; windowed-sinc is the upgrade path. |
 | Everything distorted, including the local metronome / synth | nothing | Not Link Audio at all: I2S slot format vs the PCM3060 strap (32-bit left-justified vs standard I2S one-BCLK delay). Verify with the metronome alone; if it is dirty too, fix `i2s_audio.cpp` slot config first — no network test is meaningful until the local path is clean. |
 | Dead air, Live shows no Link Audio channel at all, `audio_svc` never logs `Link Audio enabled` | nothing — `publishing` stays 0, no `la:` line | Control loop cached `enableLinkAudio` on a null session (link_svc still in the STA wait). Fixed: wait for `session_ready()` before caching. Reflash; confirm the log line after WiFi associates. |
@@ -61,7 +61,10 @@ pump task (4 ms) → `LinkAudioSink` commit.
 3. **`rx ring high-water`** near `kRxSlots` with drops = burst overflow
    (the pre-jitter-buffer loss that motivated this branch's fixes).
 4. **Gain A/B** (`la_sub_gain` 200 → 150) any time "distorted" is part of
-   the complaint — it is free and rules the saturator in or out.
+   the complaint — it is free and rules the saturator in or out. (On
+   firmware with the transparency fix, a subscription playing alone is
+   never clipped; if this A/B still changes the sound, the distortion is
+   upstream of the mixer.)
 5. Test STA-only (SoftAP off) and with BLE MIDI idle before blaming
    anything in this codebase: 2.4 GHz airtime is the whole game.
 

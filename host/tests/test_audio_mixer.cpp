@@ -152,6 +152,25 @@ TEST_CASE("mixer: a full-scale Link tap is not crushed") {
   CHECK(r[0] == doctest::Approx(0.99f));
 }
 
+TEST_CASE("mixer: a bounded mix passes through untouched") {
+  // The same guarantee on the default kMix routing: a Link Audio stream
+  // at unity gain is the only active source, so the mix cannot exceed
+  // full scale and the saturator must stay out of it — shaving the top
+  // of hot program material adds intermodulation that reads as crackly
+  // distortion on dense tonal content.
+  const auto hot = constant(0.98f);
+  neon::MixSources src;
+  src.link_in_l = hot.data();
+  src.link_in_r = hot.data();
+  neon::MixerConfig cfg;  // roles default to kMix; only the link is active
+  std::vector<float> l(kFrames), r(kFrames);
+  neon::mix_block(cfg, src, kFrames, l.data(), r.data());
+  for (uint32_t i = 0; i < kFrames; ++i) {
+    CHECK(l[i] == doctest::Approx(0.98f));
+    CHECK(r[i] == doctest::Approx(0.98f));
+  }
+}
+
 TEST_CASE("mixer: a hot mix saturates rather than wrapping") {
   const auto hot = constant(0.9f);
   neon::MixSources src;
