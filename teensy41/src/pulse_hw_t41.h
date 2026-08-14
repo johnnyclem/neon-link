@@ -22,7 +22,13 @@ class PulseHwT41 : public hal::IPulseHw {
   // Current output level word (bits 0..5), for LED mirroring and the UI.
   static uint32_t levels();
 
-  // Edges the ISR had to fire late (t_us already past by >1 tick when
-  // popped). Diagnostic counter for the serial console.
+  // Diagnostics for /api/status ("pulse" block, same fields as the ESP
+  // GPTimer path reports): total edges emitted, and how late the ISR was
+  // relative to each edge's scheduled time.
+  static uint32_t edges();
+  static uint32_t late_max_us();
+  static uint32_t late_avg_us();
+
+  // Edges fired more than one tick late (subset of the above).
   static uint32_t late_edges();
 };

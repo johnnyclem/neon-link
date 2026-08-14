@@ -22,8 +22,9 @@ inline constexpr int kPinTftRst = 255;
 inline constexpr int kPinTftBacklight = 24;
 
 // --- XPT2046 touch (same SPI bus, own CS) -----------------------------
-inline constexpr int kPinTouchCs = 8;
-inline constexpr int kPinTouchIrq = 7;
+// Not 7/8: those are I2S data pins once an audio shield is stacked.
+inline constexpr int kPinTouchCs = 15;
+inline constexpr int kPinTouchIrq = 16;
 
 // --- Rotary encoders (EC11 with push switch, A/B to GND-less GPIO,
 // common to GND, internal pullups). ENC1 navigates the menu; ENC2 is the
@@ -60,8 +61,11 @@ inline constexpr int kPinLedRun = 28;
 // --- Tempo CV: FlexPWM pin -> RC filter -> op-amp scale to 0-5 V ------
 inline constexpr int kPinTempoCv = 22;
 
-// --- Reserved (not driven by this target yet) -------------------------
-// TRS MIDI on Serial1 (TX=1, RX=0) and I2C on 18/19 stay free for the
-// MIDI and OLED follow-ups; nothing here may claim those pins.
+// --- TRS MIDI out: Serial1 @ 31250 baud, Type A wiring ---------------
 inline constexpr int kPinMidiTx = 1;
-inline constexpr int kPinMidiRx = 0;
+inline constexpr int kPinMidiRx = 0;  // reserved (MIDI in, not wired yet)
+
+// --- Reserved: audio shield (SGTL5000) / I2S ---------------------------
+// The Teensy Audio Library owns 7 (I2S OUT1A), 8 (I2S IN1), 20 (LRCLK),
+// 21 (BCLK), 23 (MCLK), and I2C on 18/19 for codec control. Nothing in
+// this map may claim them.
