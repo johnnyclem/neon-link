@@ -32,6 +32,7 @@
 #include "neon/audio/beat_window.hpp"
 #include "neon/audio/click.hpp"
 #include "neon/audio/jitter_buffer.hpp"
+#include "neon/audio/lpf.hpp"
 #include "neon/audio/mixer.hpp"
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
@@ -78,6 +79,8 @@ int16_t g_rx_i16[kMaxRxFrames * 2];
 neon::ClickSynth g_click;
 neon::PulseRender g_pulse;
 neon::JitterBuffer g_jitter;
+neon::GistFilter g_gist_l;
+neon::GistFilter g_gist_r;
 
 // Sink handles, written by the control task and read by the render task.
 std::atomic<int> g_sink_mix{-1};
@@ -187,6 +190,8 @@ void audio_task(void*) {
   clock.reset(kSampleRate);
   g_click.reset(kSampleRate);
   g_pulse.reset(kSampleRate);
+  g_gist_l.set_rate(kSampleRate);
+  g_gist_r.set_rate(kSampleRate);
   amysynth::init(kSampleRate, kBlockFrames);
 
   int16_t* jitter_storage = static_cast<int16_t*>(heap_caps_malloc(
@@ -226,9 +231,10 @@ void audio_task(void*) {
   uint32_t underruns = 0;
   int64_t prev_t1 = 0;
 
-  ESP_LOGI(kTag, "audio task running: %u Hz, %u frames/block",
+  ESP_LOGI(kTag, "audio task running: %u Hz, %u frames/block; gist %s",
            static_cast<unsigned>(kSampleRate),
-           static_cast<unsigned>(kBlockFrames));
+           static_cast<unsigned>(kBlockFrames),
+           cfg.la_fullband ? "bypass" : "120 Hz-5 kHz");
 
   for (;;) {
     // --- clocks and configuration -------------------------------------
@@ -241,6 +247,7 @@ void audio_task(void*) {
     const uint32_t new_cfg_version = audio_config_bus().version();
     if (new_cfg_version != cfg_version) {
       const bool metro_was_on = cfg.metro_enabled != 0;
+      const uint8_t fullband_was = cfg.la_fullband;
       cfg_version = audio_config_bus().read(cfg);
       if (metro_was_on && cfg.metro_enabled == 0) {
         g_click.fade_out();
@@ -248,6 +255,11 @@ void audio_task(void*) {
       g_click.set_config(click_config(cfg));
       amysynth::set_patch(cfg.amy_patch);
       g_jitter.configure(cfg.la_jitter_ms);
+      if (cfg.la_fullband != fullband_was) {
+        g_gist_l.reset();
+        g_gist_r.reset();
+        ESP_LOGI(kTag, "gist %s", cfg.la_fullband ? "bypass" : "120 Hz-5 kHz");
+      }
     }
     const uint32_t new_eng_version = engine_config_bus().version();
     if (new_eng_version != eng_version) {
@@ -340,8 +352,15 @@ void audio_task(void*) {
 
     if (want_link && jitter_storage != nullptr) {
       g_jitter.pull(kBlockFrames, g_link_l, g_link_r);
+      if (cfg.la_fullband == 0) {
+        g_gist_l.process(g_link_l, kBlockFrames);
+        g_gist_r.process(g_link_r, kBlockFrames);
+      }
       src.link_in_l = g_link_l;
       src.link_in_r = g_link_r;
+    } else {
+      g_gist_l.reset();
+      g_gist_r.reset();
     }
 
     const bool have_input = io.read_block(g_in_i16);

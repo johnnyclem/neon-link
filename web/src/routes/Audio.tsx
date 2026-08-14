@@ -302,6 +302,18 @@ export function Audio(props: PageProps) {
                 onChange={(v) => patch((d) => (d.audio.sub_gain = fromPct(v)))}
               />
             </div>
+            <div style="margin-top:var(--space-3)">
+              <Toggle
+                label="Gist band (120 Hz–5 kHz)"
+                checked={a.gist_lpf}
+                onChange={(v) => patch((d) => (d.audio.gist_lpf = v))}
+              />
+            </div>
+            <p class="card__note">
+              Cuts the 25–55 Hz rumble that crackles on packet splices, and
+              the overtone forest above 5 kHz. Turn it off to A/B the raw
+              stream.
+            </p>
             {s && a.sub_channel_id ? (
               <p class="card__note">
                 {s.sub_state === "playing"

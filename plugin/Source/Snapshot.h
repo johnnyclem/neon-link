@@ -1,8 +1,10 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "neon/client/status.hpp"
+#include "neon/config/model.hpp"
 
 namespace neon::plugin {
 
@@ -20,6 +22,23 @@ struct Snapshot {
   neon::client::Status status;
   bool persist_lazy = false;
   std::string banner;
+
+  bool has_config = false;
+  neon::Config config{};
+  neon::client::ConfigSecrets secrets{};
+  uint32_t config_seq = 0;  // increments on each successful GET / PUT
+
+  bool saving = false;
+  bool last_save_ok = false;
+  std::string save_message;
+  uint32_t save_seq = 0;
+
+  bool scanning = false;
+  std::string scan_message;
+  std::vector<neon::client::ScanResult> scan;
+
+  neon::client::AudioChannels audio_channels;
+  bool audio_refreshing = false;
 };
 
 inline const char* reach_label(Reachability r) {

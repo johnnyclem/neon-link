@@ -46,6 +46,7 @@ add_executable(neon_tests
   tests/test_audio_mixer.cpp
   tests/test_frame_ring.cpp
   tests/test_resampler.cpp
+  tests/test_audio_lpf.cpp
   tests/test_jitter_buffer.cpp
   tests/test_synth_voice.cpp
   tests/test_quadrature.cpp

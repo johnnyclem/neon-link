@@ -2,6 +2,7 @@
 
 #include "neon/client/backoff.hpp"
 #include "neon/client/bind.hpp"
+#include "neon/client/patch.hpp"
 
 namespace neon::plugin {
 namespace {
@@ -82,6 +83,37 @@ void DeviceController::preset(neon::client::PresetOp op, int slot) {
   post(std::move(c));
 }
 
+void DeviceController::saveConfig(const neon::Config& cfg) {
+  Cmd c;
+  c.kind = Kind::SaveConfig;
+  c.cfg = cfg;
+  post(std::move(c));
+}
+
+void DeviceController::scanWifi() {
+  Cmd c;
+  c.kind = Kind::Scan;
+  post(std::move(c));
+}
+
+void DeviceController::refreshAudioChannels() {
+  Cmd c;
+  c.kind = Kind::RefreshAudio;
+  post(std::move(c));
+}
+
+void DeviceController::reboot() {
+  Cmd c;
+  c.kind = Kind::Reboot;
+  post(std::move(c));
+}
+
+void DeviceController::factoryReset() {
+  Cmd c;
+  c.kind = Kind::FactoryReset;
+  post(std::move(c));
+}
+
 void DeviceController::setEditorOpen(bool open) {
   const std::lock_guard<std::mutex> g(mu_);
   editor_open_ = open;
@@ -95,6 +127,26 @@ std::shared_ptr<const Snapshot> DeviceController::snapshot() const {
 Bind DeviceController::bind_state() const {
   const std::lock_guard<std::mutex> g(mu_);
   return bind_;
+}
+
+Snapshot DeviceController::base_snapshot() const {
+  Snapshot s;
+  s.bind = bind_;
+  s.has_config = have_config_;
+  s.config = config_;
+  s.secrets = secrets_;
+  s.config_seq = config_seq_;
+  s.saving = saving_;
+  s.last_save_ok = last_save_ok_;
+  s.save_message = save_message_;
+  s.save_seq = save_seq_;
+  s.scanning = scanning_;
+  s.scan_message = scan_message_;
+  s.scan = scan_;
+  s.audio_channels = audio_channels_;
+  s.audio_refreshing = audio_refreshing_;
+  s.persist_lazy = client_.persist_lazy();
+  return s;
 }
 
 void DeviceController::publish(Snapshot s) {
@@ -118,29 +170,58 @@ void DeviceController::apply_bind(const std::string& raw) {
   if (!bound_by_ip_) bind_.ip.clear();
   client_.setTarget(bind_.connect_host.c_str(), 80);
   http_.close();
+  have_config_ = false;
+  last_status_rev_ = 0;
+}
+
+void DeviceController::fill_status(Snapshot* s,
+                                   const neon::client::Status& st) {
+  s->status = st;
+  s->reach = Reachability::Online;
+  if (!st.device_name.empty()) {
+    bind_.device_name = st.device_name;
+    if (!bound_by_ip_) {
+      bind_.connect_host = neon::client::mdns_host(st.device_name);
+    }
+  }
+  if (!st.ip.empty()) bind_.ip = st.ip;
+  s->bind = bind_;
+  if (st.tempo_valid && st.peers == 0 && !st.setup_ap) {
+    s->banner = "NO LINK — no other peers on this session.";
+  }
+}
+
+bool DeviceController::fetch_config() {
+  neon::client::ConfigSecrets sec;
+  auto r = client_.getConfig(&sec);
+  if (!r.ok) {
+    return false;
+  }
+  config_ = r.value;
+  secrets_ = sec;
+  have_config_ = true;
+  ++config_seq_;
+  return true;
 }
 
 bool DeviceController::poll_once() {
   auto r = client_.getStatus();
-  Snapshot s;
-  s.bind = bind_;
-  s.persist_lazy = client_.persist_lazy();
   if (!r.ok) {
     return false;
   }
-  s.status = r.value;
-  s.reach = Reachability::Online;
-  if (!s.status.device_name.empty()) {
-    bind_.device_name = s.status.device_name;
-    if (!bound_by_ip_) {
-      bind_.connect_host = neon::client::mdns_host(s.status.device_name);
-    }
+  const bool need_cfg =
+      !have_config_ || (r.value.rev != 0 && r.value.rev != last_status_rev_);
+  if (need_cfg) {
+    (void)fetch_config();
   }
-  if (!s.status.ip.empty()) bind_.ip = s.status.ip;
-  s.bind = bind_;
-  if (s.status.tempo_valid && s.status.peers == 0 && !s.status.setup_ap) {
-    s.banner = "NO LINK — no other peers on this session.";
+  last_status_rev_ = r.value.rev;
+
+  Snapshot s;
+  {
+    const std::lock_guard<std::mutex> g(mu_);
+    s = base_snapshot();
   }
+  fill_status(&s, r.value);
   publish(std::move(s));
   return true;
 }
@@ -196,6 +277,131 @@ void DeviceController::run() {
         case Kind::Preset:
           (void)client_.preset(c.pop, c.slot);
           last_poll = 0;
+          last_status_rev_ = 0;
+          have_config_ = false;  // recall writes a new config
+          break;
+        case Kind::SaveConfig: {
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            saving_ = true;
+            save_message_.clear();
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          const std::string body = neon::client::config_put_body(c.cfg);
+          neon::client::JsonPatch patch;
+          patch.mergeObject(body.c_str(), body.size());
+          auto put = client_.putConfig(patch, neon::client::Persist::Now);
+          neon::Config applied = c.cfg;
+          neon::client::ConfigSecrets sec = secrets_;
+          bool ok = put.ok;
+          std::string msg;
+          if (put.ok) {
+            applied = put.value;
+            neon::client::ConfigSecrets pulled;
+            auto again = client_.getConfig(&pulled);
+            if (again.ok) {
+              applied = again.value;
+              sec = pulled;
+            } else {
+              // Write landed; echo had empty secrets. Keep typed flags.
+              for (int i = 0; i < neon::kWifiSlots; ++i) {
+                if (c.cfg.wifi[i].pass[0] != '\0') sec.wifi_has_pass[i] = true;
+              }
+              if (c.cfg.ap_pass[0] != '\0') sec.ap_has_pass = true;
+            }
+            msg = "Saved.";
+          } else {
+            auto fallback = client_.getConfig(&sec);
+            if (fallback.ok) {
+              applied = fallback.value;
+              ok = true;
+              msg = "Saved.";
+            } else {
+              msg = put.error.empty() ? "Could not save." : put.error;
+            }
+          }
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            saving_ = false;
+            last_save_ok_ = ok;
+            save_message_ = msg;
+            ++save_seq_;
+            if (ok) {
+              config_ = applied;
+              secrets_ = sec;
+              have_config_ = true;
+              ++config_seq_;
+            }
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          last_poll = 0;
+          break;
+        }
+        case Kind::Scan: {
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            scanning_ = true;
+            scan_message_ = "Scanning…";
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          auto r = client_.scan();
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            scanning_ = false;
+            if (r.ok) {
+              scan_ = std::move(r.value);
+              scan_message_ = scan_.empty()
+                                  ? "Nothing found. The radio is 2.4 GHz only."
+                                  : std::to_string(scan_.size()) +
+                                        " found — pick one to fill a slot.";
+            } else {
+              scan_.clear();
+              scan_message_ = "Scan failed.";
+            }
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          break;
+        }
+        case Kind::RefreshAudio: {
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            audio_refreshing_ = true;
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          auto r = client_.audioChannels();
+          {
+            const std::lock_guard<std::mutex> g(mu_);
+            audio_refreshing_ = false;
+            if (r.ok) audio_channels_ = r.value;
+            Snapshot s = base_snapshot();
+            s.reach = ever_online ? Reachability::Online : reach;
+            publish(std::move(s));
+          }
+          break;
+        }
+        case Kind::Reboot:
+          (void)client_.reboot();
+          ever_online = false;
+          have_config_ = false;
+          last_status_rev_ = 0;
+          last_poll = 0;
+          break;
+        case Kind::FactoryReset:
+          (void)client_.factoryReset();
+          ever_online = false;
+          have_config_ = false;
+          last_status_rev_ = 0;
+          last_poll = 0;
           break;
       }
     }
@@ -222,6 +428,10 @@ void DeviceController::run() {
         reach = ever_online ? Reachability::Reconnecting
                             : Reachability::Connecting;
         Snapshot s;
+        {
+          const std::lock_guard<std::mutex> g(mu_);
+          s = base_snapshot();
+        }
         s.bind = bind_;
         s.reach = reach;
         s.banner = reach == Reachability::Reconnecting

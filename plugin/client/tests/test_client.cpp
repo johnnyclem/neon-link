@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include <cstring>
 #include <map>
 #include <string>
 #include <utility>
@@ -127,6 +128,42 @@ TEST_CASE("transport and tempo paths") {
   CHECK(http.calls[1].path == "/api/tempo?op=nudge&delta=-1");
   CHECK(http.calls[2].path.find("/api/tempo?bpm=") == 0);
   CHECK(http.calls[3].path == "/api/preset?op=recall&slot=2");
+}
+
+TEST_CASE("factoryReset treats a dropped connection as success") {
+  FakeHttp http;
+  neon::client::HttpResponse drop;
+  drop.connect_failed = true;
+  drop.error = "connection reset";
+  http.by_path["/api/factory_reset?confirm=yes"] = drop;
+  neon::client::DeviceClient c(http);
+  auto r = c.factoryReset();
+  CHECK(r.ok);
+  REQUIRE_FALSE(http.calls.empty());
+  CHECK(http.calls[0].path == "/api/factory_reset?confirm=yes");
+}
+
+TEST_CASE("config_put_body writes typed wifi and ap passwords") {
+  neon::Config cfg{};
+  std::strncpy(cfg.wifi[0].ssid, "studio", sizeof(cfg.wifi[0].ssid));
+  std::strncpy(cfg.wifi[0].pass, "secret42", sizeof(cfg.wifi[0].pass));
+  std::strncpy(cfg.ap_pass, "linkpass", sizeof(cfg.ap_pass));
+  const std::string body = neon::client::config_put_body(cfg);
+  CHECK(body.find("\"pass\":\"secret42\"") != std::string::npos);
+  CHECK(body.find("\"pass\":\"linkpass\"") != std::string::npos);
+}
+
+TEST_CASE("getConfig fills secrets from has_pass") {
+  FakeHttp http;
+  http.by_path["/api/config"] = ok(
+      "{\"wifi\":{\"networks\":[{\"ssid\":\"x\",\"pass\":\"\",\"has_pass\":true}]},"
+      "\"ap\":{\"has_pass\":false}}");
+  neon::client::DeviceClient c(http);
+  neon::client::ConfigSecrets sec;
+  auto r = c.getConfig(&sec);
+  REQUIRE(r.ok);
+  CHECK(sec.wifi_has_pass[0]);
+  CHECK_FALSE(sec.ap_has_pass);
 }
 
 TEST_CASE("reboot treats a dropped connection as success") {

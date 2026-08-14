@@ -57,7 +57,9 @@ struct AudioConfig {
   uint8_t la_publish_linein = 0;    // publish "<name> In" (the line-in tap)
   uint8_t la_publish_mono = 0;      // halve the bitrate on a busy network
   uint8_t la_sub_gain = kUnityGainByte;
-  uint8_t pad_[1] = {};
+  // 0 = 120 Hz–5 kHz gist band on subscribe (the pad this replaced). Kept
+  // inverted so existing v4 NVS blobs (this byte was 0) turn the filter on.
+  uint8_t la_fullband = 0;
 
   uint16_t la_jitter_ms = 60;
 

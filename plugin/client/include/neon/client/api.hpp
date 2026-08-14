@@ -47,6 +47,7 @@ class DeviceClient {
   //   scan   8000 ms
   Result<Status> getStatus();
   Result<neon::Config> getConfig();
+  Result<neon::Config> getConfig(ConfigSecrets* secrets);
 
   // Persist::Lazy is sent only when the last getStatus advertised
   // persist_lazy. Otherwise the call fails without touching the network
@@ -63,7 +64,8 @@ class DeviceClient {
   Result<void> preset(PresetOp, int slot /*0..3*/);
   Result<std::vector<ScanResult>> scan();
   Result<AudioChannels> audioChannels();
-  Result<void> reboot();  // fire-and-forget; connection drop is success
+  Result<void> reboot();         // fire-and-forget; connection drop is success
+  Result<void> factoryReset();  // POST ?confirm=yes; drop is success
 
  private:
   HttpTransport& http_;
@@ -76,5 +78,9 @@ class DeviceClient {
 
   Result<void> cmd(const char* path, int timeout_ms);
 };
+
+// PUT body for a full editor save. config_to_json blanks passwords; this
+// writes back any non-empty wifi/ap secrets so a typed passphrase lands.
+std::string config_put_body(const neon::Config& cfg);
 
 }  // namespace neon::client

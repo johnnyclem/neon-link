@@ -338,6 +338,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(audio, "publish_mix", ac.la_publish_mix != 0);
   cJSON_AddBoolToObject(audio, "publish_linein", ac.la_publish_linein != 0);
   cJSON_AddBoolToObject(audio, "publish_mono", ac.la_publish_mono != 0);
+  cJSON_AddBoolToObject(audio, "gist_lpf", ac.la_fullband == 0);
   cJSON_AddNumberToObject(audio, "sub_gain", ac.la_sub_gain);
   cJSON_AddNumberToObject(audio, "jitter_ms", ac.la_jitter_ms);
   cJSON_AddStringToObject(audio, "channel_name", ac.la_channel_name);
@@ -546,6 +547,12 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     get_bool_u8(audio, "publish_mix", &ac.la_publish_mix);
     get_bool_u8(audio, "publish_linein", &ac.la_publish_linein);
     get_bool_u8(audio, "publish_mono", &ac.la_publish_mono);
+    {
+      const cJSON* gist = cJSON_GetObjectItemCaseSensitive(audio, "gist_lpf");
+      if (cJSON_IsBool(gist)) {
+        ac.la_fullband = cJSON_IsTrue(gist) ? 0 : 1;
+      }
+    }
     get_u8(audio, "sub_gain", &ac.la_sub_gain);
     get_u16(audio, "jitter_ms", &ac.la_jitter_ms);
     get_str(audio, "channel_name", ac.la_channel_name,

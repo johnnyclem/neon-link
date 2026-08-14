@@ -60,7 +60,7 @@ struct AudioEngineConfig {
   uint8_t la_sub_gain = kUnityGainByte;
 
   uint8_t la_publish_mono = 0;
-  uint8_t pad_[1] = {};
+  uint8_t la_fullband = 0;  // 0 = apply the 120 Hz–5 kHz gist band on link-in
   uint16_t la_jitter_ms = 60;
 
   uint32_t quantum_beats = 4;

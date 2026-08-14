@@ -44,6 +44,22 @@ TEST_CASE("parse firmware-shaped status; bind reconnect is stage-left.local") {
   CHECK(reconnect.find(".local.local") == std::string::npos);
 }
 
+TEST_CASE("parse_config_secrets reads has_pass flags") {
+  const char* json =
+      "{\"wifi\":{\"networks\":["
+      "{\"ssid\":\"a\",\"pass\":\"\",\"has_pass\":true},"
+      "{\"ssid\":\"\",\"pass\":\"\",\"has_pass\":false},"
+      "{\"ssid\":\"b\",\"pass\":\"\",\"has_pass\":true}"
+      "]},\"ap\":{\"has_pass\":true}}";
+  neon::client::ConfigSecrets s;
+  REQUIRE(neon::client::parse_config_secrets(json, std::strlen(json), &s));
+  CHECK(s.wifi_has_pass[0]);
+  CHECK_FALSE(s.wifi_has_pass[1]);
+  CHECK(s.wifi_has_pass[2]);
+  CHECK_FALSE(s.wifi_has_pass[3]);
+  CHECK(s.ap_has_pass);
+}
+
 TEST_CASE("pre-F5 status: persist_lazy and rev default to false/0") {
   const std::string json = load("status_pre_f5.json");
   neon::client::Status s;

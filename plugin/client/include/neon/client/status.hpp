@@ -79,10 +79,17 @@ struct AudioChannels {
   std::vector<AudioChannel> channels;
 };
 
+// Write-only secrets are never in GET / PUT echoes — only whether they exist.
+struct ConfigSecrets {
+  bool wifi_has_pass[4] = {};
+  bool ap_has_pass = false;
+};
+
 // Returns false on malformed JSON. Missing fields keep their defaults:
 // persist_lazy absent → false, rev absent → 0.
 bool parse_status(const char* json, size_t len, Status* out);
 bool parse_scan(const char* json, size_t len, std::vector<ScanResult>* out);
 bool parse_audio_channels(const char* json, size_t len, AudioChannels* out);
+bool parse_config_secrets(const char* json, size_t len, ConfigSecrets* out);
 
 }  // namespace neon::client

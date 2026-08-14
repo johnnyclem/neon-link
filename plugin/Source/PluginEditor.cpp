@@ -1,39 +1,27 @@
 #include "PluginEditor.h"
-#include "ui/Tokens.h"
 
 #include <cmath>
 
-namespace {
-void styleChip(juce::Label& l, juce::Colour fg, juce::Colour bg) {
-  l.setColour(juce::Label::textColourId, fg);
-  l.setColour(juce::Label::backgroundColourId, bg);
-  l.setJustificationType(juce::Justification::centred);
-  l.setFont(juce::Font(juce::FontOptions(11.0f)).withExtraKerningFactor(0.12f));
-}
-
-void styleBtn(juce::TextButton& b, bool primary) {
-  b.setColour(juce::TextButton::buttonColourId,
-              primary ? neon::ui::neon() : neon::ui::surface2());
-  b.setColour(juce::TextButton::textColourOffId,
-              primary ? neon::ui::bg() : neon::ui::text());
-  b.setColour(juce::TextButton::buttonOnColourId, neon::ui::neonDim());
-}
-
-void styleField(juce::TextEditor& e) {
-  e.setColour(juce::TextEditor::backgroundColourId, neon::ui::surface());
-  e.setColour(juce::TextEditor::textColourId, neon::ui::text());
-  e.setColour(juce::TextEditor::outlineColourId, neon::ui::border());
-  e.setColour(juce::TextEditor::focusedOutlineColourId, neon::ui::neon());
-  e.setColour(juce::TextEditor::highlightColourId, neon::ui::neonDim());
-  e.setFont(juce::Font(juce::FontOptions(14.0f)));
-}
-}  // namespace
+#include "ui/Tokens.h"
 
 NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
-    : juce::AudioProcessorEditor(&p), processor_(p) {
-  setSize(560, 620);
+    : juce::AudioProcessorEditor(&p),
+      processor_(p),
+      live_(host_),
+      outputs_(host_),
+      network_(host_),
+      midi_(host_),
+      audio_(host_),
+      system_(host_) {
+  setLookAndFeel(&lnf_);
+  setSize(700, 780);
   setResizable(true, false);
-  setResizeLimits(440, 520, 900, 900);
+  setResizeLimits(540, 620, 1100, 1400);
+
+  host_.patch = [this](std::function<void(neon::Config&)> fn) { patch(std::move(fn)); };
+  host_.send = [this](std::function<void(neon::plugin::DeviceController&)> fn) {
+    send(std::move(fn));
+  };
 
   brand_.setText("NEON  LINK", juce::dontSendNotification);
   brand_.setColour(juce::Label::textColourId, neon::ui::text());
@@ -41,99 +29,45 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
                      .withExtraKerningFactor(0.14f));
   addAndMakeVisible(brand_);
 
-  styleChip(reach_, neon::ui::danger(), neon::ui::surface());
-  styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
-  styleChip(chipTransport_, neon::ui::text(), neon::ui::surface());
-  styleChip(chipNet_, neon::ui::success(), neon::ui::surface());
+  neon::ui::styleChip(reach_, neon::ui::danger(), neon::ui::surface());
+  neon::ui::styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
+  neon::ui::styleChip(chipTransport_, neon::ui::text(), neon::ui::surface());
+  neon::ui::styleChip(chipNet_, neon::ui::success(), neon::ui::surface());
   addAndMakeVisible(reach_);
   addAndMakeVisible(chipSource_);
   addAndMakeVisible(chipTransport_);
   addAndMakeVisible(chipNet_);
 
-  host_.setText("neon-link.local");
-  host_.setTextToShowWhenEmpty("neon-link.local or 10.0.0.42",
-                               neon::ui::muted());
-  styleField(host_);
-  addAndMakeVisible(host_);
-  styleBtn(bind_, false);
+  hostField_.setText("neon-link.local");
+  hostField_.setTextToShowWhenEmpty("neon-link.local or 10.0.0.42", neon::ui::muted());
+  neon::ui::styleField(hostField_);
+  addAndMakeVisible(hostField_);
+  neon::ui::styleBtn(bind_, false);
   bind_.onClick = [this] {
-    send([&](neon::plugin::DeviceController& c) {
-      c.bind(host_.getText().toStdString());
+    send([this](neon::plugin::DeviceController& c) {
+      c.bind(hostField_.getText().toStdString());
     });
+    have_draft_ = false;
+    dirty_ = false;
   };
   addAndMakeVisible(bind_);
 
-  addAndMakeVisible(hero_);
-  addAndMakeVisible(phase_);
-
-  auto hook = [this](juce::TextButton& b, auto fn) {
-    styleBtn(b, false);
-    b.onClick = [this, fn] { send(fn); };
-    addAndMakeVisible(b);
-  };
-  styleBtn(play_, true);
-  play_.onClick = [this] {
-    send([](neon::plugin::DeviceController& c) {
-      c.transport(neon::client::TransportOp::Toggle);
-    });
-  };
-  addAndMakeVisible(play_);
-  hook(tap_, [](neon::plugin::DeviceController& c) {
-    c.tempoOp(neon::client::TempoOp::Tap);
-  });
-  hook(minus_, [](neon::plugin::DeviceController& c) {
-    c.tempoOp(neon::client::TempoOp::Nudge, -1);
-  });
-  hook(plus_, [](neon::plugin::DeviceController& c) {
-    c.tempoOp(neon::client::TempoOp::Nudge, 1);
-  });
-  hook(half_, [](neon::plugin::DeviceController& c) {
-    c.tempoOp(neon::client::TempoOp::Half);
-  });
-  hook(double_, [](neon::plugin::DeviceController& c) {
-    c.tempoOp(neon::client::TempoOp::Double);
-  });
-
-  bpm_.setInputRestrictions(7, "0123456789.");
-  bpm_.setTextToShowWhenEmpty("120.0", neon::ui::muted());
-  styleField(bpm_);
-  addAndMakeVisible(bpm_);
-  styleBtn(setBpm_, false);
-  setBpm_.onClick = [this] {
-    const double v = bpm_.getText().getDoubleValue();
-    if (v >= 20.0 && v <= 999.0) {
-      send([v](neon::plugin::DeviceController& c) { c.setTempo(v); });
-      bpm_.clear();
-    }
-  };
-  addAndMakeVisible(setBpm_);
-
-  hook(resyncNext_, [](neon::plugin::DeviceController& c) {
-    c.resync(neon::client::ResyncOp::Next);
-  });
-  hook(resyncNow_, [](neon::plugin::DeviceController& c) {
-    c.resync(neon::client::ResyncOp::Now);
-  });
-
-  for (int i = 0; i < 4; ++i) {
-    save_[i].setButtonText("Save " + juce::String(i + 1));
-    recall_[i].setButtonText("Recall " + juce::String(i + 1));
-    styleBtn(save_[i], false);
-    styleBtn(recall_[i], false);
-    save_[i].onClick = [this, i] {
-      send([i](neon::plugin::DeviceController& c) {
-        c.preset(neon::client::PresetOp::Save, i);
-      });
-    };
-    recall_[i].onClick = [this, i] {
-      send([i](neon::plugin::DeviceController& c) {
-        c.preset(neon::client::PresetOp::Recall, i);
-      });
-    };
-    addAndMakeVisible(save_[i]);
-    addAndMakeVisible(recall_[i]);
+  for (int i = 0; i < 6; ++i) {
+    addAndMakeVisible(*tabs_[i]);
+    tabs_[i]->onClick = [this, i] { showTab(i); };
   }
+  styleTabs();
 
+  viewport_.setScrollBarsShown(true, false);
+  viewport_.setScrollBarThickness(8);
+  addAndMakeVisible(viewport_);
+  viewport_.setViewedComponent(&live_, false);
+
+  neon::ui::styleBtn(save_, true);
+  save_.onClick = [this] { doSave(); };
+  addAndMakeVisible(save_);
+  saveMsg_.setColour(juce::Label::textColourId, neon::ui::muted());
+  addAndMakeVisible(saveMsg_);
   banner_.setColour(juce::Label::textColourId, neon::ui::yellow());
   banner_.setFont(juce::Font(juce::FontOptions(13.0f)));
   addAndMakeVisible(banner_);
@@ -141,10 +75,37 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
   stats_.setFont(juce::Font(juce::FontOptions(12.0f)));
   addAndMakeVisible(stats_);
 
+  confirm_.onConfirm = [this] {
+    if (confirm_fn_) confirm_fn_();
+    confirm_.setVisible(false);
+  };
+  confirm_.onCancel = [this] { confirm_.setVisible(false); };
+  addAndMakeVisible(confirm_);
+  confirm_.setVisible(false);
+  confirm_.setAlwaysOnTop(true);
+
+  system_.onReboot = [this] {
+    showConfirm("Reboot the module?",
+                "Clock outputs stop until it comes back up. Unsaved changes are not written.",
+                "Reboot", [this] {
+                  send([](neon::plugin::DeviceController& c) { c.reboot(); });
+                });
+  };
+  system_.onFactoryReset = [this] {
+    showConfirm("Erase every setting?",
+                "Every setting and all four presets are erased, including stored networks. "
+                "This cannot be undone.",
+                "Erase and reboot", [this] {
+                  send([](neon::plugin::DeviceController& c) { c.factoryReset(); });
+                  have_draft_ = false;
+                  dirty_ = false;
+                });
+  };
+
   if (auto* c = processor_.controller()) {
     c->setEditorOpen(true);
     const auto b = c->bind_state();
-    if (!b.connect_host.empty()) host_.setText(b.connect_host);
+    if (!b.connect_host.empty()) hostField_.setText(b.connect_host);
   }
 
   last_tick_ms_ = juce::Time::getMillisecondCounterHiRes();
@@ -152,6 +113,7 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
 }
 
 NeonLinkEditor::~NeonLinkEditor() {
+  setLookAndFeel(nullptr);
   if (auto* c = processor_.controller()) c->setEditorOpen(false);
 }
 
@@ -160,15 +122,114 @@ void NeonLinkEditor::send(
   if (auto* c = processor_.controller()) fn(*c);
 }
 
+void NeonLinkEditor::styleTabs() {
+  for (int i = 0; i < 6; ++i) neon::ui::styleBtn(*tabs_[i], i == tab_);
+}
+
+void NeonLinkEditor::patch(std::function<void(neon::Config&)> fn) {
+  if (!have_draft_) return;
+  fn(draft_);
+  dirty_ = true;
+  saveMsg_.setText("Unsaved changes", juce::dontSendNotification);
+  saveMsg_.setColour(juce::Label::textColourId, neon::ui::yellow());
+  if (tab_ == 1) outputs_.load(draft_);
+  else if (tab_ == 2) {
+    if (auto* c = processor_.controller()) {
+      auto snap = c->snapshot();
+      if (snap) network_.load(draft_, *snap);
+    }
+  } else if (tab_ == 3)
+    midi_.load(draft_);
+  else if (tab_ == 4) {
+    if (auto* c = processor_.controller()) {
+      auto snap = c->snapshot();
+      if (snap) audio_.load(draft_, *snap);
+    }
+  } else if (tab_ == 5) {
+    if (auto* c = processor_.controller()) {
+      auto snap = c->snapshot();
+      if (snap) system_.load(draft_, *snap);
+    }
+  }
+  relayoutPage();
+}
+
+void NeonLinkEditor::adoptConfig(const neon::plugin::Snapshot& snap) {
+  draft_ = snap.config;
+  have_draft_ = true;
+  last_config_seq_ = snap.config_seq;
+  if (tab_ == 1) outputs_.load(draft_);
+  else if (tab_ == 2) network_.load(draft_, snap);
+  else if (tab_ == 3) midi_.load(draft_);
+  else if (tab_ == 4) audio_.load(draft_, snap);
+  else if (tab_ == 5) system_.load(draft_, snap);
+  relayoutPage();
+}
+
+void NeonLinkEditor::doSave() {
+  if (!have_draft_ || !dirty_) return;
+  send([this](neon::plugin::DeviceController& c) { c.saveConfig(draft_); });
+}
+
+void NeonLinkEditor::showTab(int index) {
+  tab_ = index;
+  styleTabs();
+  juce::Component* page = &live_;
+  if (index == 1) page = &outputs_;
+  else if (index == 2) page = &network_;
+  else if (index == 3) page = &midi_;
+  else if (index == 4) page = &audio_;
+  else if (index == 5) page = &system_;
+  viewport_.setViewedComponent(page, false);
+  if (have_draft_) {
+    if (auto* c = processor_.controller()) {
+      if (auto snap = c->snapshot()) {
+        if (index == 1) outputs_.load(draft_);
+        else if (index == 2) network_.load(draft_, *snap);
+        else if (index == 3) midi_.load(draft_);
+        else if (index == 4) audio_.load(draft_, *snap);
+        else if (index == 5) system_.load(draft_, *snap);
+      }
+    }
+  }
+  if (index == 4) {
+    send([](neon::plugin::DeviceController& c) { c.refreshAudioChannels(); });
+  }
+  relayoutPage();
+}
+
+void NeonLinkEditor::relayoutPage() {
+  auto* page = viewport_.getViewedComponent();
+  if (page == nullptr) return;
+  int h = 400;
+  if (page == &live_) h = live_.preferredHeight();
+  else if (page == &outputs_) h = outputs_.preferredHeight();
+  else if (page == &network_) h = network_.preferredHeight();
+  else if (page == &midi_) h = midi_.preferredHeight();
+  else if (page == &audio_) h = audio_.preferredHeight();
+  else if (page == &system_) h = system_.preferredHeight();
+  const int w = viewport_.getMaximumVisibleWidth();
+  page->setSize(juce::jmax(1, w), h);
+}
+
+void NeonLinkEditor::showConfirm(const juce::String& title, const juce::String& body,
+                                const juce::String& ok, std::function<void()> fn) {
+  confirm_fn_ = std::move(fn);
+  confirm_.set(title, body, ok);
+  confirm_.setVisible(true);
+  confirm_.setBounds(getLocalBounds());
+  confirm_.toFront(true);
+}
+
 void NeonLinkEditor::paint(juce::Graphics& g) {
   g.fillAll(neon::ui::bg());
-  auto bounds = getLocalBounds().reduced(16);
-  bounds.removeFromTop(92);
-  auto card = bounds.removeFromTop(220);
+  auto r = getLocalBounds().reduced(16);
+  r.removeFromTop(28 + 10 + 32 + 10);
+  auto tabRow = r.removeFromTop(40);
   g.setColour(neon::ui::surface());
-  g.fillRect(card);
+  g.fillRect(tabRow);
   g.setColour(neon::ui::border());
-  g.drawRect(card, 1);
+  g.drawRect(tabRow, 1);
 }
 
 void NeonLinkEditor::resized() {
@@ -184,57 +245,36 @@ void NeonLinkEditor::resized() {
   auto bindRow = r.removeFromTop(32);
   bind_.setBounds(bindRow.removeFromRight(72));
   bindRow.removeFromRight(8);
-  host_.setBounds(bindRow);
-
-  r.removeFromTop(16);
-  auto card = r.removeFromTop(220).reduced(12);
-  hero_.setBounds(card.removeFromTop(72));
-  card.removeFromTop(8);
-  phase_.setBounds(card.removeFromTop(40));
-  card.removeFromTop(10);
-  auto row = card.removeFromTop(32);
-  const int gap = 6;
-  auto slice = [&](int n) {
-    const int w = (row.getWidth() - gap * (n - 1)) / n;
-    auto b = row.removeFromLeft(w);
-    row.removeFromLeft(gap);
-    return b;
-  };
-  play_.setBounds(slice(6));
-  tap_.setBounds(slice(6));
-  minus_.setBounds(slice(6));
-  plus_.setBounds(slice(6));
-  half_.setBounds(slice(6));
-  double_.setBounds(row);
-
-  r.removeFromTop(12);
-  auto tempo = r.removeFromTop(32);
-  setBpm_.setBounds(tempo.removeFromRight(96));
-  tempo.removeFromRight(8);
-  bpm_.setBounds(tempo);
+  hostField_.setBounds(bindRow);
 
   r.removeFromTop(10);
-  auto sync = r.removeFromTop(32);
-  resyncNext_.setBounds(sync.removeFromLeft(sync.getWidth() / 2 - 4));
-  sync.removeFromLeft(8);
-  resyncNow_.setBounds(sync);
-
-  r.removeFromTop(12);
-  for (int i = 0; i < 4; ++i) {
-    auto pr = r.removeFromTop(28);
-    save_[i].setBounds(pr.removeFromLeft(pr.getWidth() / 2 - 4));
-    pr.removeFromLeft(8);
-    recall_[i].setBounds(pr);
-    r.removeFromTop(6);
+  auto tabRow = r.removeFromTop(40);
+  const int gap = 4;
+  const int tw = (tabRow.getWidth() - gap * 5) / 6;
+  for (int i = 0; i < 6; ++i) {
+    tabs_[i]->setBounds(tabRow.removeFromLeft(tw));
+    if (i < 5) tabRow.removeFromLeft(gap);
   }
 
-  banner_.setBounds(r.removeFromTop(24));
-  stats_.setBounds(r.removeFromTop(22));
+  r.removeFromTop(8);
+
+  stats_.setBounds(r.removeFromBottom(20));
+  banner_.setBounds(r.removeFromBottom(22));
+  const bool showSave = dirty_ || save_.isVisible();
+  auto saveRow = r.removeFromBottom(showSave ? 36 : 0);
+  if (showSave) {
+    r.removeFromBottom(8);
+    save_.setBounds(saveRow.removeFromLeft(96));
+    saveRow.removeFromLeft(10);
+    saveMsg_.setBounds(saveRow);
+  }
+
+  viewport_.setBounds(r);
+  relayoutPage();
+  if (confirm_.isVisible()) confirm_.setBounds(getLocalBounds());
 }
 
-void NeonLinkEditor::timerCallback() {
-  refreshFromSnapshot();
-}
+void NeonLinkEditor::timerCallback() { refreshFromSnapshot(); }
 
 void NeonLinkEditor::refreshFromSnapshot() {
   auto* ctl = processor_.controller();
@@ -248,11 +288,11 @@ void NeonLinkEditor::refreshFromSnapshot() {
   if (const char* lab = neon::plugin::reach_label(snap->reach)) {
     reach_.setText(lab, juce::dontSendNotification);
     reach_.setVisible(true);
-    styleChip(reach_,
-              snap->reach == neon::plugin::Reachability::Offline
-                  ? neon::ui::danger()
-                  : neon::ui::yellow(),
-              neon::ui::surface());
+    neon::ui::styleChip(reach_,
+                        snap->reach == neon::plugin::Reachability::Offline
+                            ? neon::ui::danger()
+                            : neon::ui::yellow(),
+                        neon::ui::surface());
     chipSource_.setVisible(false);
     chipTransport_.setVisible(false);
     chipNet_.setVisible(false);
@@ -261,14 +301,12 @@ void NeonLinkEditor::refreshFromSnapshot() {
     chipSource_.setVisible(true);
     chipTransport_.setVisible(true);
     chipNet_.setVisible(true);
-    chipSource_.setText(st.ext_clock ? "EXT" : "LINK",
-                        juce::dontSendNotification);
-    styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
-    chipTransport_.setText(st.playing ? "RUN" : "STOP",
-                           juce::dontSendNotification);
-    styleChip(chipTransport_,
-              st.playing ? neon::ui::success() : neon::ui::muted(),
-              neon::ui::surface());
+    chipSource_.setText(st.ext_clock ? "EXT" : "LINK", juce::dontSendNotification);
+    neon::ui::styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
+    chipTransport_.setText(st.playing ? "RUN" : "STOP", juce::dontSendNotification);
+    neon::ui::styleChip(chipTransport_,
+                        st.playing ? neon::ui::success() : neon::ui::muted(),
+                        neon::ui::surface());
     juce::String net = "OFF";
     if (st.setup_ap)
       net = "AP";
@@ -278,17 +316,14 @@ void NeonLinkEditor::refreshFromSnapshot() {
       net = "STA";
     if (st.peers > 0) net += " " + juce::String(static_cast<int>(st.peers)) + "P";
     chipNet_.setText(net, juce::dontSendNotification);
-    styleChip(chipNet_, neon::ui::success(), neon::ui::surface());
+    neon::ui::styleChip(chipNet_, neon::ui::success(), neon::ui::surface());
   }
 
-  hero_.setBpm(st.bpm, online && st.tempo_valid);
-  play_.setButtonText(st.playing ? "Stop" : "Play");
-  styleBtn(play_, !st.playing);
+  live_.load(*snap, online);
 
   const double now = juce::Time::getMillisecondCounterHiRes();
   const double dt = juce::jlimit(0.0, 0.1, (now - last_tick_ms_) / 1000.0);
   last_tick_ms_ = now;
-
   const uint32_t q = st.quantum != 0 ? st.quantum : 4;
   if (!online || !st.playing) {
     phase_milli_ = st.phase_milli;
@@ -308,17 +343,61 @@ void NeonLinkEditor::refreshFromSnapshot() {
   playing_ = st.playing;
   const float ph =
       static_cast<float>(phase_milli_ / (static_cast<double>(q) * 1000.0));
-  phase_.setPhase(ph, static_cast<int>(q), online && st.playing);
+  live_.setPhase(ph, static_cast<int>(q), online && st.playing);
+
+  if (snap->has_config &&
+      (!have_draft_ || (!dirty_ && snap->config_seq != last_config_seq_))) {
+    adoptConfig(*snap);
+  }
+
+  if (snap->save_seq != last_save_seq_) {
+    last_save_seq_ = snap->save_seq;
+    if (snap->last_save_ok) {
+      dirty_ = false;
+      draft_ = snap->config;
+      have_draft_ = true;
+      last_config_seq_ = snap->config_seq;
+      saveMsg_.setText(snap->save_message.empty() ? "Saved." : snap->save_message,
+                       juce::dontSendNotification);
+      saveMsg_.setColour(juce::Label::textColourId, neon::ui::success());
+      save_ok_until_ = now + 4000.0;
+      if (tab_ >= 1) adoptConfig(*snap);
+    } else if (!snap->save_message.empty()) {
+      saveMsg_.setText(snap->save_message, juce::dontSendNotification);
+      saveMsg_.setColour(juce::Label::textColourId, neon::ui::danger());
+    }
+  }
+
+  if (snap->saving) {
+    save_.setButtonText("Saving...");
+    save_.setEnabled(false);
+    save_.setVisible(true);
+  } else {
+    save_.setButtonText("Save");
+    save_.setEnabled(dirty_);
+    save_.setVisible(dirty_ || now < save_ok_until_);
+  }
+  if (!dirty_ && now >= save_ok_until_ && !snap->saving) {
+    if (saveMsg_.getText() == "Saved.") saveMsg_.setText({}, juce::dontSendNotification);
+  }
 
   banner_.setText(snap->banner, juce::dontSendNotification);
   if (online) {
-    stats_.setText(
-        "fw " + juce::String(st.firmware) + "   late " +
-            juce::String(static_cast<int>(st.pulse.late_max_us)) + " µs   " +
-            snap->bind.connect_host,
-        juce::dontSendNotification);
+    stats_.setText("fw " + juce::String(st.firmware) + "   late " +
+                       juce::String(static_cast<int>(st.pulse.late_max_us)) + " us   " +
+                       snap->bind.connect_host,
+                   juce::dontSendNotification);
   } else {
     stats_.setText("bind " + juce::String(snap->bind.connect_host),
                    juce::dontSendNotification);
+  }
+
+  if (tab_ == 2) network_.tickStatus(*snap);
+  if (tab_ == 4) audio_.tickStatus(*snap);
+
+  const bool saveVis = save_.isVisible();
+  if (saveVis != save_row_vis_) {
+    save_row_vis_ = saveVis;
+    resized();
   }
 }

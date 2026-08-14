@@ -83,6 +83,7 @@ let config = {
     publish_mix: true,
     publish_linein: false,
     publish_mono: false,
+    gist_lpf: true,
     sub_gain: 200,
     jitter_ms: 60,
     channel_name: "",

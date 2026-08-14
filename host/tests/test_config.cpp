@@ -251,6 +251,7 @@ TEST_CASE("audio defaults are off and quiet") {
   CHECK(cfg.audio.metro_gain == neon::kUnityGainByte);
   CHECK(cfg.audio.linein_monitor_gain == 0);
   CHECK(cfg.audio.la_publish_mix == 0);
+  CHECK(cfg.audio.la_fullband == 0);
   CHECK(cfg.audio.la_jitter_ms == 60);
   CHECK(cfg.audio.la_channel_name[0] == '\0');
   CHECK(cfg.audio.la_sub_channel_id[0] == '\0');
@@ -270,6 +271,7 @@ TEST_CASE("the audio block survives an encode/decode round trip") {
   a.audio.linein_monitor_gain = 90;
   a.audio.la_publish_mix = 1;
   a.audio.la_publish_mono = 1;
+  a.audio.la_fullband = 1;
   a.audio.la_jitter_ms = 120;
   std::strcpy(a.audio.la_channel_name, "tourbus");
   std::strcpy(a.audio.la_sub_channel_id, "peer:1234/Live Master");
@@ -288,6 +290,7 @@ TEST_CASE("the audio block survives an encode/decode round trip") {
   CHECK(b.audio.linein_monitor_gain == 90);
   CHECK(b.audio.la_publish_mix == 1);
   CHECK(b.audio.la_publish_mono == 1);
+  CHECK(b.audio.la_fullband == 1);
   CHECK(b.audio.la_jitter_ms == 120);
   CHECK(std::string(b.audio.la_channel_name) == "tourbus");
   CHECK(std::string(b.audio.la_sub_channel_id) == "peer:1234/Live Master");
@@ -360,12 +363,14 @@ TEST_CASE("audio_engine_config carries only the live-applied fields") {
   cfg.audio.metro_gain = 210;
   cfg.audio.role_r = neon::AudioRole::kReset;
   cfg.audio.la_jitter_ms = 90;
+  cfg.audio.la_fullband = 1;
   const neon::AudioEngineConfig ec = neon::audio_engine_config(cfg);
   CHECK(ec.enabled == 1);
   CHECK(ec.metro_enabled == 1);
   CHECK(ec.metro_gain == 210);
   CHECK(ec.role_r == neon::AudioRole::kReset);
   CHECK(ec.la_jitter_ms == 90);
+  CHECK(ec.la_fullband == 1);
   CHECK(ec.quantum_beats == 3);
 }
 

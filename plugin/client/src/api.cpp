@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "cJSON.h"
 #include "neon/config/json.hpp"
 
 namespace neon::client {
@@ -89,7 +90,9 @@ Result<Status> DeviceClient::getStatus() {
   return out;
 }
 
-Result<neon::Config> DeviceClient::getConfig() {
+Result<neon::Config> DeviceClient::getConfig() { return getConfig(nullptr); }
+
+Result<neon::Config> DeviceClient::getConfig(ConfigSecrets* secrets) {
   const HttpResponse r = http_.request("GET", host_.c_str(), port_,
                                        "/api/config", nullptr, kConfigTimeoutMs);
   if (r.timed_out || r.connect_failed || r.status != 200) {
@@ -101,6 +104,9 @@ Result<neon::Config> DeviceClient::getConfig() {
   if (!neon::config_from_json(r.body.c_str(), r.body.size(), &cfg)) {
     out.error = "config parse failed";
     return out;
+  }
+  if (secrets != nullptr) {
+    parse_config_secrets(r.body.c_str(), r.body.size(), secrets);
   }
   out.value = cfg;
   out.ok = true;
@@ -239,6 +245,65 @@ Result<void> DeviceClient::reboot() {
   out.http_status = r.status;
   out.connect_failed = r.connect_failed;
   out.timed_out = r.timed_out;
+  return out;
+}
+
+Result<void> DeviceClient::factoryReset() {
+  const HttpResponse r =
+      http_.request("POST", host_.c_str(), port_,
+                    "/api/factory_reset?confirm=yes", nullptr, kCmdTimeoutMs);
+  Result<void> out;
+  out.ok = true;
+  out.http_status = r.status;
+  out.connect_failed = r.connect_failed;
+  out.timed_out = r.timed_out;
+  return out;
+}
+
+std::string config_put_body(const neon::Config& cfg) {
+  char buf[8192];
+  const size_t n = neon::config_to_json(cfg, buf, sizeof(buf));
+  if (n == 0) {
+    return "{}";
+  }
+  cJSON* root = cJSON_ParseWithLength(buf, n);
+  if (root == nullptr || !cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return std::string(buf, n);
+  }
+
+  cJSON* wifi = cJSON_GetObjectItemCaseSensitive(root, "wifi");
+  cJSON* nets =
+      cJSON_IsObject(wifi) ? cJSON_GetObjectItemCaseSensitive(wifi, "networks")
+                           : nullptr;
+  if (cJSON_IsArray(nets)) {
+    int i = 0;
+    cJSON* o = nullptr;
+    cJSON_ArrayForEach(o, nets) {
+      if (i >= neon::kWifiSlots) {
+        break;
+      }
+      if (cJSON_IsObject(o) && cfg.wifi[i].pass[0] != '\0') {
+        cJSON_DeleteItemFromObjectCaseSensitive(o, "pass");
+        cJSON_AddStringToObject(o, "pass", cfg.wifi[i].pass);
+      }
+      ++i;
+    }
+  }
+
+  cJSON* ap = cJSON_GetObjectItemCaseSensitive(root, "ap");
+  if (cJSON_IsObject(ap) && cfg.ap_pass[0] != '\0') {
+    cJSON_DeleteItemFromObjectCaseSensitive(ap, "pass");
+    cJSON_AddStringToObject(ap, "pass", cfg.ap_pass);
+  }
+
+  char* printed = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (printed == nullptr) {
+    return std::string(buf, n);
+  }
+  std::string out(printed);
+  cJSON_free(printed);
   return out;
 }
 

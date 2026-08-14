@@ -48,6 +48,8 @@ target_sources(NeonLink PRIVATE
   Source/DeviceController.cpp
   Source/ui/HeroTempo.cpp
   Source/ui/PhaseBar.cpp
+  Source/ui/Form.cpp
+  Source/ui/Pages.cpp
 )
 
 target_compile_definitions(NeonLink
@@ -64,6 +66,8 @@ set_source_files_properties(
   Source/DeviceController.cpp
   Source/ui/HeroTempo.cpp
   Source/ui/PhaseBar.cpp
+  Source/ui/Form.cpp
+  Source/ui/Pages.cpp
   PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
 
 target_link_libraries(NeonLink

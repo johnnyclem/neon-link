@@ -207,4 +207,38 @@ bool parse_audio_channels(const char* json, size_t len, AudioChannels* out) {
   return true;
 }
 
+bool parse_config_secrets(const char* json, size_t len, ConfigSecrets* out) {
+  if (json == nullptr || out == nullptr) {
+    return false;
+  }
+  cJSON* root = cJSON_ParseWithLength(json, len);
+  if (root == nullptr || !cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return false;
+  }
+  ConfigSecrets s;
+  const cJSON* wifi = obj(root, "wifi");
+  const cJSON* nets = cJSON_IsObject(wifi) ? obj(wifi, "networks") : nullptr;
+  if (cJSON_IsArray(nets)) {
+    int i = 0;
+    const cJSON* o = nullptr;
+    cJSON_ArrayForEach(o, nets) {
+      if (i >= 4) {
+        break;
+      }
+      if (cJSON_IsObject(o)) {
+        get_bool(o, "has_pass", &s.wifi_has_pass[i]);
+      }
+      ++i;
+    }
+  }
+  const cJSON* ap = obj(root, "ap");
+  if (cJSON_IsObject(ap)) {
+    get_bool(ap, "has_pass", &s.ap_has_pass);
+  }
+  cJSON_Delete(root);
+  *out = s;
+  return true;
+}
+
 }  // namespace neon::client

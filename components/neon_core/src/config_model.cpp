@@ -162,10 +162,10 @@ void config_sanitize(Config* cfg) {
   a.la_publish_mix = a.la_publish_mix ? 1 : 0;
   a.la_publish_linein = a.la_publish_linein ? 1 : 0;
   a.la_publish_mono = a.la_publish_mono ? 1 : 0;
+  a.la_fullband = a.la_fullband ? 1 : 0;
   clamp<uint16_t>(&a.la_jitter_ms, 5, 800);
   a.la_channel_name[sizeof(a.la_channel_name) - 1] = '\0';
   a.la_sub_channel_id[sizeof(a.la_sub_channel_id) - 1] = '\0';
-  a.pad_[0] = 0;
 }
 
 AudioEngineConfig audio_engine_config(const Config& cfg) {
@@ -184,6 +184,7 @@ AudioEngineConfig audio_engine_config(const Config& cfg) {
   out.linein_monitor_gain = a.linein_monitor_gain;
   out.la_sub_gain = a.la_sub_gain;
   out.la_publish_mono = a.la_publish_mono;
+  out.la_fullband = a.la_fullband;
   out.la_jitter_ms = a.la_jitter_ms;
   out.quantum_beats = cfg.quantum_beats;
   return out;

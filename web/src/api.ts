@@ -92,6 +92,8 @@ export interface AudioConfig {
   publish_linein: boolean;
   /** Halve the bitrate on a busy network. */
   publish_mono: boolean;
+  /** 120 Hz–5 kHz band on subscribe. Off = full band. */
+  gist_lpf: boolean;
   sub_gain: number;
   /** Receive buffer depth: latency traded against WiFi jitter. */
   jitter_ms: number;

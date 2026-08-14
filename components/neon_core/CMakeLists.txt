@@ -29,6 +29,7 @@ set(NEON_CORE_SRCS
   src/audio/mixer.cpp
   src/audio/resampler.cpp
   src/audio/jitter_buffer.cpp
+  src/audio/lpf.cpp
   src/audio/synth_voice.cpp
 )
 

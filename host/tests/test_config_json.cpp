@@ -205,6 +205,7 @@ TEST_CASE("the audio block round-trips through JSON") {
   a.audio.la_publish_mix = 1;
   a.audio.la_publish_linein = 1;
   a.audio.la_publish_mono = 1;
+  a.audio.la_fullband = 1;
   a.audio.la_sub_gain = 150;
   a.audio.la_jitter_ms = 45;
   std::strcpy(a.audio.la_channel_name, "Studio B");
@@ -224,10 +225,30 @@ TEST_CASE("the audio block round-trips through JSON") {
   CHECK(b.audio.amy_patch == 3);
   CHECK(b.audio.linein_monitor_gain == 64);
   CHECK(b.audio.la_publish_linein == 1);
+  CHECK(b.audio.la_fullband == 1);
   CHECK(b.audio.la_sub_gain == 150);
   CHECK(b.audio.la_jitter_ms == 45);
   CHECK(std::string(b.audio.la_channel_name) == "Studio B");
   CHECK(std::string(b.audio.la_sub_channel_id) == "abc123/Live Master");
+}
+
+TEST_CASE("gist_lpf JSON is inverted from the stored fullband flag") {
+  neon::Config cfg;
+  CHECK(cfg.audio.la_fullband == 0);
+
+  char buf[8192];
+  REQUIRE(neon::config_to_json(cfg, buf, sizeof(buf)) > 0);
+  CHECK(std::strstr(buf, "\"gist_lpf\":true") != nullptr);
+
+  REQUIRE(neon::config_from_json(R"({"audio":{"gist_lpf":false}})",
+                                 std::strlen(R"({"audio":{"gist_lpf":false}})"),
+                                 &cfg));
+  CHECK(cfg.audio.la_fullband == 1);
+
+  REQUIRE(neon::config_from_json(R"({"audio":{"gist_lpf":true}})",
+                                 std::strlen(R"({"audio":{"gist_lpf":true}})"),
+                                 &cfg));
+  CHECK(cfg.audio.la_fullband == 0);
 }
 
 TEST_CASE("an audio partial update leaves the rest of the config alone") {
@@ -236,12 +257,14 @@ TEST_CASE("an audio partial update leaves the rest of the config alone") {
   cfg.audio.metro_gain = 100;
   cfg.audio.la_jitter_ms = 200;
 
+  cfg.audio.la_fullband = 1;
   const char* doc = R"({"audio":{"metro_enabled":true,"role_l":"clock"}})";
   REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
   CHECK(cfg.audio.metro_enabled == 1);
   CHECK(cfg.audio.role_l == neon::AudioRole::kClock);
   CHECK(cfg.audio.metro_gain == 100);
   CHECK(cfg.audio.la_jitter_ms == 200);
+  CHECK(cfg.audio.la_fullband == 1);
   CHECK(cfg.quantum_beats == 7);
 }
 
