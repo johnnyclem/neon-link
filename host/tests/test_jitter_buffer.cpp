@@ -221,6 +221,25 @@ TEST_CASE("JitterBuffer: mono senders are widened to stereo") {
   CHECK(any);
 }
 
+TEST_CASE("JitterBuffer: a beat-time hole is concealed, not spliced") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(10);
+
+  Sender tx;
+  jb.push(tx.next(), tx.data.data());
+  CHECK(jb.concealed() == 0);
+  const uint32_t after_one = jb.fill_frames();
+
+  (void)tx.next();  // this block never arrives
+  jb.push(tx.next(), tx.data.data());
+  CHECK(jb.concealed() == 1);
+  // The missing 512 frames (or the 20 ms cap) were written as a fade-to-zero
+  // so the two real blocks are not concatenated.
+  CHECK(jb.fill_frames() >= after_one + kSenderBlock + kSenderBlock);
+}
+
 TEST_CASE("JitterBuffer: the jitter setting is clamped to something sane") {
   std::vector<int16_t> storage(kRingFrames * 2);
   neon::JitterBuffer jb;

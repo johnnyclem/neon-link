@@ -469,7 +469,8 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
       "\"sub_state\":\"%s\",\"sub_rate\":%u,\"sub_dropped\":%u,"
       "\"fill_ms\":%u,\"clock_ppm\":%d,\"rx_dropped\":%u,"
-      "\"jit_underruns\":%u,\"tx_dropped\":%u,\"trim_ppm\":%d}}",
+      "\"jit_underruns\":%u,\"tx_dropped\":%u,\"trim_ppm\":%d,"
+      "\"concealed\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -499,7 +500,8 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.rx_dropped),
       static_cast<unsigned>(audio.jit_underruns),
       static_cast<unsigned>(audio.tx_dropped),
-      static_cast<int>(audio.trim_ppm));
+      static_cast<int>(audio.trim_ppm),
+      static_cast<unsigned>(audio.concealed));
   if (n < 0) {
     return httpd_resp_send_500(req);
   }

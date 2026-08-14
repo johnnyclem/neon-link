@@ -65,6 +65,7 @@ void GistFilter::reset() {
   hp1_.reset();
   hp2_.reset();
   lp_.reset();
+  prev_ = 0.0f;
 }
 
 void GistFilter::set_rate(uint32_t sample_rate) {
@@ -77,6 +78,29 @@ void GistFilter::process(float* x, uint32_t frames) {
   hp1_.process(x, frames);
   hp2_.process(x, frames);
   lp_.process(x, frames);
+  deglitch(x, frames);
+}
+
+void GistFilter::deglitch(float* x, uint32_t frames) {
+  if (x == nullptr || frames == 0) {
+    return;
+  }
+  // After the 5 kHz lowpass a full-scale in-band signal cannot step more
+  // than ~0.65 per sample. A hard splice can. Soften those jumps so a
+  // hole sounds like a duck instead of a click.
+  constexpr float kMaxStep = 0.70f;
+  float p = prev_;
+  for (uint32_t i = 0; i < frames; ++i) {
+    float d = x[i] - p;
+    if (d > kMaxStep) {
+      d = kMaxStep;
+    } else if (d < -kMaxStep) {
+      d = -kMaxStep;
+    }
+    p += d;
+    x[i] = p;
+  }
+  prev_ = p;
 }
 
 }  // namespace neon

@@ -53,7 +53,7 @@ class Biquad {
 
 using BiquadLowpass = Biquad;
 
-// One channel of the jam-monitor band: HPF → HPF → LPF.
+// One channel of the jam-monitor band: HPF → HPF → LPF → deglitch.
 class GistFilter {
  public:
   void reset();
@@ -61,9 +61,12 @@ class GistFilter {
   void process(float* x, uint32_t frames);
 
  private:
+  void deglitch(float* x, uint32_t frames);
+
   Biquad hp1_;
   Biquad hp2_;
   Biquad lp_;
+  float prev_ = 0.0f;
 };
 
 }  // namespace neon

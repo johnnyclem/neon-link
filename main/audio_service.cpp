@@ -429,6 +429,7 @@ void audio_task(void*) {
       status.jit_underruns = g_jitter.underruns();
       status.tx_dropped = link_audio.sink_dropped();
       status.trim_ppm = g_jitter.trim_ppm();
+      status.concealed = g_jitter.concealed();
       audio_status_bus().publish(status);
     }
   }
@@ -567,7 +568,8 @@ void audio_ctl_task(void*) {
       log_countdown = 20;  // every ~5 s while streaming
       ESP_LOGI(kTag,
                "la: state %u fill %lu ms trim %ld ppm | d5s rx_drop %lu "
-               "jit_drop %lu rebuf %lu i2s_und %lu tx_drop %lu | clk %ld ppm",
+               "jit_drop %lu rebuf %lu i2s_und %lu tx_drop %lu conceal %lu | "
+               "clk %ld ppm",
                static_cast<unsigned>(st.sub_state),
                static_cast<unsigned long>(st.fill_ms),
                static_cast<long>(st.trim_ppm),
@@ -577,6 +579,7 @@ void audio_ctl_task(void*) {
                                           prev.jit_underruns),
                static_cast<unsigned long>(st.underruns - prev.underruns),
                static_cast<unsigned long>(st.tx_dropped - prev.tx_dropped),
+               static_cast<unsigned long>(st.concealed - prev.concealed),
                static_cast<long>(st.clock_ppm));
       prev = st;
     } else if (!streaming) {

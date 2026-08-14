@@ -42,6 +42,7 @@ class JitterBuffer {
   uint32_t fill_frames() const { return ring_.available() + stage_have_; }
   uint32_t target_frames() const { return target_frames_; }
   uint32_t underruns() const { return underruns_; }
+  uint32_t concealed() const { return concealed_; }
   uint32_t dropped() const { return ring_.dropped(); }
   int32_t trim_ppm() const { return resampler_.trim_ppm(); }
   uint32_t sender_rate() const { return sender_rate_; }
@@ -55,9 +56,17 @@ class JitterBuffer {
   static constexpr uint32_t kStageFrames = 512;
   static constexpr uint32_t kMinJitterMs = 5;
   static constexpr uint32_t kMaxJitterMs = 800;
+  // A lost Live callback is a hole in beat time. We write up to this many
+  // silent frames (with a short fade) instead of concatenating the two
+  // sides of the hole — that concatenation is the crackle.
+  static constexpr uint32_t kMaxConcealFrames = 960;  // 20 ms @ 48 k
+  static constexpr uint32_t kFadeFrames = 64;         // ~1.3 ms @ 48 k
 
  private:
   void update_servo();
+  void write_stereo(const int16_t* interleaved, uint32_t frames);
+  void write_gap(uint32_t frames);
+  void apply_out_fade(float* l, float* r, uint32_t frames);
 
   FrameRing ring_;
   LinearResampler resampler_;
@@ -68,10 +77,18 @@ class JitterBuffer {
   uint32_t jitter_ms_ = 60;
   uint32_t target_frames_ = 0;
   uint32_t underruns_ = 0;
+  uint32_t concealed_ = 0;
   int32_t servo_ppm_ = 0;
 
   int64_t newest_beat_q32_ = 0;
   int64_t beat_per_frame_q32_ = 0;  // sender beats per sender frame, Q32.32
+  bool have_prev_ = false;
+  bool fade_in_next_ = false;
+  int16_t last_l_ = 0;
+  int16_t last_r_ = 0;
+
+  // Output-side fade after a rebuffer (positive = fade in, used as count).
+  uint32_t fade_in_left_ = 0;
 
   int16_t stage_[kStageFrames * 2] = {};
   uint32_t stage_have_ = 0;
