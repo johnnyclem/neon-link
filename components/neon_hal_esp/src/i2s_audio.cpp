@@ -19,7 +19,11 @@ i2s_chan_handle_t g_tx = nullptr;
 i2s_chan_handle_t g_rx = nullptr;
 
 constexpr uint16_t kMaxPackFrames = 512;
-int32_t g_packed[kMaxPackFrames * 2];
+// One pack buffer per direction. They used to share one, which was safe
+// only because the audio task calls read_block then write_block in
+// sequence — an invariant nothing enforced and duplex work would break.
+int32_t g_tx_packed[kMaxPackFrames * 2];
+int32_t g_rx_packed[kMaxPackFrames * 2];
 
 // IRAM: this fires from the I2S DMA interrupt, once per descriptor.
 IRAM_ATTR bool on_sent_isr(i2s_chan_handle_t, i2s_event_data_t* event,
@@ -100,7 +104,14 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
 
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(cfg.sample_rate),
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+      // data_bit_width is what the driver consumes per sample from the DMA
+      // buffer, and write_block()/read_block() hand it hand-packed 32-bit
+      // words (int16 in the top half). It must therefore be 32-bit: at
+      // 16-bit the FIFO reads each packed word as TWO samples — the zero
+      // half then the real half — which is alternating silence with the
+      // channels scrambled, i.e. the "everything distorted, even the local
+      // metronome" row in docs/LINK_AUDIO_DEBUG.md.
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT,
                                                       I2S_SLOT_MODE_STEREO),
       .gpio_cfg =
           {
@@ -113,10 +124,15 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
               .invert_flags = {false, false, false},
           },
   };
-  // PCM3060: 32-bit slots, 16-bit left-justified data, 256fs MCLK.
+  // PCM3060: 32-bit slots, 256fs MCLK, Philips (I2S) framing — the codec's
+  // hardware-mode default, one BCLK of WS delay before the MSB
+  // (bit_shift=true, which the PHILIPS macro sets). The 16-bit samples are
+  // packed into the top of each 32-bit word, so the codec's 24-bit window
+  // sees them MSB-aligned. If a board strap ever selects left-justified
+  // format instead, switch to I2S_STD_MSB_SLOT_DEFAULT_CONFIG — left_align
+  // does NOT do that; it only places data within the slot.
   std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
   std_cfg.slot_cfg.ws_width = 32;
-  std_cfg.slot_cfg.left_align = true;
   if (pins_.mclk < 0) {
     std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
   } else {
@@ -192,19 +208,34 @@ void I2sAudio::stop() {
   input_running_ = false;
 }
 
+uint64_t I2sAudio::mark_frames_snapshot() const {
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const uint32_t s1 = mark_seq_.load(std::memory_order_acquire);
+    if (s1 & 1u) {
+      continue;
+    }
+    const uint64_t frames = mark_frames_;
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (mark_seq_.load(std::memory_order_acquire) == s1) {
+      return frames;
+    }
+  }
+  return 0;  // contended; 0 never triggers a resync below
+}
+
 bool I2sAudio::write_block(const int16_t* interleaved) {
   if (!running_ || g_tx == nullptr || interleaved == nullptr) {
     return false;
   }
-  // Pack stereo int16 into 32-bit left-justified slots the PCM3060 wants.
+  // Pack stereo int16 into the top halves of the 32-bit slots.
   const uint32_t frames = cfg_.block_frames;
   if (frames > kMaxPackFrames) {
     ++write_failures_;
     return false;
   }
   for (uint32_t i = 0; i < frames; ++i) {
-    g_packed[i * 2] = static_cast<int32_t>(interleaved[i * 2]) << 16;
-    g_packed[i * 2 + 1] = static_cast<int32_t>(interleaved[i * 2 + 1]) << 16;
+    g_tx_packed[i * 2] = static_cast<int32_t>(interleaved[i * 2]) << 16;
+    g_tx_packed[i * 2 + 1] = static_cast<int32_t>(interleaved[i * 2 + 1]) << 16;
   }
   const size_t bytes = static_cast<size_t>(frames) * 2u * sizeof(int32_t);
   size_t written = 0;
@@ -213,11 +244,25 @@ bool I2sAudio::write_block(const int16_t* interleaved) {
   // count an underrun rather than block the task forever.
   const uint32_t timeout_ms =
       1 + (1000u * cfg_.block_frames * cfg_.dma_desc) / cfg_.sample_rate;
-  const esp_err_t err = i2s_channel_write(g_tx, g_packed, bytes, &written,
+  const esp_err_t err = i2s_channel_write(g_tx, g_tx_packed, bytes, &written,
                                           pdMS_TO_TICKS(timeout_ms));
   if (err != ESP_OK || written != bytes) {
     ++write_failures_;
     return false;
+  }
+  // Starvation resync. With auto_clear on, a late render block means the
+  // DMA sent silence — frames that advanced isr_frames_ with no matching
+  // advance of frames_written_. SampleClock is fitted against the ISR
+  // marks, so from then on us_at_frame(frames_written_) would report
+  // presentation times early by the auto-cleared amount, permanently: the
+  // outlier branch in SampleClock::update re-anchors phase but never this
+  // frame-domain offset. In normal operation writes lead consumption by up
+  // to a full DMA ring, so frames_written_ < consumed is only ever seen
+  // after starvation — and at that moment the ring is empty, meaning the
+  // block just queued is the next thing the DMA will send.
+  const uint64_t consumed = mark_frames_snapshot();
+  if (frames_written_ < consumed) {
+    frames_written_ = consumed;
   }
   frames_written_ += cfg_.block_frames;
   return true;
@@ -233,7 +278,7 @@ bool I2sAudio::read_block(int16_t* interleaved) {
   }
   const size_t bytes = static_cast<size_t>(frames) * 2u * sizeof(int32_t);
   size_t got = 0;
-  const esp_err_t err = i2s_channel_read(g_rx, g_packed, bytes, &got, 0);
+  const esp_err_t err = i2s_channel_read(g_rx, g_rx_packed, bytes, &got, 0);
   if (err != ESP_OK || got != bytes) {
     if (err != ESP_ERR_TIMEOUT) {
       ++read_failures_;
@@ -241,8 +286,9 @@ bool I2sAudio::read_block(int16_t* interleaved) {
     return false;
   }
   for (uint32_t i = 0; i < frames; ++i) {
-    interleaved[i * 2] = static_cast<int16_t>(g_packed[i * 2] >> 16);
-    interleaved[i * 2 + 1] = static_cast<int16_t>(g_packed[i * 2 + 1] >> 16);
+    interleaved[i * 2] = static_cast<int16_t>(g_rx_packed[i * 2] >> 16);
+    interleaved[i * 2 + 1] =
+        static_cast<int16_t>(g_rx_packed[i * 2 + 1] >> 16);
   }
   return true;
 }

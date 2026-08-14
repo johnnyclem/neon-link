@@ -132,9 +132,11 @@ void config_sanitize(Config* cfg) {
   clamp<uint8_t>(&cfg->ap_channel, 1, 13);
   cfg->ap_ssid[sizeof(cfg->ap_ssid) - 1] = '\0';
   cfg->ap_pass[sizeof(cfg->ap_pass) - 1] = '\0';
-  // WPA2 needs 8 characters; a shorter one would silently open the network.
+  // WPA2 needs 8 characters. Fail closed: restore the default key rather
+  // than silently opening the network (an open AP exposes the whole
+  // unauthenticated /api surface, OTA included, to anyone in RF range).
   if (cfg->ap_require_pass && std::strlen(cfg->ap_pass) < 8) {
-    cfg->ap_require_pass = 0;
+    std::memcpy(cfg->ap_pass, kDefaultApPass, sizeof(kDefaultApPass));
   }
 
   cfg->device_name[sizeof(cfg->device_name) - 1] = '\0';

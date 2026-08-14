@@ -243,6 +243,33 @@ TEST_CASE("AudioBlockRing: a full ring sheds the oldest block") {
   CHECK(got[0] == 3);
 }
 
+TEST_CASE("AudioBlockRing: drain empties the queue without rewinding") {
+  std::vector<int16_t> samples(4 * 8 * 2);
+  std::vector<neon::AudioBlockInfo> infos(4);
+  neon::AudioBlockRing ring;
+  ring.init(samples.data(), infos.data(), 4, 8, 2);
+
+  neon::AudioBlockInfo in;
+  in.frames = 8;
+  in.sample_rate = 48000;
+  in.channels = 2;
+  int16_t data[16] = {};
+  for (int b = 0; b < 3; ++b) {
+    ring.push(in, data);
+  }
+  CHECK(ring.queued() == 3);
+  ring.drain();
+  CHECK(ring.queued() == 0);
+
+  // The ring keeps working after a drain: cursors moved forward, in step.
+  data[0] = 42;
+  CHECK(ring.push(in, data));
+  neon::AudioBlockInfo out{};
+  int16_t got[16] = {};
+  REQUIRE(ring.pop(&out, got, 16));
+  CHECK(got[0] == 42);
+}
+
 TEST_CASE("AudioBlockRing: oversized blocks are refused, not truncated") {
   std::vector<int16_t> samples(4 * 8 * 2);
   std::vector<neon::AudioBlockInfo> infos(4);

@@ -22,6 +22,7 @@
 
 #include <ableton/LinkAudio.hpp>
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <new>
@@ -55,6 +56,11 @@ constexpr uint32_t kMaxBlockFrames = 512;
 constexpr uint32_t kRxSlots = 128;
 constexpr uint32_t kTxSlots = 8;
 constexpr uint32_t kPumpPeriodMs = 4;
+
+// Scratch for pump(): only the pump task touches it, and keeping 2 KB off
+// that task's stack is what lets the stack stay small while commit() runs
+// lwIP's send path underneath it.
+int16_t g_pump_block[kMaxBlockFrames * 2];
 
 int64_t beats_to_q32(double beats) {
   return static_cast<int64_t>(beats * 4294967296.0);
@@ -97,6 +103,12 @@ void* psram_alloc(size_t bytes) {
   return p;
 }
 
+// Sink lifecycle: the control task creates (active := true) and asks for
+// teardown (retire := true); the pump task is the only one that ever
+// dereferences `sink` after creation, so it is also the only one that
+// deletes it — on seeing `retire`, at the top of its cycle, provably not
+// mid-commit. `active` stays true until that happens, so a retiring slot
+// cannot be handed out again while a commit might still be in flight.
 struct Sink {
   ableton::LinkAudioSink* sink = nullptr;
   neon::AudioBlockRing ring;
@@ -104,7 +116,8 @@ struct Sink {
   neon::AudioBlockInfo* infos = nullptr;
   uint32_t rate = 48000;
   uint8_t channels = 2;
-  bool active = false;
+  std::atomic<bool> active{false};
+  std::atomic<bool> retire{false};
   bool had_subscribers = false;
 };
 
@@ -146,7 +159,10 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       return -1;
     }
     for (int i = 0; i < kMaxSinks; ++i) {
-      if (sinks_[i].active) {
+      // A retiring slot is still busy until the pump has deleted its sink;
+      // callers retry on their next tick.
+      if (sinks_[i].active.load(std::memory_order_acquire) ||
+          sinks_[i].retire.load(std::memory_order_acquire)) {
         continue;
       }
       Sink& s = sinks_[i];
@@ -161,8 +177,8 @@ class LinkAudioEsp final : public hal::ILinkAudio {
       }
       s.rate = rate;
       s.channels = channels != 0 ? channels : 2;
-      s.active = true;
       s.had_subscribers = false;
+      s.active.store(true, std::memory_order_release);
       ESP_LOGI(kTag, "publishing \"%s\" (%lu Hz, %u ch)", name,
                static_cast<unsigned long>(rate),
                static_cast<unsigned>(s.channels));
@@ -172,20 +188,20 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   }
 
   void sink_destroy(int sink) override {
-    if (sink < 0 || sink >= kMaxSinks || !sinks_[sink].active) {
+    if (sink < 0 || sink >= kMaxSinks ||
+        !sinks_[sink].active.load(std::memory_order_acquire)) {
       return;
     }
-    Sink& s = sinks_[sink];
-    s.active = false;
-    s.had_subscribers = false;
-    vTaskDelay(pdMS_TO_TICKS(10));
-    delete s.sink;
-    s.sink = nullptr;
-    s.ring.reset();
+    // Hand the deletion to the pump task (see the Sink comment). This
+    // replaces a 10 ms sleep-and-hope: being descheduled longer than that
+    // mid-commit was ordinary for a prio-5 task under WiFi/lwIP, and the
+    // delete would then have yanked the sink out from under commit().
+    sinks_[sink].retire.store(true, std::memory_order_release);
   }
 
   bool sink_has_subscribers(int sink) const override {
-    if (sink < 0 || sink >= kMaxSinks || !sinks_[sink].active) {
+    if (sink < 0 || sink >= kMaxSinks ||
+        !sinks_[sink].active.load(std::memory_order_acquire)) {
       return false;
     }
     return sinks_[sink].had_subscribers;
@@ -229,7 +245,10 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     if (!ensure_rx_storage()) {
       return false;
     }
-    rx_ring_.reset();
+    // drain(), not reset(): the audio task pops this ring every block
+    // whether or not a subscription exists, and reset() rewinds cursors a
+    // live consumer is reading.
+    rx_ring_.drain();
     source_ = new (std::nothrow) ableton::LinkAudioSource(
         *link, id, [this](ableton::LinkAudioSource::BufferHandle handle) {
           on_receive(handle);
@@ -246,11 +265,20 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     if (source_ == nullptr) {
       return;
     }
-    ableton::LinkAudioSource* s = source_;
+    // Handshake with on_receive, which runs on Link's network thread: raise
+    // the teardown flag, then wait until the callback is provably outside
+    // its body before deleting the source that dispatches it. The previous
+    // code nulled a pointer the callback had already checked past — a race,
+    // not a guard: the callback could be mid-push when the delete landed.
+    src_teardown_.store(true, std::memory_order_seq_cst);
+    while (src_in_callback_.load(std::memory_order_acquire)) {
+      vTaskDelay(1);
+    }
+    delete source_;
     source_ = nullptr;
-    delete s;
+    src_teardown_.store(false, std::memory_order_release);
     sub_id_[0] = '\0';
-    rx_ring_.reset();
+    rx_ring_.drain();
   }
 
   bool subscribed() const override { return source_ != nullptr; }
@@ -260,17 +288,29 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     if (link == nullptr) {
       return;
     }
-    int16_t block[kMaxBlockFrames * 2];
     const auto state = link->captureAppSessionState();
     for (int i = 0; i < kMaxSinks; ++i) {
       Sink& s = sinks_[i];
-      if (!s.active || s.sink == nullptr) {
+      if (s.retire.load(std::memory_order_acquire)) {
+        // Deletion lands here, on the only task that dereferences s.sink
+        // after creation — so it cannot race a commit() in flight; this IS
+        // the task that would be committing.
+        delete s.sink;
+        s.sink = nullptr;
+        s.ring.drain();
+        s.had_subscribers = false;
+        s.retire.store(false, std::memory_order_release);
+        s.active.store(false, std::memory_order_release);
+        continue;
+      }
+      if (!s.active.load(std::memory_order_acquire) || s.sink == nullptr) {
         continue;
       }
       neon::AudioBlockInfo info;
       bool saw_sub = false;
       bool popped = false;
-      while (s.ring.pop(&info, block, sizeof(block) / sizeof(block[0]))) {
+      while (s.ring.pop(&info, g_pump_block,
+                        sizeof(g_pump_block) / sizeof(g_pump_block[0]))) {
         popped = true;
         ableton::LinkAudioSink::BufferHandle handle(*s.sink);
         if (!handle) {
@@ -281,7 +321,7 @@ class LinkAudioEsp final : public hal::ILinkAudio {
             static_cast<size_t>(info.frames) * s.channels;
         const size_t n =
             samples < handle.maxNumSamples ? samples : handle.maxNumSamples;
-        std::memcpy(handle.samples, block, n * sizeof(int16_t));
+        std::memcpy(handle.samples, g_pump_block, n * sizeof(int16_t));
         handle.commit(state, q32_to_beats(info.begin_beat_q32), quantum_,
                       info.frames, s.channels, info.sample_rate);
       }
@@ -308,7 +348,8 @@ class LinkAudioEsp final : public hal::ILinkAudio {
 
   void sink_write(int sink, const int16_t* interleaved, uint32_t frames,
                   int64_t begin_beat_q32, int64_t end_beat_q32) override {
-    if (sink < 0 || sink >= kMaxSinks || !sinks_[sink].active ||
+    if (sink < 0 || sink >= kMaxSinks ||
+        !sinks_[sink].active.load(std::memory_order_acquire) ||
         interleaved == nullptr) {
       return;
     }
@@ -345,7 +386,8 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   uint32_t subscriber_count() const override {
     uint32_t n = 0;
     for (int i = 0; i < kMaxSinks; ++i) {
-      if (sinks_[i].active && sinks_[i].had_subscribers) {
+      if (sinks_[i].active.load(std::memory_order_acquire) &&
+          sinks_[i].had_subscribers) {
         ++n;
       }
     }
@@ -354,7 +396,14 @@ class LinkAudioEsp final : public hal::ILinkAudio {
 
  private:
   void on_receive(const ableton::LinkAudioSource::BufferHandle& handle) {
-    if (source_ == nullptr || handle.samples == nullptr) {
+    // Entry gate, paired with unsubscribe(): claim "in callback" first,
+    // then check for teardown. seq_cst on the claim/check pair means the
+    // destroyer either sees the claim and waits, or this side sees the
+    // teardown flag and backs out — never both missing each other.
+    src_in_callback_.store(true, std::memory_order_seq_cst);
+    if (src_teardown_.load(std::memory_order_seq_cst) ||
+        handle.samples == nullptr) {
+      src_in_callback_.store(false, std::memory_order_release);
       return;
     }
     neon::AudioBlockInfo out;
@@ -394,6 +443,7 @@ class LinkAudioEsp final : public hal::ILinkAudio {
     if (q > rx_high_water_) {
       rx_high_water_ = q;
     }
+    src_in_callback_.store(false, std::memory_order_release);
   }
 
   bool ensure_sink_storage(Sink& s, uint8_t channels) {
@@ -431,6 +481,10 @@ class LinkAudioEsp final : public hal::ILinkAudio {
 
   Sink sinks_[kMaxSinks];
   ableton::LinkAudioSource* source_ = nullptr;
+  // Teardown handshake between unsubscribe() (control task) and
+  // on_receive() (Link's network thread) — see both for the protocol.
+  std::atomic<bool> src_teardown_{false};
+  std::atomic<bool> src_in_callback_{false};
   char sub_id_[48] = {};
   char peer_name_[32] = {};
   double quantum_ = 4.0;
@@ -467,9 +521,13 @@ void link_audio_start_pump() {
   if (g_pump_task != nullptr) {
     return;
   }
-  // pump() keeps a full 2 KB block on its stack and commit() runs lwIP's
-  // send path underneath it; 4 KB left double-digit headroom in bytes.
-  xTaskCreatePinnedToCore(pump_task, "linkaudio", 6144, nullptr, 11,
+  // Priority 9: below Link's asio service task (12) and the timeline poll
+  // in link_svc (10). The pump at 11 had it inverted — under network load
+  // the scheduler shipped audio first and ran Link's timing protocol last,
+  // degrading the sync that is the whole product. The block scratch lives
+  // in g_pump_block rather than on this stack; commit() still runs lwIP's
+  // send path underneath, hence the size.
+  xTaskCreatePinnedToCore(pump_task, "linkaudio", 6144, nullptr, 9,
                           &g_pump_task, 0);
 }
 

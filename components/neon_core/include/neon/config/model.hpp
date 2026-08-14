@@ -69,6 +69,12 @@ struct AudioConfig {
   char la_sub_channel_id[48] = "";
 };
 
+// The shipped AP key (also the Config::ap_pass member default). Not a
+// secret — it is printed in the setup docs — but WPA2 with a known key
+// still beats an open network: it keeps the casual RF neighbourhood off
+// the /api surface. Users should change it during setup.
+inline constexpr char kDefaultApPass[] = "link1234";
+
 // When the module creates its own network.
 enum class ApPolicy : uint8_t {
   kFallback = 0,  // only when no stored network can be joined
@@ -122,9 +128,11 @@ struct Config {
   WifiNetwork wifi[kWifiSlots];
   uint8_t wifi_retries = 3;  // attempts per network before moving on
 
-  // Access point.
+  // Access point. Secured by default: the fallback AP is the first-boot
+  // path, and an open network puts every unauthenticated /api endpoint —
+  // including OTA — in reach of anyone in RF range.
   ApPolicy ap_policy = ApPolicy::kFallback;
-  uint8_t ap_require_pass = 0;  // 0 = open network (easy Link jams)
+  uint8_t ap_require_pass = 1;  // 0 = open network (easy Link jams)
   uint8_t ap_hidden = 0;
   uint8_t ap_channel = 1;
   char ap_ssid[33] = {};  // empty = derive from device_name + MAC

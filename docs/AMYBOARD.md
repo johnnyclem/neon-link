@@ -70,7 +70,9 @@ or the rolling `amyboard` GitHub release.
 
 1. Power the module (USB-C or Eurorack +12 V).
 2. After ~10 s with no credentials (or ~60 s if credentials fail), it raises
-   open AP `NEON-LINK-XXXX`.
+   the WPA2 setup AP `NEON-LINK-XXXX` (password `link1234` — change it on
+   the Network page; an open AP can be enabled there too, but it exposes
+   the whole HTTP API, OTA included, to anyone in radio range).
 3. Join the AP, open `http://192.168.4.1/` (also shown on the OLED).
 4. Enter home WiFi SSID/password → **SAVE** (STA joins live; **REBOOT**
    only if association sticks).

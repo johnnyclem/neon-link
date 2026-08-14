@@ -166,6 +166,10 @@ class FrameRing {
   std::atomic<uint32_t> underruns_{0};
 };
 
+// Beat stamps use INT64_MIN for "not stamped". Beat 0 is a legitimate
+// position — the downbeat of bar one — and must not read as absence.
+inline constexpr int64_t kInvalidBeatQ32 = INT64_MIN;
+
 // One received (or outgoing) Link Audio block: the frames plus where they
 // belong on the session timeline and what format they arrived in.
 struct AudioBlockInfo {
@@ -173,8 +177,8 @@ struct AudioBlockInfo {
   uint32_t sample_rate = 0;
   uint8_t channels = 2;
   uint8_t pad_[3] = {};
-  int64_t begin_beat_q32 = 0;
-  int64_t end_beat_q32 = 0;
+  int64_t begin_beat_q32 = kInvalidBeatQ32;
+  int64_t end_beat_q32 = kInvalidBeatQ32;
 };
 
 // SPSC ring of whole blocks. Sample storage is a flat region carved into
@@ -197,6 +201,17 @@ class AudioBlockRing {
     write_.store(0, std::memory_order_relaxed);
     read_.store(0, std::memory_order_relaxed);
     dropped_.store(0, std::memory_order_relaxed);
+  }
+
+  // Discard everything queued without touching the write cursor. Unlike
+  // reset() — which rewinds both cursors and therefore tears the ring if
+  // either side is live — this is safe to call while the consumer keeps
+  // popping: cursors only ever move forward, and if a concurrent pop
+  // advances read_ one past the snapshotted write_, queued() clamps that
+  // to "empty" and the next push self-heals the off-by-one.
+  void drain() {
+    read_.store(write_.load(std::memory_order_acquire),
+                std::memory_order_release);
   }
 
   bool valid() const {
