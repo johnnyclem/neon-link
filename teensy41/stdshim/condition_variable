@@ -1,0 +1,57 @@
+// std::condition_variable for the gthread-less arm-none-eabi libstdc++.
+//
+// Link uses a condition variable in exactly one place: Controller::
+// shutdown() posts a stop job to the io context and waits for it. With
+// the polled single-threaded context, the posted job can only run when
+// the context is pumped — so wait() pumps it. The pump hook is provided
+// by the Teensy Link runtime (link_session_t41.cpp); a strong default
+// no-op keeps this header linkable in isolation.
+//
+// Never used for actual cross-thread signalling on this target: there
+// is only one thread.
+
+#pragma once
+
+#include_next <condition_variable>
+
+#if !defined(_GLIBCXX_HAS_GTHREADS) && !defined(NEON_T41_STD_CONDVAR_SHIM)
+#define NEON_T41_STD_CONDVAR_SHIM
+
+#include <mutex>
+
+extern "C" void neon_t41_cv_pump() __attribute__((weak));
+
+namespace std
+{
+class condition_variable
+{
+public:
+  condition_variable() = default;
+  condition_variable(const condition_variable&) = delete;
+  condition_variable& operator=(const condition_variable&) = delete;
+
+  void notify_one() noexcept {}
+  void notify_all() noexcept {}
+
+  template <typename Predicate>
+  void wait(unique_lock<mutex>& lock, Predicate pred)
+  {
+    (void)lock;
+    while (!pred())
+    {
+      if (neon_t41_cv_pump != nullptr)
+      {
+        neon_t41_cv_pump();
+      }
+    }
+  }
+
+  void wait(unique_lock<mutex>& lock)
+  {
+    // Without a predicate there is nothing to poll for on one thread.
+    (void)lock;
+  }
+};
+} // namespace std
+
+#endif

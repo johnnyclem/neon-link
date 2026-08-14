@@ -17,6 +17,9 @@ volatile uint32_t g_tail = 0;  // producer (loop)
 
 volatile uint32_t g_levels = 0;
 volatile uint32_t g_late = 0;
+volatile uint32_t g_edges = 0;
+volatile uint32_t g_late_max_us = 0;
+volatile uint64_t g_late_sum_us = 0;
 
 IntervalTimer g_timer;
 
@@ -41,9 +44,17 @@ void pulse_isr() {
     if (e.t_us > now) {
       break;
     }
-    if (now - e.t_us > static_cast<int64_t>(kTickUs)) {
+    const int64_t late = now - e.t_us;
+    if (late > static_cast<int64_t>(kTickUs)) {
       g_late = g_late + 1;
     }
+    if (late > 0) {
+      g_late_sum_us = g_late_sum_us + static_cast<uint64_t>(late);
+      if (static_cast<uint32_t>(late) > g_late_max_us) {
+        g_late_max_us = static_cast<uint32_t>(late);
+      }
+    }
+    g_edges = g_edges + 1;
     apply_masks(e.gpio_set_mask, e.gpio_clear_mask);
     g_head = g_head + 1;
   }
@@ -77,5 +88,14 @@ bool PulseHwT41::submit(const hal::PulseEdge& e) {
 int64_t PulseHwT41::now_us() const { return t41_now_us(); }
 
 uint32_t PulseHwT41::levels() { return g_levels; }
+
+uint32_t PulseHwT41::edges() { return g_edges; }
+
+uint32_t PulseHwT41::late_max_us() { return g_late_max_us; }
+
+uint32_t PulseHwT41::late_avg_us() {
+  const uint32_t n = g_edges;
+  return n != 0 ? static_cast<uint32_t>(g_late_sum_us / n) : 0;
+}
 
 uint32_t PulseHwT41::late_edges() { return g_late; }
