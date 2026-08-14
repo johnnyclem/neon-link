@@ -185,6 +185,12 @@ void DeviceController::fill_status(Snapshot* s,
     }
   }
   if (!st.ip.empty()) bind_.ip = st.ip;
+  // Talk to the IPv4 address once we have it. neon-link.local goes
+  // through mDNS, and getaddrinfo on that name hangs the save path when
+  // Link Audio has the radio too busy to answer.
+  if (!bind_.ip.empty()) {
+    client_.setTarget(bind_.ip.c_str(), 80);
+  }
   s->bind = bind_;
   if (st.tempo_valid && st.peers == 0 && !st.setup_ap) {
     s->banner = "NO LINK — no other peers on this session.";
@@ -292,26 +298,29 @@ void DeviceController::run() {
           const std::string body = neon::client::config_put_body(c.cfg);
           neon::client::JsonPatch patch;
           patch.mergeObject(body.c_str(), body.size());
-          auto put = client_.putConfig(patch, neon::client::Persist::Now);
+          // Lazy apply + 2 s NVS debounce: the httpd handler must not sit
+          // in flash while Link Audio is saturating core 0.
+          const auto persist = client_.persist_lazy()
+                                   ? neon::client::Persist::Lazy
+                                   : neon::client::Persist::Now;
+          auto put = client_.putConfig(patch, persist);
           neon::Config applied = c.cfg;
           neon::client::ConfigSecrets sec = secrets_;
           bool ok = put.ok;
           std::string msg;
           if (put.ok) {
             applied = put.value;
-            neon::client::ConfigSecrets pulled;
-            auto again = client_.getConfig(&pulled);
-            if (again.ok) {
-              applied = again.value;
-              sec = pulled;
-            } else {
-              // Write landed; echo had empty secrets. Keep typed flags.
-              for (int i = 0; i < neon::kWifiSlots; ++i) {
-                if (c.cfg.wifi[i].pass[0] != '\0') sec.wifi_has_pass[i] = true;
-              }
-              if (c.cfg.ap_pass[0] != '\0') sec.ap_has_pass = true;
+            for (int i = 0; i < neon::kWifiSlots; ++i) {
+              if (c.cfg.wifi[i].pass[0] != '\0') sec.wifi_has_pass[i] = true;
             }
-            msg = "Saved.";
+            if (c.cfg.ap_pass[0] != '\0') sec.ap_has_pass = true;
+            msg = persist == neon::client::Persist::Lazy
+                      ? "Saved (will persist)."
+                      : "Saved.";
+          } else if (put.timed_out) {
+            // A follow-up GET against a silent module is how Saving…
+            // lasted forever. Surface the timeout and stop.
+            msg = put.error.empty() ? "Save timed out." : put.error;
           } else {
             auto fallback = client_.getConfig(&sec);
             if (fallback.ok) {

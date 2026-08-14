@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string>
@@ -154,12 +156,52 @@ void set_nonblock(int fd) {
   }
 }
 
+int64_t now_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// Remaining budget until `deadline_ms`. 0 means the caller must fail now.
+int remain_ms(int64_t deadline_ms) {
+  const int64_t left = deadline_ms - now_ms();
+  if (left <= 0) {
+    return 0;
+  }
+  return left > 60000 ? 60000 : static_cast<int>(left);
+}
+
 bool wait_fd(int fd, short events, int timeout_ms) {
+  if (timeout_ms <= 0) {
+    return false;
+  }
   pollfd p{};
   p.fd = fd;
   p.events = events;
   const int r = poll(&p, 1, timeout_ms);
   return r > 0 && (p.revents & events) != 0;
+}
+
+bool looks_ipv4(const char* host) {
+  if (host == nullptr || host[0] == '\0') {
+    return false;
+  }
+  int dots = 0;
+  int digits = 0;
+  for (const char* p = host; *p != '\0'; ++p) {
+    if (*p == '.') {
+      if (digits == 0) {
+        return false;
+      }
+      ++dots;
+      digits = 0;
+    } else if (*p >= '0' && *p <= '9') {
+      ++digits;
+    } else {
+      return false;
+    }
+  }
+  return dots == 3 && digits > 0;
 }
 
 }  // namespace
@@ -190,15 +232,28 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
   if (timeout_ms <= 0) {
     timeout_ms = 800;
   }
+  const int64_t deadline = now_ms() + timeout_ms;
 
   const bool reuse =
       fd_ >= 0 && host_ == host && port_ == port;
 
   if (!reuse) {
     close();
+    if (remain_ms(deadline) <= 0) {
+      out.timed_out = true;
+      out.error = "connect timeout";
+      return out;
+    }
     addrinfo hints{};
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = AF_UNSPEC;
+    // Numeric hosts skip mDNS. neon-link.local under a Link Audio flood
+    // is the hang: getaddrinfo waits on a name that the module is too
+    // busy to answer.
+    if (looks_ipv4(host)) {
+      hints.ai_family = AF_INET;
+      hints.ai_flags = AI_NUMERICHOST;
+    }
     addrinfo* res = nullptr;
     const std::string port_s = std::to_string(port);
     const int gerr = getaddrinfo(host, port_s.c_str(), &hints, &res);
@@ -228,7 +283,7 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
       set_nonblock(fd);
       const int cr = ::connect(fd, p->ai_addr, p->ai_addrlen);
       if (cr == 0 || errno == EINPROGRESS) {
-        if (wait_fd(fd, POLLOUT, timeout_ms)) {
+        if (wait_fd(fd, POLLOUT, remain_ms(deadline))) {
           int err = 0;
           socklen_t elen = sizeof(err);
           if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &elen) == 0 &&
@@ -254,7 +309,7 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
   const std::string req = format_request(method, host, path, body);
   size_t sent = 0;
   while (sent < req.size()) {
-    if (!wait_fd(fd_, POLLOUT, timeout_ms)) {
+    if (!wait_fd(fd_, POLLOUT, remain_ms(deadline))) {
       out.timed_out = true;
       out.error = "send timeout";
       close();
@@ -280,7 +335,7 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
   int content_len = -1;
   size_t hdr = std::string::npos;
   while (true) {
-    if (!wait_fd(fd_, POLLIN, timeout_ms)) {
+    if (!wait_fd(fd_, POLLIN, remain_ms(deadline))) {
       out.timed_out = true;
       out.error = "recv timeout";
       close();

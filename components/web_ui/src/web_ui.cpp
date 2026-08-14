@@ -157,8 +157,15 @@ esp_err_t handle_put_config(httpd_req_t* req) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
     return ESP_OK;
   }
+  char persist[12] = {};
+  const bool lazy = query_param(req, "persist", persist, sizeof(persist)) &&
+                    std::strcmp(persist, "lazy") == 0;
   // Immediate NVS write — debounced apply alone lost WiFi on quick REBOOT.
-  if (!neon_config_save(cfg)) {
+  // persist=lazy is the VST path: apply now, flush from link_svc later,
+  // so this handler does not block in flash while Link Audio owns the radio.
+  if (lazy) {
+    neon_config_apply(cfg);
+  } else if (!neon_config_save(cfg)) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS save failed");
     return ESP_OK;
   }
@@ -454,7 +461,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1536];
+  char buf[1600];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -463,7 +470,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"hostname\":\"%s.local\",\"device_name\":\"%s\",\"ip\":\"%s\","
       "\"setup_ap\":%s,\"ap_ssid\":\"%s\","
       "\"wifi_ssid\":\"%s\",\"wifi_pass_len\":%u,\"wifi_fail_reason\":%u,"
-      "\"firmware\":\"%s\",\"rev\":%u,\"set_bpm\":%u.%03u,"
+      "\"firmware\":\"%s\",\"rev\":%u,\"persist_lazy\":true,\"set_bpm\":%u.%03u,"
       "\"pulse\":{\"edges\":%u,\"late_max_us\":%u,\"late_avg_us\":%u},"
       "\"audio\":{\"running\":%s,\"underruns\":%u,\"peak_l\":%u,"
       "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
@@ -554,6 +561,9 @@ void webui_start() {
   cfg.stack_size = 8192;
   cfg.lru_purge_enable = true;
   cfg.max_uri_handlers = 16;
+  // Default prio 5 loses to the Link asio task (8). Saves and status
+  // then sit in httpd while Link Audio floods core 0 — the VST save hang.
+  cfg.task_priority = 9;
   // An OTA image takes a while to push over WiFi.
   cfg.recv_wait_timeout = 20;
   cfg.send_wait_timeout = 20;

@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -111,5 +112,44 @@ TEST_CASE("PosixHttpTransport GET against a local server") {
   CHECK(r.body == "{\"bpm\":128.0}");
   CHECK_FALSE(r.timed_out);
   CHECK_FALSE(r.connect_failed);
+}
+
+TEST_CASE("PosixHttpTransport times out when the server never replies") {
+  int ls = ::socket(AF_INET, SOCK_STREAM, 0);
+  REQUIRE(ls >= 0);
+  int yes = 1;
+  setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = 0;
+  REQUIRE(::bind(ls, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+  REQUIRE(::listen(ls, 1) == 0);
+  socklen_t alen = sizeof(addr);
+  REQUIRE(getsockname(ls, reinterpret_cast<sockaddr*>(&addr), &alen) == 0);
+  const int port = ntohs(addr.sin_port);
+
+  std::thread server([&] {
+    int c = ::accept(ls, nullptr, nullptr);
+    if (c < 0) {
+      return;
+    }
+    char buf[512];
+    (void)::recv(c, buf, sizeof(buf), 0);
+    // Hold the connection; do not write a response.
+    sleep(2);
+    ::close(c);
+  });
+
+  neon::client::PosixHttpTransport http;
+  const auto start = std::chrono::steady_clock::now();
+  const auto r =
+      http.request("PUT", "127.0.0.1", port, "/api/config", "{}", 200);
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  server.join();
+  ::close(ls);
+
+  CHECK(r.timed_out);
+  CHECK(elapsed < std::chrono::milliseconds(800));
 }
 #endif
