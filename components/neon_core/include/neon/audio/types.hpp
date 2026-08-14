@@ -92,7 +92,7 @@ struct AudioStatus {
   uint32_t jit_underruns = 0;  // jitter-buffer rebuffer events
   uint32_t tx_dropped = 0;     // publish blocks lost audio→pump ring
   int32_t trim_ppm = 0;        // receive resampler servo trim
-  uint32_t concealed = 0;      // beat-gap splices faded instead of hard-cut
+  uint32_t concealed = 0;      // beat-time holes written as in-place silence
 };
 
 }  // namespace neon

@@ -14,12 +14,19 @@ int32_t clamp_i32(int32_t v, int32_t lo, int32_t hi) {
   return v < lo ? lo : (v > hi ? hi : v);
 }
 
+// Round-to-nearest signed division, denominator > 0.
+int64_t div_round(int64_t num, int64_t den) {
+  return num >= 0 ? (num + den / 2) / den : -((-num + den / 2) / den);
+}
+
 }  // namespace
 
 void JitterBuffer::init(int16_t* storage, uint32_t capacity_frames,
                         uint32_t out_rate) {
   out_rate_ = out_rate != 0 ? out_rate : 44100;
-  ring_.init(storage, capacity_frames, /*channels=*/2);
+  buf_ = storage;
+  capacity_ = floor_pow2(capacity_frames);
+  mask_ = capacity_ != 0 ? capacity_ - 1 : 0;
   resampler_.set_rates(out_rate_, out_rate_);
   configure(jitter_ms_);
   reset();
@@ -32,7 +39,7 @@ void JitterBuffer::configure(uint32_t jitter_ms) {
   const uint32_t rate = sender_rate_ != 0 ? sender_rate_ : out_rate_;
   uint32_t target = (rate / 1000u) * jitter_ms_;
   // Never target more than half the ring, or the servo has nowhere to go.
-  const uint32_t cap = ring_.capacity() / 2;
+  const uint32_t cap = capacity_ / 2;
   if (cap != 0 && target > cap) {
     target = cap;
   }
@@ -40,7 +47,9 @@ void JitterBuffer::configure(uint32_t jitter_ms) {
 }
 
 void JitterBuffer::reset() {
-  ring_.reset();
+  rd_ = 0;
+  wr_ = 0;
+  dropped_ = 0;
   resampler_.reset();
   resampler_.set_trim_ppm(0);
   servo_ppm_ = 0;
@@ -48,7 +57,6 @@ void JitterBuffer::reset() {
   underruns_ = 0;
   concealed_ = 0;
   have_prev_ = false;
-  fade_in_next_ = false;
   fade_in_left_ = 0;
   last_l_ = 0;
   last_r_ = 0;
@@ -57,21 +65,60 @@ void JitterBuffer::reset() {
   state_ = State::kIdle;
 }
 
-void JitterBuffer::write_stereo(const int16_t* interleaved, uint32_t frames) {
-  if (interleaved == nullptr || frames == 0) {
+// Drop the oldest frames so the span [rd_, end) fits the ring.
+void JitterBuffer::make_room(uint64_t end) {
+  if (end <= rd_ + capacity_) {
     return;
   }
-  ring_.write(interleaved, frames, /*drop_oldest=*/true);
-  last_l_ = interleaved[(frames - 1) * 2];
-  last_r_ = interleaved[(frames - 1) * 2 + 1];
+  const uint64_t need = end - (rd_ + capacity_);
+  rd_ += need;
+  dropped_ += static_cast<uint32_t>(need);
+  if (rd_ > wr_) {
+    wr_ = rd_;
+  }
 }
 
+// Raw positional copy of stereo frames into the ring, wrap included. The
+// caller has already made room; nothing here moves a cursor.
+void JitterBuffer::copy_in(uint64_t pos, const int16_t* stereo,
+                           uint32_t frames) {
+  const uint32_t at = static_cast<uint32_t>(pos) & mask_;
+  const uint32_t first = frames < capacity_ - at ? frames : capacity_ - at;
+  std::memcpy(buf_ + static_cast<size_t>(at) * 2, stereo,
+              static_cast<size_t>(first) * 2 * sizeof(int16_t));
+  if (frames > first) {
+    std::memcpy(buf_, stereo + static_cast<size_t>(first) * 2,
+                static_cast<size_t>(frames - first) * 2 * sizeof(int16_t));
+  }
+}
+
+uint32_t JitterBuffer::ring_read(int16_t* out, uint32_t frames) {
+  const uint32_t have = static_cast<uint32_t>(wr_ - rd_);
+  const uint32_t n = frames < have ? frames : have;
+  if (n == 0) {
+    return 0;
+  }
+  const uint32_t at = static_cast<uint32_t>(rd_) & mask_;
+  const uint32_t first = n < capacity_ - at ? n : capacity_ - at;
+  std::memcpy(out, buf_ + static_cast<size_t>(at) * 2,
+              static_cast<size_t>(first) * 2 * sizeof(int16_t));
+  if (n > first) {
+    std::memcpy(out + static_cast<size_t>(first) * 2, buf_,
+                static_cast<size_t>(n - first) * 2 * sizeof(int16_t));
+  }
+  rd_ += n;
+  return n;
+}
+
+// Claim [wr_, wr_ + frames) as silence: the tail sample fades out into it
+// so a hole is a dip, not a click. A late packet that fills the hole later
+// simply overwrites this.
 void JitterBuffer::write_gap(uint32_t frames) {
   constexpr uint32_t kChunk = 128;
   int16_t buf[kChunk * 2];
+  make_room(wr_ + frames);
   uint32_t done = 0;
-  const uint32_t fade =
-      frames < kFadeFrames ? frames : kFadeFrames;
+  const uint32_t fade = frames < kFadeFrames ? frames : kFadeFrames;
   while (done < frames) {
     const uint32_t n = frames - done < kChunk ? frames - done : kChunk;
     for (uint32_t i = 0; i < n; ++i) {
@@ -85,49 +132,25 @@ void JitterBuffer::write_gap(uint32_t frames) {
         buf[2 * i + 1] = 0;
       }
     }
-    ring_.write(buf, n, /*drop_oldest=*/true);
+    copy_in(wr_ + done, buf, n);
     done += n;
   }
+  wr_ += frames;
   last_l_ = 0;
   last_r_ = 0;
 }
 
-void JitterBuffer::push(const AudioBlockInfo& info, const int16_t* interleaved) {
-  if (interleaved == nullptr || info.frames == 0 ||
-      info.frames > kMaxPushFrames) {
-    return;
-  }
-  if (info.sample_rate != 0 && info.sample_rate != sender_rate_) {
-    sender_rate_ = info.sample_rate;
-    resampler_.set_rates(sender_rate_, out_rate_);
-    configure(jitter_ms_);
-  }
-
-  if (have_prev_ && beat_per_frame_q32_ > 0 && info.begin_beat_q32 != 0) {
-    const int64_t gap_beats = info.begin_beat_q32 - newest_beat_q32_;
-    // Half a frame of slack so rounding cannot invent a hole.
-    if (gap_beats > beat_per_frame_q32_ + beat_per_frame_q32_ / 2) {
-      int64_t gap_frames = gap_beats / beat_per_frame_q32_;
-      if (gap_frames > static_cast<int64_t>(kMaxConcealFrames)) {
-        gap_frames = static_cast<int64_t>(kMaxConcealFrames);
-      }
-      if (gap_frames > 0) {
-        write_gap(static_cast<uint32_t>(gap_frames));
-        ++concealed_;
-        fade_in_next_ = true;
-      }
-    }
-  }
-
-  const bool fade = fade_in_next_;
-  fade_in_next_ = false;
-
+// Convert (mono duplicated to stereo, optional fade-in) and write the
+// block's frames [skip, info.frames) at ring position `pos`.
+void JitterBuffer::place_block(uint64_t pos, const AudioBlockInfo& info,
+                               const int16_t* interleaved, uint32_t skip,
+                               bool fade_in) {
   constexpr uint32_t kChunk = 128;
   int16_t stereo[kChunk * 2];
-  uint32_t done = 0;
-  const uint32_t fade_n = fade ? (info.frames < kFadeFrames ? info.frames
-                                                            : kFadeFrames)
-                               : 0;
+  const uint32_t fade_n =
+      fade_in ? (info.frames < kFadeFrames ? info.frames : kFadeFrames) : 0;
+  uint32_t done = skip;
+  uint64_t at = pos;
   while (done < info.frames) {
     const uint32_t n =
         info.frames - done < kChunk ? info.frames - done : kChunk;
@@ -149,16 +172,91 @@ void JitterBuffer::push(const AudioBlockInfo& info, const int16_t* interleaved) 
       stereo[2 * i] = lv;
       stereo[2 * i + 1] = rv;
     }
-    write_stereo(stereo, n);
+    copy_in(at, stereo, n);
+    at += n;
     done += n;
   }
+}
 
-  newest_beat_q32_ = info.end_beat_q32;
-  const int64_t span = info.end_beat_q32 - info.begin_beat_q32;
-  if (span > 0 && info.frames != 0) {
-    beat_per_frame_q32_ = span / static_cast<int64_t>(info.frames);
+void JitterBuffer::push(const AudioBlockInfo& info, const int16_t* interleaved) {
+  if (buf_ == nullptr || interleaved == nullptr || info.frames == 0 ||
+      info.frames > kMaxPushFrames || info.frames > capacity_) {
+    return;
   }
-  have_prev_ = true;
+  if (info.sample_rate != 0 && info.sample_rate != sender_rate_) {
+    sender_rate_ = info.sample_rate;
+    resampler_.set_rates(sender_rate_, out_rate_);
+    configure(jitter_ms_);
+  }
+
+  // Where does this block belong? Default: append at the high-water mark.
+  bool fade_in = false;
+  int64_t pos = static_cast<int64_t>(wr_);
+
+  if (have_prev_ && beat_per_frame_q32_ > 0 && info.begin_beat_q32 != 0) {
+    const int64_t bpf = beat_per_frame_q32_;
+    const int64_t delta_beats = info.begin_beat_q32 - newest_beat_q32_;
+    // Half a frame of slack either way: stamp jitter, not a hole.
+    if (delta_beats > bpf + bpf / 2) {
+      // Forward hole: silence at its timeline position, up to the cap.
+      // Past the cap it is a forward playhead jump — insert the capped
+      // gap and let the append below re-anchor the beat map.
+      int64_t gap = delta_beats / bpf;
+      if (gap > static_cast<int64_t>(kMaxConcealFrames)) {
+        gap = static_cast<int64_t>(kMaxConcealFrames);
+      }
+      if (gap > static_cast<int64_t>(capacity_ / 2)) {
+        gap = static_cast<int64_t>(capacity_ / 2);
+      }
+      write_gap(static_cast<uint32_t>(gap));
+      ++concealed_;
+      fade_in = true;
+      pos = static_cast<int64_t>(wr_);
+    } else if (delta_beats < -(bpf + bpf / 2)) {
+      const int64_t back = div_round(-delta_beats, bpf);
+      if (back <= static_cast<int64_t>(kMaxReorderFrames)) {
+        // A late block: reordered, or a retransmitted duplicate. Place it
+        // at the position its beats name — into the silent hole it was
+        // concealed with, or harmlessly over its own earlier copy.
+        pos = static_cast<int64_t>(wr_) - back;
+        if (pos + static_cast<int64_t>(info.frames) <=
+            static_cast<int64_t>(rd_)) {
+          dropped_ += info.frames;  // its playback deadline already passed
+          return;
+        }
+      }
+      // else: a backward timeline jump (loop wrap, relocated playhead).
+      // The sender's audio is continuous across it, so append at wr_ and
+      // let the beat anchor re-establish below.
+    }
+  }
+
+  const uint64_t end = static_cast<uint64_t>(pos + info.frames);
+  make_room(end);
+  uint32_t skip = 0;
+  if (pos < static_cast<int64_t>(rd_)) {
+    // The head of a late block has already been played out; clip it.
+    skip = static_cast<uint32_t>(static_cast<int64_t>(rd_) - pos);
+    pos = static_cast<int64_t>(rd_);
+    dropped_ += skip;
+    if (skip >= info.frames) {
+      return;
+    }
+  }
+
+  place_block(static_cast<uint64_t>(pos), info, interleaved, skip, fade_in);
+
+  if (end > wr_) {
+    wr_ = end;
+    last_l_ = buf_[(static_cast<uint32_t>(end - 1) & mask_) * 2];
+    last_r_ = buf_[(static_cast<uint32_t>(end - 1) & mask_) * 2 + 1];
+    newest_beat_q32_ = info.end_beat_q32;
+    const int64_t span = info.end_beat_q32 - info.begin_beat_q32;
+    if (span > 0 && info.frames != 0) {
+      beat_per_frame_q32_ = span / static_cast<int64_t>(info.frames);
+    }
+    have_prev_ = true;
+  }
   if (state_ == State::kIdle) {
     state_ = State::kBuffering;
   }
@@ -222,8 +320,8 @@ uint32_t JitterBuffer::pull(uint32_t frames, float* l, float* r) {
     // Top the staging buffer up: the resampler needs one input frame past
     // the last one it interpolates from.
     if (stage_have_ < kStageFrames) {
-      const uint32_t got = ring_.read(stage_ + stage_have_ * 2,
-                                      kStageFrames - stage_have_);
+      const uint32_t got = ring_read(stage_ + stage_have_ * 2,
+                                     kStageFrames - stage_have_);
       stage_have_ += got;
     }
     if (stage_have_ < 2) {

@@ -217,6 +217,12 @@ stop or a phase jump > kBeatEpsilon gets a 1 ms fade (no pops).
 `read_beat = output_beat − jitter_ms→beats`; a fill-level servo trims the
 resampler ratio ±500 ppm around `sender_rate/44100`. Underrun → silence +
 counter; overrun → drop oldest. Ring ~250 ms @ 48 k stereo (~96 KB, PSRAM).
+Writes into the ring are beat-addressed rather than appended: each block
+lands at the position its begin beat implies, so a lost packet leaves a
+silent hole at its exact timeline position, a reordered or duplicated
+packet fills (or harmlessly overwrites) its own slot, and a beat jump too
+large to be jitter — a loop wrap, a relocated playhead — re-anchors the
+stream instead of being spliced.
 
 ---
 

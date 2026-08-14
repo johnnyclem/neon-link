@@ -45,6 +45,31 @@ struct Sender {
   }
 };
 
+// A snapshotted sender block, for delivering out of order or twice.
+struct Block {
+  neon::AudioBlockInfo info;
+  std::vector<int16_t> data;
+};
+
+Block take(Sender& tx, uint32_t frames = kSenderBlock, uint8_t channels = 2) {
+  Block b;
+  b.info = tx.next(frames, channels);
+  b.data = tx.data;
+  return b;
+}
+
+// Longest run of near-silent samples — a hole that was never repaired
+// shows up as hundreds of these in a row.
+uint32_t longest_quiet_run(const std::vector<float>& s) {
+  uint32_t run = 0;
+  uint32_t best = 0;
+  for (float v : s) {
+    run = (v > -1e-4f && v < 1e-4f) ? run + 1 : 0;
+    if (run > best) best = run;
+  }
+  return best;
+}
+
 }  // namespace
 
 TEST_CASE("JitterBuffer: buffers before it plays") {
@@ -235,9 +260,171 @@ TEST_CASE("JitterBuffer: a beat-time hole is concealed, not spliced") {
   (void)tx.next();  // this block never arrives
   jb.push(tx.next(), tx.data.data());
   CHECK(jb.concealed() == 1);
-  // The missing 512 frames (or the 20 ms cap) were written as a fade-to-zero
-  // so the two real blocks are not concatenated.
+  // The missing 512 frames (or the 100 ms cap) were written as a fade-to-zero
+  // at their timeline position, so the two real blocks are not concatenated.
   CHECK(jb.fill_frames() >= after_one + kSenderBlock + kSenderBlock);
+}
+
+TEST_CASE("JitterBuffer: a reordered packet lands in the hole it belongs in") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  // Output at the sender's rate so the pulled audio is the pushed sine.
+  jb.init(storage.data(), kRingFrames, kSenderRate);
+  jb.configure(10);
+
+  Sender tx;
+  Block a = take(tx);
+  Block b = take(tx);
+  Block c = take(tx);
+
+  jb.push(a.info, a.data.data());
+  jb.push(c.info, c.data.data());  // arrives early: a hole where b belongs
+  CHECK(jb.concealed() == 1);
+  CHECK(jb.fill_frames() == 3 * kSenderBlock);
+
+  jb.push(b.info, b.data.data());  // late, but its slot is still queued
+  CHECK(jb.fill_frames() == 3 * kSenderBlock);  // placed, not appended
+  CHECK(jb.dropped() == 0);
+
+  // Play the three blocks out: the hole was filled with the real audio,
+  // so there is no silent stretch anywhere.
+  std::vector<float> out;
+  std::vector<float> l(kOutBlock), r(kOutBlock);
+  for (int i = 0; i < 11; ++i) {
+    CHECK(jb.pull(kOutBlock, l.data(), r.data()) == kOutBlock);
+    out.insert(out.end(), l.begin(), l.end());
+  }
+  CHECK(longest_quiet_run(out) < 32);
+}
+
+TEST_CASE("JitterBuffer: a duplicate block is an idempotent overwrite") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(10);
+
+  Sender tx;
+  Block a = take(tx);
+  Block b = take(tx);
+  jb.push(a.info, a.data.data());
+  jb.push(b.info, b.data.data());
+  const uint32_t fill = jb.fill_frames();
+
+  jb.push(b.info, b.data.data());  // the network delivered it twice
+  CHECK(jb.fill_frames() == fill);
+  CHECK(jb.concealed() == 0);
+  CHECK(jb.dropped() == 0);
+}
+
+TEST_CASE("JitterBuffer: a block later than its playback deadline is dropped") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kSenderRate);
+  jb.configure(10);
+
+  Sender tx;
+  Block b1 = take(tx);
+  Block b2 = take(tx);
+  Block b3 = take(tx);
+  Block b4 = take(tx);
+  jb.push(b1.info, b1.data.data());
+  jb.push(b2.info, b2.data.data());
+  jb.push(b3.info, b3.data.data());
+  jb.push(b4.info, b4.data.data());
+
+  // Play well past b2's region.
+  std::vector<float> l(kOutBlock), r(kOutBlock);
+  for (int i = 0; i < 12; ++i) {
+    jb.pull(kOutBlock, l.data(), r.data());
+  }
+
+  const uint32_t fill = jb.fill_frames();
+  jb.push(b2.info, b2.data.data());  // whole block already played out
+  CHECK(jb.dropped() == kSenderBlock);
+  CHECK(jb.fill_frames() == fill);
+}
+
+TEST_CASE("JitterBuffer: a partially late block is clipped, not discarded") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kSenderRate);
+  jb.configure(60);
+
+  Sender tx;
+  std::vector<Block> blocks;
+  for (int i = 0; i < 6; ++i) {
+    blocks.push_back(take(tx));
+    jb.push(blocks.back().info, blocks.back().data.data());
+  }
+
+  // Consume so the read cursor sits inside block 3's region.
+  std::vector<float> l(kOutBlock), r(kOutBlock);
+  for (int i = 0; i < 6; ++i) {
+    jb.pull(kOutBlock, l.data(), r.data());
+  }
+
+  const uint32_t fill = jb.fill_frames();
+  jb.push(blocks[2].info, blocks[2].data.data());
+  // Its head was already played (dropped); its tail still had a slot.
+  CHECK(jb.dropped() > 0);
+  CHECK(jb.dropped() < kSenderBlock);
+  CHECK(jb.fill_frames() == fill);
+}
+
+TEST_CASE("JitterBuffer: a backward timeline jump appends, audio being "
+          "continuous across a loop wrap") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(10);
+
+  Sender tx;
+  for (int i = 0; i < 6; ++i) {
+    jb.push(tx.next(), tx.data.data());
+  }
+  const uint32_t fill = jb.fill_frames();
+
+  // The sender loops back near the top of the bar; its audio stream does
+  // not pause. Beats restart far behind the newest received beat.
+  Sender wrapped;
+  wrapped.beat_q32 = 20 * beats_per_frame_q32(kSenderRate);
+  jb.push(wrapped.next(), wrapped.data.data());
+  CHECK(jb.fill_frames() == fill + kSenderBlock);
+  CHECK(jb.concealed() == 0);
+  CHECK(jb.dropped() == 0);
+  // The beat anchor followed the jump.
+  CHECK(jb.newest_beat_q32() == wrapped.beat_q32);
+
+  jb.push(wrapped.next(), wrapped.data.data());  // and the stream carries on
+  CHECK(jb.fill_frames() == fill + 2 * kSenderBlock);
+  CHECK(jb.concealed() == 0);
+}
+
+TEST_CASE("JitterBuffer: a forward jump past the conceal cap re-anchors") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(10);
+
+  Sender tx;
+  jb.push(tx.next(), tx.data.data());
+
+  for (int i = 0; i < 100; ++i) {
+    (void)tx.next();  // ~1 s of beat time the receiver never sees
+  }
+  jb.push(tx.next(), tx.data.data());
+  CHECK(jb.concealed() == 1);
+  // The gap was capped, not buffered in full ...
+  CHECK(jb.fill_frames() ==
+        kSenderBlock + neon::JitterBuffer::kMaxConcealFrames + kSenderBlock);
+
+  // ... and the stream is re-anchored: the next in-order block extends it
+  // with no further concealment.
+  jb.push(tx.next(), tx.data.data());
+  CHECK(jb.concealed() == 1);
+  CHECK(jb.fill_frames() ==
+        kSenderBlock + neon::JitterBuffer::kMaxConcealFrames +
+        2 * kSenderBlock);
 }
 
 TEST_CASE("JitterBuffer: the jitter setting is clamped to something sane") {
