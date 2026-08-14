@@ -43,6 +43,7 @@ class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
 
   std::unique_ptr<neon::plugin::DeviceController> controller_;
   juce::String pending_host_;
+  juce::String pending_ip_;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeonLinkProcessor)
 };

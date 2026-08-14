@@ -46,6 +46,15 @@ void DeviceController::bind(const std::string& host_or_ip) {
   post(std::move(c));
 }
 
+void DeviceController::hintIp(const std::string& ip) {
+  if (!neon::client::is_ipv4_literal(ip)) {
+    return;
+  }
+  const std::lock_guard<std::mutex> g(mu_);
+  bind_.ip = ip;
+  client_.setTarget(bind_.ip.c_str(), 80);
+}
+
 void DeviceController::transport(neon::client::TransportOp op) {
   Cmd c;
   c.kind = Kind::Transport;
@@ -167,8 +176,14 @@ void DeviceController::apply_bind(const std::string& raw) {
   bind_.connect_host = bound_by_ip_ ? t : neon::client::mdns_host(t);
   bind_.device_name = bound_by_ip_ ? bind_.device_name
                                    : neon::client::dns_label(t);
-  if (!bound_by_ip_) bind_.ip.clear();
-  client_.setTarget(bind_.connect_host.c_str(), 80);
+  if (bound_by_ip_) {
+    bind_.ip = t;
+  }
+  // Keep a previous IPv4 across a .local re-bind. Clearing it forced
+  // getaddrinfo("neon-link.local"), which is what Bind "did nothing".
+  const char* target =
+      !bind_.ip.empty() ? bind_.ip.c_str() : bind_.connect_host.c_str();
+  client_.setTarget(target, 80);
   http_.close();
   have_config_ = false;
   last_status_rev_ = 0;
@@ -444,8 +459,10 @@ void DeviceController::run() {
         s.bind = bind_;
         s.reach = reach;
         s.banner = reach == Reachability::Reconnecting
-                       ? "Lost the module — retrying."
-                       : "Looking for " + bind_.connect_host;
+                       ? "Lost the module — retrying over HTTP (Link peers are not the VST)."
+                       : "Looking for " +
+                             (bind_.ip.empty() ? bind_.connect_host : bind_.ip) +
+                             " over HTTP — Bind is not Ableton Link.";
         publish(std::move(s));
 
         if (ever_online && !bind_.ip.empty() &&

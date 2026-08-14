@@ -25,6 +25,9 @@ class DeviceController : public juce::Thread {
   void requestStop();
 
   void bind(const std::string& host_or_ip);
+  // Last-good IPv4 from a previous session. Used so Bind on
+  // neon-link.local does not have to win mDNS while Link Audio is up.
+  void hintIp(const std::string& ip);
   void transport(neon::client::TransportOp);
   void tempoOp(neon::client::TempoOp, int delta = 1);
   void setTempo(double bpm);

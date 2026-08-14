@@ -28,6 +28,11 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
   brand_.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold))
                      .withExtraKerningFactor(0.14f));
   addAndMakeVisible(brand_);
+  vstVer_.setText("vst " JucePlugin_VersionString, juce::dontSendNotification);
+  vstVer_.setColour(juce::Label::textColourId, neon::ui::muted());
+  vstVer_.setFont(juce::Font(juce::FontOptions(12.0f)));
+  vstVer_.setJustificationType(juce::Justification::centredLeft);
+  addAndMakeVisible(vstVer_);
 
   neon::ui::styleChip(reach_, neon::ui::danger(), neon::ui::surface());
   neon::ui::styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
@@ -44,8 +49,10 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
   addAndMakeVisible(hostField_);
   neon::ui::styleBtn(bind_, false);
   bind_.onClick = [this] {
-    send([this](neon::plugin::DeviceController& c) {
-      c.bind(hostField_.getText().toStdString());
+    processor_.ensureControllerStarted();
+    const auto typed = hostField_.getText().trim();
+    send([typed](neon::plugin::DeviceController& c) {
+      c.bind(typed.toStdString());
     });
     have_draft_ = false;
     dirty_ = false;
@@ -105,7 +112,10 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
   if (auto* c = processor_.controller()) {
     c->setEditorOpen(true);
     const auto b = c->bind_state();
-    if (!b.connect_host.empty()) hostField_.setText(b.connect_host);
+    if (!b.ip.empty())
+      hostField_.setText(b.ip);
+    else if (!b.connect_host.empty())
+      hostField_.setText(b.connect_host);
   }
 
   last_tick_ms_ = juce::Time::getMillisecondCounterHiRes();
@@ -235,7 +245,8 @@ void NeonLinkEditor::paint(juce::Graphics& g) {
 void NeonLinkEditor::resized() {
   auto r = getLocalBounds().reduced(16);
   auto top = r.removeFromTop(28);
-  brand_.setBounds(top.removeFromLeft(160));
+  brand_.setBounds(top.removeFromLeft(130));
+  vstVer_.setBounds(top.removeFromLeft(72));
   reach_.setBounds(top.removeFromRight(110).reduced(2, 2));
   chipNet_.setBounds(top.removeFromRight(72).reduced(2, 2));
   chipTransport_.setBounds(top.removeFromRight(56).reduced(2, 2));
@@ -382,13 +393,14 @@ void NeonLinkEditor::refreshFromSnapshot() {
   }
 
   banner_.setText(snap->banner, juce::dontSendNotification);
+  const juce::String vst = "vst " JucePlugin_VersionString;
   if (online) {
-    stats_.setText("fw " + juce::String(st.firmware) + "   late " +
+    stats_.setText(vst + "   fw " + juce::String(st.firmware) + "   late " +
                        juce::String(static_cast<int>(st.pulse.late_max_us)) + " us   " +
                        snap->bind.connect_host,
                    juce::dontSendNotification);
   } else {
-    stats_.setText("bind " + juce::String(snap->bind.connect_host),
+    stats_.setText(vst + "   bind " + juce::String(snap->bind.connect_host),
                    juce::dontSendNotification);
   }
 

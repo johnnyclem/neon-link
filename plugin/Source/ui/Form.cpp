@@ -198,19 +198,81 @@ void TextField::textEditorFocusLost(juce::TextEditor&) {
   if (onChange) onChange(edit_.getText());
 }
 
+// In-editor list. No juce::PopupMenu / ComboBox — those open a desktop
+// window and Live's event loop never comes back.
+class SelectField::ListOverlay : public juce::Component {
+ public:
+  ListOverlay(SelectField& owner, const std::vector<Option>& options, int selected)
+      : owner_(owner) {
+    setInterceptsMouseClicks(true, true);
+    for (const auto& o : options) {
+      auto* b = items_.add(new juce::TextButton(o.label));
+      styleBtn(*b, o.id == selected);
+      const int id = o.id;
+      b->onClick = [this, id] { owner_.choose(id); };
+      addAndMakeVisible(b);
+    }
+  }
+
+  void mouseDown(const juce::MouseEvent& e) override {
+    if (!panel_.contains(e.getPosition())) {
+      owner_.hideList();
+    }
+  }
+
+  void paint(juce::Graphics& g) override {
+    g.fillAll(juce::Colours::black.withAlpha(0.25f));
+    g.setColour(surface2());
+    g.fillRect(panel_);
+    g.setColour(neon());
+    g.drawRect(panel_, 1);
+  }
+
+  void resized() override {
+    constexpr int kRow = 28;
+    const int n = items_.size();
+    const int h = juce::jmax(kRow, n * kRow);
+    const int w = juce::jmax(160, getWidth() / 3);
+    int x = target_.getX();
+    int y = target_.getBottom();
+    if (y + h > getHeight()) {
+      y = juce::jmax(0, target_.getY() - h);
+    }
+    if (x + w > getWidth()) {
+      x = juce::jmax(0, getWidth() - w);
+    }
+    panel_ = {x, y, w, h};
+    auto r = panel_;
+    for (auto* b : items_) {
+      b->setBounds(r.removeFromTop(kRow).reduced(1));
+    }
+  }
+
+  void setTarget(juce::Rectangle<int> r) {
+    target_ = r;
+    resized();
+  }
+
+ private:
+  SelectField& owner_;
+  juce::OwnedArray<juce::TextButton> items_;
+  juce::Rectangle<int> target_;
+  juce::Rectangle<int> panel_;
+};
+
 SelectField::SelectField() {
   label_.setColour(juce::Label::textColourId, muted());
   label_.setFont(labelFont());
   addAndMakeVisible(label_);
-  styleCombo(box_);
-  box_.onChange = [this] {
-    if (onChange) onChange(box_.getSelectedId());
-  };
-  addAndMakeVisible(box_);
+  styleBtn(btn_, false);
+  btn_.onClick = [this] { toggleList(); };
+  addAndMakeVisible(btn_);
   hint_.setColour(juce::Label::textColourId, muted());
   hint_.setFont(juce::Font(juce::FontOptions(11.0f)));
   addAndMakeVisible(hint_);
 }
+
+SelectField::~SelectField() { hideList(); }
 
 void SelectField::set(const juce::String& lab, int selectedId,
                       const std::vector<Option>& options,
@@ -218,14 +280,20 @@ void SelectField::set(const juce::String& lab, int selectedId,
   label_.setText(lab, juce::dontSendNotification);
   hint_.setText(hint, juce::dontSendNotification);
   hint_.setVisible(hint.isNotEmpty());
-  box_.clear(juce::dontSendNotification);
-  for (const auto& o : options) box_.addItem(o.label, o.id);
-  box_.setSelectedId(selectedId, juce::dontSendNotification);
+  options_ = options;
+  setSelected(selectedId);
 }
 
 void SelectField::setSelected(int id) {
-  if (box_.getSelectedId() == id) return;
-  box_.setSelectedId(id, juce::dontSendNotification);
+  selected_ = id;
+  juce::String lab = "—";
+  for (const auto& o : options_) {
+    if (o.id == id) {
+      lab = o.label;
+      break;
+    }
+  }
+  btn_.setButtonText(lab);
 }
 
 void SelectField::resized() {
@@ -234,7 +302,61 @@ void SelectField::resized() {
   if (hint_.isVisible()) {
     hint_.setBounds(r.removeFromBottom(14));
   }
-  box_.setBounds(r);
+  btn_.setBounds(r);
+  if (listOpen()) {
+    layoutList();
+  }
+}
+
+void SelectField::parentHierarchyChanged() {
+  if (getTopLevelComponent() == nullptr) {
+    hideList();
+  }
+}
+
+void SelectField::toggleList() {
+  if (listOpen()) {
+    hideList();
+    return;
+  }
+  auto* top = getTopLevelComponent();
+  if (top == nullptr || options_.empty()) {
+    return;
+  }
+  list_ = std::make_unique<ListOverlay>(*this, options_, selected_);
+  top->addAndMakeVisible(*list_);
+  list_->toFront(false);
+  layoutList();
+}
+
+void SelectField::hideList() {
+  if (list_ == nullptr) {
+    return;
+  }
+  if (auto* p = list_->getParentComponent()) {
+    p->removeChildComponent(list_.get());
+  }
+  list_.reset();
+}
+
+void SelectField::choose(int id) {
+  hideList();
+  if (id == selected_) {
+    return;
+  }
+  setSelected(id);
+  if (onChange) {
+    onChange(id);
+  }
+}
+
+void SelectField::layoutList() {
+  auto* top = getTopLevelComponent();
+  if (top == nullptr || list_ == nullptr) {
+    return;
+  }
+  list_->setBounds(top->getLocalBounds());
+  list_->setTarget(top->getLocalArea(this, btn_.getBounds()));
 }
 
 Readout::Readout() {

@@ -1,13 +1,16 @@
 #include "neon/client/http.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifndef _WIN32
@@ -182,6 +185,63 @@ bool wait_fd(int fd, short events, int timeout_ms) {
   return r > 0 && (p.revents & events) != 0;
 }
 
+bool looks_ipv4(const char* host);
+
+// Bound mDNS. A stuck getaddrinfo on *.local is what made Bind look
+// dead and Save hang the VST — the name server never answers while
+// Link Audio owns the radio. The resolver thread is detached on
+// timeout; Job frees the result if it lands later.
+bool resolve_addrs(const char* host, const char* port, addrinfo** out,
+                   int timeout_ms) {
+  if (out == nullptr || host == nullptr) {
+    return false;
+  }
+  *out = nullptr;
+  if (looks_ipv4(host)) {
+    addrinfo hints{};
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_INET;
+    hints.ai_flags = AI_NUMERICHOST;
+    return getaddrinfo(host, port, &hints, out) == 0 && *out != nullptr;
+  }
+  struct Job {
+    std::string host;
+    std::string port;
+    addrinfo* res = nullptr;
+    int err = EAI_FAIL;
+    std::atomic<bool> done{false};
+    ~Job() {
+      if (res != nullptr) {
+        freeaddrinfo(res);
+      }
+    }
+  };
+  auto job = std::make_shared<Job>();
+  job->host = host;
+  job->port = port != nullptr ? port : "80";
+  std::thread([job] {
+    addrinfo hints{};
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_INET;
+    job->err = getaddrinfo(job->host.c_str(), job->port.c_str(), &hints,
+                           &job->res);
+    job->done.store(true, std::memory_order_release);
+  }).detach();
+  const int64_t deadline = now_ms() + (timeout_ms > 0 ? timeout_ms : 400);
+  while (!job->done.load(std::memory_order_acquire) && now_ms() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  if (!job->done.load(std::memory_order_acquire)) {
+    return false;
+  }
+  if (job->err != 0 || job->res == nullptr) {
+    return false;
+  }
+  *out = job->res;
+  job->res = nullptr;
+  return true;
+}
+
 bool looks_ipv4(const char* host) {
   if (host == nullptr || host[0] == '\0') {
     return false;
@@ -244,22 +304,18 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
       out.error = "connect timeout";
       return out;
     }
-    addrinfo hints{};
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_UNSPEC;
-    // Numeric hosts skip mDNS. neon-link.local under a Link Audio flood
-    // is the hang: getaddrinfo waits on a name that the module is too
-    // busy to answer.
-    if (looks_ipv4(host)) {
-      hints.ai_family = AF_INET;
-      hints.ai_flags = AI_NUMERICHOST;
-    }
     addrinfo* res = nullptr;
     const std::string port_s = std::to_string(port);
-    const int gerr = getaddrinfo(host, port_s.c_str(), &hints, &res);
-    if (gerr != 0 || res == nullptr) {
+    // Cap name lookup so Bind cannot stall the HTTP thread. Numeric
+    // hosts skip this entirely (AI_NUMERICHOST inside resolve_addrs).
+    const int name_budget = remain_ms(deadline);
+    const int name_ms = looks_ipv4(host) ? name_budget
+                                         : (name_budget < 400 ? name_budget : 400);
+    if (!resolve_addrs(host, port_s.c_str(), &res, name_ms) || res == nullptr) {
       out.connect_failed = true;
-      out.error = gerr != 0 ? gai_strerror(gerr) : "getaddrinfo empty";
+      out.timed_out = !looks_ipv4(host);
+      out.error = looks_ipv4(host) ? "connect failed"
+                                   : "name lookup timed out — use the module IP";
       return out;
     }
     std::vector<addrinfo*> order;

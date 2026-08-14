@@ -15,18 +15,21 @@ NeonLinkProcessor::~NeonLinkProcessor() {
 }
 
 void NeonLinkProcessor::ensureControllerStarted() {
-  if (controller_ != nullptr || isTimerRunning()) return;
-  startTimer(250);
-}
-
-void NeonLinkProcessor::timerCallback() {
-  stopTimer();
   if (controller_ != nullptr) return;
+  stopTimer();
   controller_ = std::make_unique<neon::plugin::DeviceController>();
+  if (pending_ip_.isNotEmpty()) {
+    controller_->hintIp(pending_ip_.toStdString());
+  }
   if (pending_host_.isNotEmpty()) {
     controller_->bind(pending_host_.toStdString());
   }
   controller_->startThread();
+}
+
+void NeonLinkProcessor::timerCallback() {
+  stopTimer();
+  ensureControllerStarted();
 }
 
 bool NeonLinkProcessor::isBusesLayoutSupported(
@@ -59,13 +62,17 @@ void NeonLinkProcessor::getStateInformation(juce::MemoryBlock& dest) {
   auto xml = std::make_unique<juce::XmlElement>("NEONLINK");
   xml->setAttribute("state_version", 1);
   juce::String host = "neon-link.local";
+  juce::String ip;
   if (controller_) {
     const auto b = controller_->bind_state();
     if (!b.connect_host.empty()) host = b.connect_host;
-  } else if (pending_host_.isNotEmpty()) {
-    host = pending_host_;
+    if (!b.ip.empty()) ip = b.ip;
+  } else {
+    if (pending_host_.isNotEmpty()) host = pending_host_;
+    ip = pending_ip_;
   }
   xml->setAttribute("host", host);
+  if (ip.isNotEmpty()) xml->setAttribute("ip", ip);
   copyXmlToBinary(*xml, dest);
 }
 
@@ -73,7 +80,11 @@ void NeonLinkProcessor::setStateInformation(const void* data, int size) {
   auto xml = getXmlFromBinary(data, size);
   if (xml == nullptr || !xml->hasTagName("NEONLINK")) return;
   pending_host_ = xml->getStringAttribute("host", "neon-link.local");
-  if (controller_) controller_->bind(pending_host_.toStdString());
+  pending_ip_ = xml->getStringAttribute("ip");
+  if (controller_) {
+    if (pending_ip_.isNotEmpty()) controller_->hintIp(pending_ip_.toStdString());
+    controller_->bind(pending_host_.toStdString());
+  }
 }
 
 juce::AudioProcessorEditor* NeonLinkProcessor::createEditor() {

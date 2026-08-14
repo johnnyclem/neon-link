@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,21 @@ namespace neon::ui {
 class NeonLookAndFeel : public juce::LookAndFeel_V4 {
  public:
   NeonLookAndFeel();
+
+  // Live (and some other hosts) deadlock if a ComboBox popup is a new
+  // desktop window. Keep the menu inside the editor peer.
+  juce::Component* getParentComponentForMenuOptions(
+      const juce::PopupMenu::Options& options) override {
+    if (auto* target = options.getTargetComponent()) {
+      if (auto* top = target->getTopLevelComponent()) {
+        return top;
+      }
+    }
+    if (auto* parent = options.getParentComponent()) {
+      return parent;
+    }
+    return juce::LookAndFeel_V4::getParentComponentForMenuOptions(options);
+  }
 };
 
 void styleChip(juce::Label&, juce::Colour fg, juce::Colour bg);
@@ -95,16 +111,29 @@ class SelectField : public juce::Component {
   std::function<void(int)> onChange;
 
   SelectField();
+  ~SelectField() override;
   void set(const juce::String& label, int selectedId,
            const std::vector<Option>& options,
            const juce::String& hint = {});
   void setSelected(int id);
   void resized() override;
+  void parentHierarchyChanged() override;
 
  private:
+  void toggleList();
+  void hideList();
+  void choose(int id);
+  void layoutList();
+  bool listOpen() const { return list_ != nullptr; }
+
+  class ListOverlay;
+
   juce::Label label_;
-  juce::ComboBox box_;
+  juce::TextButton btn_{"—"};
   juce::Label hint_;
+  std::vector<Option> options_;
+  int selected_ = 0;
+  std::unique_ptr<ListOverlay> list_;
 };
 
 class Readout : public juce::Component {

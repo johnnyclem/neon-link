@@ -38,6 +38,7 @@ class NeonLinkEditor : public juce::AudioProcessorEditor, private juce::Timer {
   uint32_t last_save_seq_ = 0;
 
   juce::Label brand_;
+  juce::Label vstVer_;
   juce::Label reach_;
   juce::Label chipSource_;
   juce::Label chipTransport_;
