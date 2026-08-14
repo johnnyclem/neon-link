@@ -133,6 +133,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
 | **[docs/AUDIOLINK.md](docs/AUDIOLINK.md)** | Software / Firmware | **AudioLink design spec** — Link 4.0 upgrade, sample-accurate audio engine on the AMYboard codec (metronome, pulses-as-audio, AMY synth), and Link Audio streaming to/from Live 12.4 |
 | **[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)** | Everyone | Row-by-row audit against the Circuit Happy ML:2m and Missing Link Junior manuals |
+| **[docs/TEENSY41.md](docs/TEENSY41.md)** | Hardware / Firmware | Teensy 4.1 build target — 2.8" SPI colour touchscreen (ILI9341 + XPT2046), two rotary encoders, 16 MB PSRAM; wiring, PlatformIO build, and porting status |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
 | **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
@@ -236,6 +237,20 @@ Host unit tests (no ESP-IDF):
 ```bash
 cmake -S host -B build-host -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-host -j && ctest --test-dir build-host --output-on-failure
+```
+
+### Run on Teensy 4.1 (touchscreen build)
+
+The portable core also builds for a PJRC **Teensy 4.1** (16 MB PSRAM)
+with a 2.8" SPI colour touchscreen and two rotary encoders — a
+standalone-clock bring-up target today, with Link over the Teensy's
+native Ethernet as the tracked follow-up. See
+**[docs/TEENSY41.md](docs/TEENSY41.md)** for wiring and details.
+
+```bash
+pip install platformio
+cd teensy41
+pio run -t upload && pio device monitor
 ```
 
 **Hardware Engineer**  

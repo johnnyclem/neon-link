@@ -141,6 +141,28 @@ jobs:
             exit 1
           fi
 
+  teensy41-build:
+    name: Teensy 4.1 build (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-teensy41-${{ hashFiles('teensy41/platformio.ini') }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PlatformIO
+        run: pip install platformio
+      # Compiles the same neon_core sources as the host and ESP-IDF jobs,
+      # but with the arm-none-eabi toolchain and the Arduino glue in
+      # teensy41/src — catches target-only breakage (docs/TEENSY41.md).
+      - name: Build firmware
+        run: pio run -d teensy41
+
   plugin-macos:
     name: Plugin (macOS VST3)
     runs-on: macos-latest
