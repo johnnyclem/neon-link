@@ -337,14 +337,9 @@ void DeviceController::run() {
             // lasted forever. Surface the timeout and stop.
             msg = put.error.empty() ? "Save timed out." : put.error;
           } else {
-            auto fallback = client_.getConfig(&sec);
-            if (fallback.ok) {
-              applied = fallback.value;
-              ok = true;
-              msg = "Saved.";
-            } else {
-              msg = put.error.empty() ? "Could not save." : put.error;
-            }
+            // Do not GET after a failed PUT. The previous fallback hung
+            // Live when the module was busy and looked like a crash.
+            msg = put.error.empty() ? "Could not save." : put.error;
           }
           {
             const std::lock_guard<std::mutex> g(mu_);

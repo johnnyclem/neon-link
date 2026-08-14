@@ -142,26 +142,31 @@ void NeonLinkEditor::patch(std::function<void(neon::Config&)> fn) {
   dirty_ = true;
   saveMsg_.setText("Unsaved changes", juce::dontSendNotification);
   saveMsg_.setColour(juce::Label::textColourId, neon::ui::yellow());
-  if (tab_ == 1) outputs_.load(draft_);
-  else if (tab_ == 2) {
-    if (auto* c = processor_.controller()) {
-      auto snap = c->snapshot();
-      if (snap) network_.load(draft_, *snap);
+  // Reload on the next turn of the message loop. Doing it here re-enters
+  // TextEditor::focusLost / a SelectField click and used to delete
+  // widgets while JUCE was still on their stack.
+  juce::Component::SafePointer<NeonLinkEditor> self(this);
+  juce::MessageManager::callAsync([self] {
+    if (self == nullptr || !self->have_draft_) return;
+    if (self->tab_ == 1)
+      self->outputs_.load(self->draft_);
+    else if (self->tab_ == 2) {
+      if (auto* c = self->processor_.controller()) {
+        if (auto snap = c->snapshot()) self->network_.load(self->draft_, *snap);
+      }
+    } else if (self->tab_ == 3)
+      self->midi_.load(self->draft_);
+    else if (self->tab_ == 4) {
+      if (auto* c = self->processor_.controller()) {
+        if (auto snap = c->snapshot()) self->audio_.load(self->draft_, *snap);
+      }
+    } else if (self->tab_ == 5) {
+      if (auto* c = self->processor_.controller()) {
+        if (auto snap = c->snapshot()) self->system_.load(self->draft_, *snap);
+      }
     }
-  } else if (tab_ == 3)
-    midi_.load(draft_);
-  else if (tab_ == 4) {
-    if (auto* c = processor_.controller()) {
-      auto snap = c->snapshot();
-      if (snap) audio_.load(draft_, *snap);
-    }
-  } else if (tab_ == 5) {
-    if (auto* c = processor_.controller()) {
-      auto snap = c->snapshot();
-      if (snap) system_.load(draft_, *snap);
-    }
-  }
-  relayoutPage();
+    self->relayoutPage();
+  });
 }
 
 void NeonLinkEditor::adoptConfig(const neon::plugin::Snapshot& snap) {

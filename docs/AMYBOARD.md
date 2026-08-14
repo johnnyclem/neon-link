@@ -48,14 +48,13 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" bui
 
 # Flash (if auto-reset fails: hold BOOT+RST, release RST then BOOT)
 ./scripts/flash_amyboard.sh
-# or:
-python -m esptool --chip esp32s3 -p /dev/cu.usbmodem* -b 115200 \
-  --before default_reset --after no_reset write_flash \
-  --flash_mode dio --flash_freq 80m --flash_size 16MB \
-  0x0 build/bootloader/bootloader.bin \
-  0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/neon_link.bin
-# Then press RST once (not BOOT) to leave download mode and run the app.
+# That script is the only supported USB flash path. It forces the 16 MB
+# AMYboard table and writes the app to both OTA slots. `idf.py flash`
+# used to program only ota_0; a reboot then rolled back onto empty
+# ota_1 — blank OLED, two pixels lit. Do not flash the app at 0x10000
+# (that is the old factory offset; this table's ota_0 is 0x20000).
+# Then press RST once (not BOOT) if the panel stays dark after the
+# script's boot check.
 ```
 
 **USB Serial note:** Opening the port can leave the chip in ROM download mode

@@ -1,5 +1,7 @@
 #include "Form.h"
 
+#include <juce_events/juce_events.h>
+
 namespace neon::ui {
 namespace {
 
@@ -336,7 +338,16 @@ void SelectField::hideList() {
   if (auto* p = list_->getParentComponent()) {
     p->removeChildComponent(list_.get());
   }
-  list_.reset();
+  // Never delete the overlay from its own mouseDown / button click —
+  // that is a use-after-free and is how 0.2.1 crashed Live when a
+  // setting was chosen or Save was clicked with the list open.
+  struct Killer : juce::CallbackMessage {
+    std::unique_ptr<ListOverlay> dying;
+    void messageCallback() override { dying.reset(); }
+  };
+  auto* k = new Killer;
+  k->dying = std::move(list_);
+  k->post();
 }
 
 void SelectField::choose(int id) {

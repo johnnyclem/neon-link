@@ -224,13 +224,17 @@ git submodule update --init --recursive
 . ~/esp/esp-idf-v5.3.2/export.sh          # ESP-IDF v5.3.2
 idf.py set-target esp32s3
 idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" build
-idf.py -p /dev/cu.usbmodem* erase-flash flash monitor
+./scripts/flash_amyboard.sh
 ```
 
-> The partition table now carries two OTA app slots so firmware can be
-> updated from the web editor. The first flash after that change needs
-> `erase-flash`; afterwards, `idf.py flash` — or the editor's **INSTALL
-> UPDATE** button — is enough.
+> USB flash must write **both** OTA slots. The helper does that and
+> refuses to run against the 8 MB table. Bare `idf.py flash` now mirrors
+> `ota_1` as well (see the top-level `CMakeLists.txt`), but still use
+> the script on AMYboard so the 16 MB table is actually in `sdkconfig`
+> — `-DSDKCONFIG_DEFAULTS` is ignored when `sdkconfig` already exists.
+> First flash after a partition-table change: `idf.py erase-flash`, then
+> the script. After that, the script or the editor's **INSTALL UPDATE**
+> button is enough.
 
 Host unit tests (no ESP-IDF):
 

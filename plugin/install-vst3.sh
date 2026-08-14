@@ -3,7 +3,11 @@
 # Quit Ableton Live first or it will keep the old binary in memory.
 
 set -e
-SRC="/Users/johnnyclem/Desktop/Repos/tulipcc/neon-link/build-plugin/NeonLink_artefacts/Debug/VST3/NEON LINK.vst3"
+# Prefer Release. The Debug binary asserts and aborts Live.
+SRC="/Users/johnnyclem/Desktop/Repos/tulipcc/neon-link/build-plugin-rel/NeonLink_artefacts/Release/VST3/NEON LINK.vst3"
+if [[ ! -d "$SRC" ]]; then
+  SRC="/Users/johnnyclem/Desktop/Repos/tulipcc/neon-link/build-plugin/NeonLink_artefacts/Release/VST3/NEON LINK.vst3"
+fi
 DEST="$HOME/Library/Audio/Plug-Ins/VST3/NEON LINK.vst3"
 
 if [[ ! -d "$SRC" ]]; then
