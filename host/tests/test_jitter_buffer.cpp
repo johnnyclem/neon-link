@@ -297,6 +297,59 @@ TEST_CASE("JitterBuffer: a reordered packet lands in the hole it belongs in") {
   CHECK(longest_quiet_run(out) < 32);
 }
 
+TEST_CASE("JitterBuffer: a block stamped at beat zero is placed, not "
+          "mistaken for an unstamped one") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kSenderRate);
+  jb.configure(10);
+
+  // A sender counting in: the block before the downbeat spans [-512, 0)
+  // in frames, so the next one begins at exactly beat 0.
+  Sender tx;
+  tx.beat_q32 = -512 * beats_per_frame_q32(kSenderRate);
+  Block a = take(tx);
+  Block b = take(tx);  // begin_beat_q32 == 0
+  CHECK(b.info.begin_beat_q32 == 0);
+  Block c = take(tx);
+
+  jb.push(a.info, a.data.data());
+  jb.push(c.info, c.data.data());  // hole where b belongs
+  CHECK(jb.concealed() == 1);
+  CHECK(jb.fill_frames() == 3 * kSenderBlock);
+
+  // The late block's beat-0 stamp must still count as a stamp: it drops
+  // into its hole instead of being appended at the end.
+  jb.push(b.info, b.data.data());
+  CHECK(jb.fill_frames() == 3 * kSenderBlock);
+  CHECK(jb.dropped() == 0);
+}
+
+TEST_CASE("JitterBuffer: an unstamped block appends and leaves the beat "
+          "anchor alone") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(10);
+
+  Sender tx;
+  for (int i = 0; i < 2; ++i) {
+    jb.push(tx.next(), tx.data.data());
+  }
+  const int64_t anchor = jb.newest_beat_q32();
+  const uint32_t fill = jb.fill_frames();
+
+  neon::AudioBlockInfo info;  // begin/end default to kInvalidBeatQ32
+  info.frames = kSenderBlock;
+  info.sample_rate = kSenderRate;
+  info.channels = 2;
+  std::vector<int16_t> silence(kSenderBlock * 2, 0);
+  jb.push(info, silence.data());
+  CHECK(jb.fill_frames() == fill + kSenderBlock);
+  CHECK(jb.newest_beat_q32() == anchor);
+  CHECK(jb.concealed() == 0);
+}
+
 TEST_CASE("JitterBuffer: a duplicate block is an idempotent overwrite") {
   std::vector<int16_t> storage(kRingFrames * 2);
   neon::JitterBuffer jb;

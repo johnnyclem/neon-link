@@ -2,10 +2,10 @@
 
 // I2S audio for the AMYboard's PCM3060 LINE codec.
 //
-// The PCM3060 is an I2S slave that wants 32-bit left-justified slots and
-// a 256fs MCLK. The portable engine still hands us interleaved stereo
-// int16; the driver packs each sample into the top 16 bits of a 32-bit
-// slot on the way out.
+// The PCM3060 is an I2S slave: 32-bit slots, Philips framing, 256fs MCLK.
+// The portable engine still hands us interleaved stereo int16; the driver
+// packs each sample into the top 16 bits of a 32-bit slot on the way out
+// (and the driver's data width is 32-bit to match — see start()).
 //
 // Duplex is optional and off by default. A TX+RX DMA ring (16 × 256 ×
 // 32-bit stereo × 2) ate ~64 kB of internal RAM and the chip rebooted as
@@ -54,6 +54,10 @@ class I2sAudio : public hal::IAudioIo {
   void on_dma_sent(uint32_t bytes);
 
  private:
+  // Non-consuming seqlock read of the ISR's cumulative-frames mark (0 when
+  // contended), used to re-anchor frames_written_ after DMA starvation.
+  uint64_t mark_frames_snapshot() const;
+
   I2sPins pins_{};
   hal::AudioIoConfig cfg_{};
   bool running_ = false;

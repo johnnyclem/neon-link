@@ -70,12 +70,15 @@ class Context
           mpService->get_executor()))
     {
       // Prio 2 lost to HTTP/OLED on core 0 and Link Audio packets
-      // arrived late enough that the play ring bled ~40 ms/s.
+      // arrived late enough that the play ring bled ~40 ms/s. 12 puts the
+      // timing protocol (discovery, ping/pong, tempo) above the Link Audio
+      // pump (9) and the timeline poll (10): when the network is busy,
+      // keeping the clock right must win over shipping audio.
       xTaskCreatePinnedToCore(run,
                               "link",
                               16384,
                               this,
-                              8 | portPRIVILEGE_BIT,
+                              12 | portPRIVILEGE_BIT,
                               &mTaskHandle,
                               LINK_ESP_TASK_CORE_ID);
     }

@@ -138,17 +138,26 @@ TEST_CASE("sanitize normalizes the device name in place") {
   CHECK(std::string(cfg.device_name) == "studio-b");
 }
 
-TEST_CASE("an AP password shorter than WPA2 allows leaves the network open") {
+TEST_CASE("the AP requires a password out of the box") {
+  neon::Config cfg;
+  CHECK(cfg.ap_require_pass == 1);
+  CHECK(std::string(cfg.ap_pass) == neon::kDefaultApPass);
+}
+
+TEST_CASE("an AP password shorter than WPA2 allows fails closed") {
   neon::Config cfg;
   cfg.ap_require_pass = 1;
   std::strcpy(cfg.ap_pass, "short");
   neon::config_sanitize(&cfg);
-  CHECK(cfg.ap_require_pass == 0);
+  // The network stays secured; the unusable key is replaced, not obeyed.
+  CHECK(cfg.ap_require_pass == 1);
+  CHECK(std::string(cfg.ap_pass) == neon::kDefaultApPass);
 
   std::strcpy(cfg.ap_pass, "longenough");
   cfg.ap_require_pass = 1;
   neon::config_sanitize(&cfg);
   CHECK(cfg.ap_require_pass == 1);
+  CHECK(std::string(cfg.ap_pass) == "longenough");
 }
 
 TEST_CASE("an empty WiFi slot never keeps a stale password") {

@@ -74,6 +74,91 @@ bool wifi_identity_changed(const neon::Config& a, const neon::Config& b) {
 
 esp_err_t send_ok(httpd_req_t* req) { return send_json(req, "{\"ok\":true}"); }
 
+// --- request origin validation ------------------------------------------
+//
+// The API changes device state (and /api/ota rewrites the firmware), and
+// it is called from a browser, so it inherits the browser threat model:
+// any web page the user has open on any site can fire POSTs at LAN
+// addresses (CSRF), and a page on an attacker-controlled DNS name can be
+// re-bound to this device's IP and then read and write as if it were
+// same-origin (DNS rebinding). Neither attack can forge the two headers
+// checked here:
+//   - Host must name this device: an IP literal (the client connected by
+//     address, no DNS to poison) or "<device_name>.local". A rebound
+//     request arrives carrying the attacker's hostname instead.
+//   - Origin, when the browser sends one, must name this device too: a
+//     cross-site fetch() or form POST carries the attacking page's origin
+//     and the browser will not let the page suppress it.
+// Non-browser clients (the plugin editor, curl) send no Origin and pass.
+
+bool is_ipv4_literal(const char* s) {
+  if (*s == '\0') {
+    return false;
+  }
+  for (const char* p = s; *p != '\0'; ++p) {
+    if ((*p < '0' || *p > '9') && *p != '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+// `host` is an authority without scheme: name or IP, optional ":port".
+bool host_names_this_device(const char* host) {
+  char name[80] = {};
+  size_t n = 0;
+  for (const char* p = host; *p != '\0' && *p != ':' && n + 1 < sizeof(name);
+       ++p) {
+    // Hostnames are case-insensitive; fold here so one compare suffices.
+    name[n++] = (*p >= 'A' && *p <= 'Z') ? static_cast<char>(*p + 32) : *p;
+  }
+  if (n == 0 || n + 1 >= sizeof(name)) {
+    return false;  // empty, or long enough to have been truncated
+  }
+  if (is_ipv4_literal(name)) {
+    return true;
+  }
+  char expected[sizeof(neon::Config::device_name) + 8] = {};
+  std::snprintf(expected, sizeof(expected), "%s.local",
+                neon_config().device_name);
+  return std::strcmp(name, expected) == 0;
+}
+
+// True when the request may act on this device; otherwise a 403 has been
+// sent and the handler must return without doing anything.
+bool check_local_origin(httpd_req_t* req) {
+  char host[96] = {};
+  if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK ||
+      !host_names_this_device(host)) {
+    httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "bad Host header");
+    return false;
+  }
+  char origin[128] = {};
+  if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) ==
+      ESP_OK) {
+    const char* p = origin;
+    if (std::strncmp(p, "http://", 7) == 0) {
+      p += 7;
+    } else if (std::strncmp(p, "https://", 8) == 0) {
+      p += 8;
+    } else {
+      // "null" (sandboxed frame, file://) or an unknown scheme.
+      httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "cross-origin request");
+      return false;
+    }
+    char authority[96] = {};
+    size_t n = 0;
+    for (; *p != '\0' && *p != '/' && n + 1 < sizeof(authority); ++p) {
+      authority[n++] = *p;
+    }
+    if (!host_names_this_device(authority)) {
+      httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "cross-origin request");
+      return false;
+    }
+  }
+  return true;
+}
+
 // SSIDs are whatever the user (or a neighbour) named their network. A
 // stray quote or backslash would break the status document and take the
 // whole editor offline, so escape before interpolating.
@@ -116,6 +201,9 @@ esp_err_t handle_index(httpd_req_t* req) {
 constexpr size_t kConfigJsonCap = 8192;
 
 esp_err_t handle_get_config(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char* buf = static_cast<char*>(std::malloc(kConfigJsonCap));
   if (buf == nullptr) {
     return httpd_resp_send_500(req);
@@ -130,6 +218,9 @@ esp_err_t handle_get_config(httpd_req_t* req) {
 }
 
 esp_err_t handle_put_config(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   if (req->content_len == 0 || req->content_len > 16384) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad length");
     return ESP_OK;
@@ -185,6 +276,9 @@ esp_err_t handle_put_config(httpd_req_t* req) {
 
 // POST /api/transport?op=play|stop|toggle|play_now|stop_now
 esp_err_t handle_transport(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char op[16] = {};
   if (!query_param(req, "op", op, sizeof(op))) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "op required");
@@ -215,6 +309,9 @@ esp_err_t handle_transport(httpd_req_t* req) {
 
 // POST /api/tempo?bpm=124.5  or  ?op=tap|double|half|nudge&delta=-1
 esp_err_t handle_tempo(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char val[24] = {};
   ControlCommand cmd{};
   if (query_param(req, "bpm", val, sizeof(val))) {
@@ -259,6 +356,9 @@ esp_err_t handle_tempo(httpd_req_t* req) {
 
 // POST /api/resync?op=next|now — the legacy "Tap + Play" shift action.
 esp_err_t handle_resync(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char op[8] = {};
   const bool now =
       query_param(req, "op", op, sizeof(op)) && std::strcmp(op, "now") == 0;
@@ -274,19 +374,31 @@ esp_err_t handle_resync(httpd_req_t* req) {
 }
 
 // GET /api/scan — nearby 2.4 GHz networks, so the editor can offer a
-// pick-list. Blocking: a full scan takes a couple of seconds.
+// pick-list. Blocking: a full scan takes a couple of seconds, and it runs
+// on the single httpd task — so a polling client (or a hostile one) could
+// hold every other endpoint hostage in 2-second increments. Serve a cached
+// result inside a 10 s window; the airwaves do not change faster than that
+// during setup. Statics are safe: httpd runs handlers on one task.
 esp_err_t handle_scan(httpd_req_t* req) {
-  constexpr size_t kCap = 2048;
-  char* buf = static_cast<char*>(std::malloc(kCap));
-  if (buf == nullptr) {
-    return httpd_resp_send_500(req);
+  if (!check_local_origin(req)) {
+    return ESP_OK;
   }
-  const int n = neon_wifi_scan_json(buf, static_cast<int>(kCap));
+  constexpr size_t kCap = 2048;
+  constexpr int64_t kCacheUs = 10 * 1000000ll;
+  static char cache[kCap];
+  static int cache_len = 0;
+  static int64_t cache_at_us = 0;
+
+  const int64_t now = esp_timer_get_time();
+  if (cache_len <= 0 || now - cache_at_us > kCacheUs) {
+    const int n = neon_wifi_scan_json(cache, static_cast<int>(kCap));
+    cache_len = n > 0 ? n : 0;
+    cache_at_us = now;
+  }
   httpd_resp_set_type(req, "application/json");
-  const esp_err_t err = n > 0 ? httpd_resp_send(req, buf, n)
-                              : httpd_resp_send(req, "[]", 2);
-  std::free(buf);
-  return err;
+  no_store(req);
+  return cache_len > 0 ? httpd_resp_send(req, cache, cache_len)
+                       : httpd_resp_send(req, "[]", 2);
 }
 
 void restart_task(void*) {
@@ -296,6 +408,9 @@ void restart_task(void*) {
 
 // POST /api/factory_reset?confirm=yes — wipe config and presets, reboot.
 esp_err_t handle_factory_reset(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char confirm[8] = {};
   if (!query_param(req, "confirm", confirm, sizeof(confirm)) ||
       std::strcmp(confirm, "yes") != 0) {
@@ -313,6 +428,9 @@ esp_err_t handle_factory_reset(httpd_req_t* req) {
 // POST /api/ota — raw firmware image in the body. Streams straight into
 // the inactive app slot; the module reboots into it on success.
 esp_err_t handle_ota(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
   if (target == nullptr) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
@@ -411,6 +529,9 @@ const char* sub_state_str(uint8_t state) {
 
 // GET /api/audio/channels — Link Audio discovery for the subscribe picker.
 esp_err_t handle_audio_channels(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   constexpr size_t kCap = 2048;
   char* buf = static_cast<char*>(std::malloc(kCap));
   if (buf == nullptr) {
@@ -427,6 +548,9 @@ esp_err_t handle_audio_channels(httpd_req_t* req) {
 }
 
 esp_err_t handle_status(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   neon::TimelineSnapshot tl;
   timeline_bus().read(tl);
   const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
@@ -517,6 +641,9 @@ esp_err_t handle_status(httpd_req_t* req) {
 // POST /api/reboot — soft reset so WiFi STA creds take effect without
 // yanking the USB cable.
 esp_err_t handle_reboot(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   // Never reboot with a pending debounced write still in RAM only.
   neon_config_flush_now();
   send_json(req, "{\"ok\":true,\"rebooting\":true}");
@@ -526,6 +653,9 @@ esp_err_t handle_reboot(httpd_req_t* req) {
 
 // POST /api/preset?op=save|recall&slot=0..3
 esp_err_t handle_preset(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
   char op[16] = {};
   char slot_s[8] = {};
   if (!query_param(req, "op", op, sizeof(op)) ||

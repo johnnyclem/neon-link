@@ -54,9 +54,13 @@ constexpr uint32_t kMaxRxFrames = 512;
 // outputs on hardware (docs/AUDIOLINK.md PR8); zero until it is.
 constexpr int32_t kDacLatencyUs = 0;
 
-// ~680 ms of stereo at 48 kHz: deep enough for the 800 ms jitter
-// maximum (hardware needed ~650 ms of pre-roll on a busy studio LAN).
-constexpr uint32_t kJitterRingFrames = 32768;
+// JitterBuffer caps its fill target at HALF the ring (the servo needs
+// somewhere to go), so honoring the 800 ms jitter maximum takes a ring
+// twice that deep: 131072 frames is ~2.7 s of stereo at 48 kHz (512 KB of
+// PSRAM), for a usable target of ~1.36 s. The previous 32768 silently
+// truncated every la_jitter_ms above ~341 ms — the 650 ms the busy-LAN
+// tuning session thought it was running with was never actually applied.
+constexpr uint32_t kJitterRingFrames = 131072;
 
 // Per-source render buffers. Static rather than stack: this task's stack
 // would have to be 8 KB bigger for no reason.
@@ -605,7 +609,11 @@ void neon_start_audio_service() {
                           nullptr, 0);
 }
 
-// Discovery for the editor: GET /api/audio/channels.
+// Discovery for the editor: GET /api/audio/channels. snprintf returns the
+// untruncated length, so the append is checked per channel: one that does
+// not fit is dropped whole (with its partial write erased) and the
+// document still closes — a crowded network shortens the picker instead of
+// blanking it.
 extern "C" int neon_audio_channels_json(char* buf, int cap) {
   hal::ILinkAudio& la = ablink::link_audio();
   hal::AudioChannelInfo channels[16];
@@ -613,21 +621,31 @@ extern "C" int neon_audio_channels_json(char* buf, int cap) {
   int written = std::snprintf(buf, static_cast<size_t>(cap),
                               "{\"available\":%s,\"channels\":[",
                               la.available() ? "true" : "false");
-  for (size_t i = 0; i < n && written < cap; ++i) {
-    written += std::snprintf(
-        buf + written, static_cast<size_t>(cap - written),
+  if (written < 0 || written + 2 >= cap) {
+    return 0;
+  }
+  bool first = true;
+  for (size_t i = 0; i < n; ++i) {
+    // Room must remain for this entry AND the closing "]}".
+    const int room = cap - written - 2;
+    const int need = std::snprintf(
+        buf + written, static_cast<size_t>(room),
         "%s{\"id\":\"%s\",\"name\":\"%s\",\"peer\":\"%s\",\"rate\":%u,"
         "\"channels\":%u,\"local\":%s}",
-        i == 0 ? "" : ",", channels[i].id, channels[i].name, channels[i].peer,
+        first ? "" : ",", channels[i].id, channels[i].name, channels[i].peer,
         static_cast<unsigned>(channels[i].sample_rate),
         static_cast<unsigned>(channels[i].num_channels),
         channels[i].is_local ? "true" : "false");
+    if (need < 0 || need >= room) {
+      buf[written] = '\0';  // erase the truncated fragment
+      break;
+    }
+    written += need;
+    first = false;
   }
-  if (written < cap) {
-    written += std::snprintf(buf + written, static_cast<size_t>(cap - written),
-                             "]}");
-  }
-  return written < cap ? written : 0;
+  written += std::snprintf(buf + written, static_cast<size_t>(cap - written),
+                           "]}");
+  return written;
 }
 
 #else  // !CONFIG_NEON_AUDIO

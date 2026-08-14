@@ -193,7 +193,8 @@ void JitterBuffer::push(const AudioBlockInfo& info, const int16_t* interleaved) 
   bool fade_in = false;
   int64_t pos = static_cast<int64_t>(wr_);
 
-  if (have_prev_ && beat_per_frame_q32_ > 0 && info.begin_beat_q32 != 0) {
+  if (have_prev_ && beat_per_frame_q32_ > 0 &&
+      info.begin_beat_q32 != kInvalidBeatQ32) {
     const int64_t bpf = beat_per_frame_q32_;
     const int64_t delta_beats = info.begin_beat_q32 - newest_beat_q32_;
     // Half a frame of slack either way: stamp jitter, not a hole.
@@ -250,12 +251,17 @@ void JitterBuffer::push(const AudioBlockInfo& info, const int16_t* interleaved) 
     wr_ = end;
     last_l_ = buf_[(static_cast<uint32_t>(end - 1) & mask_) * 2];
     last_r_ = buf_[(static_cast<uint32_t>(end - 1) & mask_) * 2 + 1];
-    newest_beat_q32_ = info.end_beat_q32;
-    const int64_t span = info.end_beat_q32 - info.begin_beat_q32;
-    if (span > 0 && info.frames != 0) {
-      beat_per_frame_q32_ = span / static_cast<int64_t>(info.frames);
+    // Only a stamped block may move the beat anchor; an unstamped one
+    // still carries audio but says nothing about where the timeline is.
+    if (info.begin_beat_q32 != kInvalidBeatQ32 &&
+        info.end_beat_q32 != kInvalidBeatQ32) {
+      newest_beat_q32_ = info.end_beat_q32;
+      const int64_t span = info.end_beat_q32 - info.begin_beat_q32;
+      if (span > 0 && info.frames != 0) {
+        beat_per_frame_q32_ = span / static_cast<int64_t>(info.frames);
+      }
+      have_prev_ = true;
     }
-    have_prev_ = true;
   }
   if (state_ == State::kIdle) {
     state_ = State::kBuffering;
