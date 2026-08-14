@@ -155,6 +155,11 @@ void config_sanitize(Config* cfg) {
     a.role_r = AudioRole::kMix;
   }
   a.metro_enabled = a.metro_enabled ? 1 : 0;
+  // A zero gain with the click armed is how LINE OUT went dead after a
+  // VST save: empty NumberField commits wrote 0. Mute is the toggle.
+  if (a.metro_enabled && a.metro_gain == 0) {
+    a.metro_gain = kUnityGainByte;
+  }
   if (a.metro_sound >= ClickSound::kSoundCount) {
     a.metro_sound = ClickSound::kSine;
   }

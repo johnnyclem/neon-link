@@ -129,6 +129,10 @@ neon::ClickConfig click_config(const neon::AudioEngineConfig& cfg) {
   c.sound = cfg.metro_sound;
   c.gain = cfg.metro_gain;
   c.accent = cfg.metro_accent != 0;
+  // The unit often shows STOP while Live is playing (start/stop sync).
+  // Gating the click on transport left LINE OUT silent for every mix
+  // that depended on the metronome. Tick the Link beat grid instead.
+  c.follow_transport = false;
   return c;
 }
 
@@ -377,8 +381,13 @@ void audio_task(void*) {
     }
 
     // --- mix, publish, play --------------------------------------------
-    neon::mix_block(mixer_config(cfg, click_sounding), src, kBlockFrames,
-                    g_out_l, g_out_r);
+    if (cfg.enabled == 0) {
+      clear(g_out_l);
+      clear(g_out_r);
+    } else {
+      neon::mix_block(mixer_config(cfg, click_sounding), src, kBlockFrames,
+                      g_out_l, g_out_r);
+    }
     neon::float_to_int16(g_out_l, g_out_r, kBlockFrames, g_out_i16);
 
     const int sink_mix = g_sink_mix.load(std::memory_order_relaxed);
@@ -597,9 +606,12 @@ void audio_ctl_task(void*) {
 }  // namespace
 
 void neon_start_audio_service() {
+  // Always start I2S. `audio.enabled` used to be restart-scoped, so a
+  // saved "engine on" never reached the jack until a reboot — and a
+  // boot with enabled=0 left LINE OUT dead for every other setting.
+  // The render loop writes silence while the flag is off.
   if (neon_config().audio.enabled == 0) {
-    ESP_LOGI(kTag, "audio disabled in configuration");
-    return;
+    ESP_LOGI(kTag, "audio starts muted (enabled=0); I2S is up so a save can unmute");
   }
   // Below the pulse task (MAX-2) and the CV mirror (MAX-3): the I2S DMA
   // gives this loop ~11 ms of slack, and the clock outputs give none.

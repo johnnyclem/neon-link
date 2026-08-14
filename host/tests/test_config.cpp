@@ -251,6 +251,14 @@ TEST_CASE("out-of-range roles, tempo, and retries are clamped") {
   CHECK(cfg.ap_channel == 13);
 }
 
+TEST_CASE("sanitize restores unity click gain when the metro is armed") {
+  neon::Config cfg;
+  cfg.audio.metro_enabled = 1;
+  cfg.audio.metro_gain = 0;
+  neon::config_sanitize(&cfg);
+  CHECK(cfg.audio.metro_gain == neon::kUnityGainByte);
+}
+
 TEST_CASE("audio defaults are off and quiet") {
   const neon::Config cfg;
   CHECK(cfg.audio.enabled == 0);

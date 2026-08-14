@@ -99,7 +99,7 @@ export function Audio(props: PageProps) {
             note="A jack set to a clock, reset or run role carries that pulse as audio — one sample of placement instead of a millisecond of I²C."
           >
             <Toggle
-              label="Audio engine enabled (takes effect on reboot)"
+              label="Audio engine enabled"
               checked={a.enabled}
               onChange={(v) => patch((d) => (d.audio.enabled = v))}
             />
