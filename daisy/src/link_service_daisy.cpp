@@ -11,6 +11,7 @@
 #include "board_pins_daisy.h"
 #include "clkin_daisy.h"
 #include "link_session_daisy.h"
+#include "midi_daisy.h"
 #include "timebase_daisy.h"
 
 namespace linksvc {
@@ -21,6 +22,9 @@ constexpr int64_t kCapturePeriodUs = 10000;  // 10 ms, like the ESP task
 neon::TapTempo g_tap;
 neon::TransportLatch g_latch;
 neon::ExtClockEstimator g_ext_clock;
+// Incoming MIDI clock is the second external tempo source (fixed
+// 24 PPQN). The CLK IN jack outranks it when both are alive.
+neon::ExtClockEstimator g_midi_clock;
 bool g_local_playing = false;
 bool g_ext_active = false;
 int64_t g_next_capture_us = 0;
@@ -35,6 +39,9 @@ void apply_session_settings(hal::ILinkSession& session) {
 
 void update_tempo_cv(uint32_t milli_bpm) {
   const auto& cfg = neon_config();
+  if (cfg.midi.pitch_cv) {
+    return;  // MIDI pitch CV owns the jack (same rule as the ESP/Teensy)
+  }
   const uint16_t ratio = neon::tempo_cv_ratio_q16(
       milli_bpm, cfg.tempo_cv_min_bpm, cfg.tempo_cv_max_bpm);
   board_tempo_cv_write(ratio);
@@ -120,29 +127,46 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
       g_ext_clock.on_reset(ev.t_us);
     }
   }
+  int64_t midi_tick_us = 0;
+  while (miditrs::pop_clock(&midi_tick_us)) {
+    g_midi_clock.on_pulse(midi_tick_us);
+  }
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
+
+  // The CLK IN jack outranks MIDI clock when both are alive: the jack is
+  // this module's native sync, and a beat-locked drum machine sending
+  // both would otherwise fight itself.
+  const bool jack = g_ext_clock.active(now);
+  const bool midi = g_midi_clock.active(now);
   const neon::ClockSource source = neon_config().clock_source;
-  const bool follow = source != neon::ClockSource::kLinkMaster &&
-                      g_ext_clock.active(now);
+  const bool follow =
+      source != neon::ClockSource::kLinkMaster && (jack || midi);
   if (follow != g_ext_active) {
     g_ext_active = follow;
     app_status_set_ext_clock(follow);
   }
+  neon::ExtClockEstimator& lead = jack ? g_ext_clock : g_midi_clock;
+  neon::ExtClockEstimator& idle = jack ? g_midi_clock : g_ext_clock;
   if (follow) {
     uint32_t mbpm = 0;
-    if (g_ext_clock.take_tempo_update(&mbpm)) {
+    if (lead.take_tempo_update(&mbpm)) {
       session.set_tempo(static_cast<double>(mbpm) / 1000.0);
     }
+    // Phase anchoring stays the RST IN jack's alone — MIDI clock has no
+    // downbeat message (Start already restarts beat 0 via the transport).
     int64_t downbeat_us = 0;
-    if (g_ext_clock.take_phase_request(&downbeat_us)) {
+    if (jack && g_ext_clock.take_phase_request(&downbeat_us)) {
       session.request_beat_at_time(downbeat_us);
     }
   } else {
     uint32_t scratch_t = 0;
-    int64_t scratch_p = 0;
-    g_ext_clock.take_tempo_update(&scratch_t);
-    g_ext_clock.take_phase_request(&scratch_p);
+    lead.take_tempo_update(&scratch_t);
   }
+  uint32_t scratch_t = 0;
+  int64_t scratch_p = 0;
+  idle.take_tempo_update(&scratch_t);
+  g_ext_clock.take_phase_request(&scratch_p);
+  g_midi_clock.take_phase_request(&scratch_p);
 }
 
 }  // namespace
@@ -150,6 +174,7 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
 void init(int64_t now_us) {
   clkin::init(kPinClkIn, kPinRstIn);
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
+  g_midi_clock.set_input_ppqn(24);  // MIDI clock is 24 PPQN by definition
 
   auto& session = tsession::session();
   apply_session_settings(session);

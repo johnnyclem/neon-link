@@ -2,10 +2,14 @@
 
 #include "daisy_seed.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "neon/midi/midi_encoder.hpp"
+#include "neon/midi/router.hpp"
+#include "neon/midi/serial_midi_parser.hpp"
 
+#include "board_daisy.h"
 #include "board_pins_daisy.h"
 #include "irq_lock_daisy.h"
 #include "timebase_daisy.h"
@@ -13,7 +17,8 @@
 namespace miditrs {
 namespace {
 
-daisy::UartHandler g_uart;
+daisy::UartHandler g_uart;     // MIDI out (and in, when the board shares)
+daisy::UartHandler g_uart_in;  // separate MIDI-in UART (Pod only)
 daisy::TimerHandle g_timer;
 bool g_uart_ok = false;
 
@@ -35,6 +40,77 @@ inline bool tx_byte(uint8_t b) {
   NEON_MIDI_UART_REGS->TDR = b;
   return true;
 }
+
+// --- MIDI-clock follow ring (poll() -> link service, both main loop) --
+constexpr uint32_t kClockRing = 64;
+int64_t g_clock_ring[kClockRing];
+uint32_t g_clock_head = 0;
+uint32_t g_clock_tail = 0;
+
+void push_clock(int64_t t_us) {
+  const uint32_t next = (g_clock_head + 1) % kClockRing;
+  if (next == g_clock_tail) {
+    return;  // full: drop, the estimator recovers from gaps
+  }
+  g_clock_ring[g_clock_head] = t_us;
+  g_clock_head = next;
+}
+
+// --- Router sink: routing decisions become module actions -------------
+// Mirrors the ESP midi service's sink, minus what this hardware lacks.
+
+class Sink final : public neon::IRouterSink {
+ public:
+  void gate(uint8_t target, bool on) override {
+    GateEvent ev;
+    ev.channel = target == neon::MidiRouteConfig::kTargetRun
+                     ? static_cast<uint8_t>(neon::kChRun)
+                     : target;
+    ev.on = on;
+    gate_queue_push(ev);  // the main loop applies it via set_level_now
+  }
+  void note(uint8_t, uint8_t, bool) override {
+    // No synth voice on this target (the AMY engine is ESP32-only).
+  }
+  void all_notes_off() override {}
+  void pitch_cv(uint16_t ratio_q16) override {
+    // The router only calls this when midi.pitch_cv is set, and the
+    // link service yields the jack for the same flag.
+    board_tempo_cv_write(ratio_q16);
+  }
+  void latency_offset(int32_t latency_us) override {
+    neon::Config cfg = neon_config();
+    cfg.engine.latency_us = latency_us;
+    neon_config_apply(cfg);
+  }
+  void shuffle(uint8_t clock_index, uint8_t pct) override {
+    neon::Config cfg = neon_config();
+    cfg.engine.clocks[clock_index & 3].shuffle_pct = pct;
+    neon_config_apply(cfg);
+  }
+  void transport(bool play) override {
+    // The timeline has a single owner (the link service); route the
+    // request through the control queue rather than touching it here.
+    ControlCommand cmd{};
+    cmd.kind = play ? ControlCommand::Kind::kPlayNow
+                    : ControlCommand::Kind::kStopNow;
+    control_queue_push(cmd);
+  }
+  void trs_realtime(uint8_t status) override {
+    // The IRQ mask keeps the byte from splitting a clock tick's
+    // register write.
+    const uint32_t primask = irq_save();
+    tx_byte(status);
+    irq_restore(primask);
+  }
+  void program_change(uint8_t program) override {
+    neon_preset_recall(program % kPresetSlots);
+  }
+};
+
+Sink g_sink;
+neon::MidiRouter g_router({}, &g_sink);
+neon::SerialMidiParser g_parser(&g_router);
 
 // Next 24 PPQN tick strictly after now, on the nudged grid — the same
 // solve as the ESP and Teensy midi services.
@@ -74,18 +150,51 @@ void tick_isr(void*) {
   g_next_tick_us = next_clock_tick_us(g_tl, now, &next) ? next : 0;
 }
 
+// Drain the RX data register from the main loop. At 31250 baud a byte
+// is 320 µs on the wire and the loop passes far more often than that;
+// the one real gap is the blocking QSPI persist (~100 ms worst), where
+// dropped bytes cost a resynced parser and a clock-estimator hiccup —
+// both self-healing.
+void drain_rx(USART_TypeDef* regs, int64_t now_us) {
+  // A latched overrun/framing/noise error blocks further reception
+  // until cleared.
+  if (regs->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
+    regs->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
+  }
+  while (regs->ISR & USART_ISR_RXNE_RXFNE) {
+    const uint8_t b = static_cast<uint8_t>(regs->RDR);
+    if (b == neon::midi::kClock) {
+      push_clock(now_us);
+    }
+    g_parser.feed(b);
+  }
+}
+
 }  // namespace
 
 void init() {
   daisy::UartHandler::Config ucfg;
   ucfg.periph = kMidiUartPeriph;
-  ucfg.mode = daisy::UartHandler::Config::Mode::TX;
+  ucfg.mode = kMidiInSharedUart ? daisy::UartHandler::Config::Mode::TX_RX
+                                : daisy::UartHandler::Config::Mode::TX;
   ucfg.baudrate = 31250;
   ucfg.pin_config.tx = kPinMidiTx;
   ucfg.pin_config.rx = kPinMidiRx;
   g_uart_ok = g_uart.Init(ucfg) == daisy::UartHandler::Result::OK;
   if (!g_uart_ok) {
     return;
+  }
+
+  if (!kMidiInSharedUart) {
+    // Separate RX-only UART (the Pod's own MIDI IN jack). The tx pin is
+    // left at PORTX so its real owner (the encoder click) is untouched.
+    daisy::UartHandler::Config icfg;
+    icfg.periph = kMidiInPeriph;
+    icfg.mode = daisy::UartHandler::Config::Mode::RX;
+    icfg.baudrate = 31250;
+    icfg.pin_config.tx = daisy::Pin();
+    icfg.pin_config.rx = kPinMidiIn;
+    g_uart_in.Init(icfg);
   }
 
   daisy::TimerHandle::Config tcfg;
@@ -107,7 +216,6 @@ void init() {
 }
 
 void poll(int64_t now_us) {
-  (void)now_us;
   if (!g_uart_ok) {
     return;
   }
@@ -127,6 +235,9 @@ void poll(int64_t now_us) {
     irq_restore(primask);
   }
 
+  g_router.set_config(cfg.midi);
+  drain_rx(NEON_MIDI_IN_UART_REGS, now_us);
+
   // Transport bytes follow the session. The IRQ mask keeps the byte from
   // splitting a clock tick's register write.
   static bool last_playing = false;
@@ -139,6 +250,15 @@ void poll(int64_t now_us) {
     }
     last_playing = playing;
   }
+}
+
+bool pop_clock(int64_t* t_us) {
+  if (g_clock_tail == g_clock_head) {
+    return false;
+  }
+  *t_us = g_clock_ring[g_clock_tail];
+  g_clock_tail = (g_clock_tail + 1) % kClockRing;
+  return true;
 }
 
 }  // namespace miditrs

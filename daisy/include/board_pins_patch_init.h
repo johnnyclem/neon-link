@@ -58,3 +58,10 @@ inline constexpr daisy::UartHandler::Config::Peripheral kMidiUartPeriph =
 inline constexpr daisy::Pin kPinMidiTx = daisy::patch_sm::DaisyPatchSM::A3;
 inline constexpr daisy::Pin kPinMidiRx = daisy::patch_sm::DaisyPatchSM::A2;
 #define NEON_MIDI_UART_REGS UART4
+
+// --- TRS MIDI in: the same UART's RX (A2). ---------------------------
+inline constexpr bool kMidiInSharedUart = true;
+inline constexpr daisy::UartHandler::Config::Peripheral kMidiInPeriph =
+    kMidiUartPeriph;
+inline constexpr daisy::Pin kPinMidiIn = kPinMidiRx;
+#define NEON_MIDI_IN_UART_REGS UART4

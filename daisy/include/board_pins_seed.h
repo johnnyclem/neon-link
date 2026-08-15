@@ -81,7 +81,14 @@ inline constexpr daisy::Pin kPinLedExt = daisy::seed::D26;
 inline constexpr daisy::UartHandler::Config::Peripheral kMidiUartPeriph =
     daisy::UartHandler::Config::Peripheral::USART_1;
 inline constexpr daisy::Pin kPinMidiTx = daisy::seed::D13;
-inline constexpr daisy::Pin kPinMidiRx = daisy::seed::D14;  // reserved (MIDI in)
+inline constexpr daisy::Pin kPinMidiRx = daisy::seed::D14;
 #define NEON_MIDI_UART_REGS USART1
+
+// --- TRS MIDI in: the same USART's RX (D14). ------------------------
+inline constexpr bool kMidiInSharedUart = true;
+inline constexpr daisy::UartHandler::Config::Peripheral kMidiInPeriph =
+    kMidiUartPeriph;
+inline constexpr daisy::Pin kPinMidiIn = kPinMidiRx;
+#define NEON_MIDI_IN_UART_REGS USART1
 
 // Free for expansion: D6, D12, D27, D28, D29, D30.

@@ -20,6 +20,7 @@ set(NEON_CORE_SRCS
   src/ui_widgets.cpp
   src/ui_render.cpp
   src/ble_midi_parser.cpp
+  src/serial_midi_parser.cpp
   src/midi_encoder.cpp
   src/midi_router.cpp
   src/transport.cpp
