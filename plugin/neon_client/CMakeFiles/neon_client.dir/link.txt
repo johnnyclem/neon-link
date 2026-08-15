@@ -1,0 +1,2 @@
+/usr/bin/ar qc libneon_client.a CMakeFiles/neon_client.dir/src/api.cpp.o CMakeFiles/neon_client.dir/src/bind.cpp.o CMakeFiles/neon_client.dir/src/backoff.cpp.o CMakeFiles/neon_client.dir/src/http.cpp.o CMakeFiles/neon_client.dir/src/patch.cpp.o CMakeFiles/neon_client.dir/src/ratelimit.cpp.o CMakeFiles/neon_client.dir/src/status.cpp.o
+/usr/bin/ranlib libneon_client.a

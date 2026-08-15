@@ -1,0 +1,2 @@
+# Hashes of file build rules.
+40bb1f66dbf3c8ccddd37e3b7e552677 NeonLink_artefacts/JuceLibraryCode/NeonLink_VST3/PkgInfo
