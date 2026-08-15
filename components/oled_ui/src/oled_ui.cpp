@@ -3,6 +3,8 @@
 // encoder input. Display flushes stay on core 0 — irrelevant to the
 // pulse path on core 1.
 
+#include <cstdlib>
+
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -64,6 +66,49 @@ void assemble_status(neon::UiStatus* s) {
   netman::primary_ip(s->ip, sizeof(s->ip));
 }
 
+// Expander E0 (10k pot): absolute tempo, soft-pickup so a parked slider
+// does not yank BPM at boot. Span matches the Tempo CV jack (config
+// tempo_cv_min/max, default 20–300). Whole-BPM steps only.
+void poll_pot_tempo() {
+  const int adc = halesp::encoder_pot();
+  if (adc < 0) {
+    return;
+  }
+  static int boot_adc = -1;
+  static bool engaged = false;
+  static uint32_t last_mbpm = 0;
+  if (boot_adc < 0) {
+    boot_adc = adc;
+    return;
+  }
+  constexpr int kPickup = 21;  // ~2% of 10-bit full scale
+  if (!engaged) {
+    if (std::abs(adc - boot_adc) < kPickup) {
+      return;
+    }
+    engaged = true;
+    ESP_LOGI(kTag, "pot tempo engaged adc=%d", adc);
+  }
+  const neon::Config& cfg = neon_config();
+  uint16_t min_b = cfg.tempo_cv_min_bpm;
+  uint16_t max_b = cfg.tempo_cv_max_bpm;
+  if (max_b <= min_b) {
+    min_b = 20;
+    max_b = 300;
+  }
+  const uint32_t span = static_cast<uint32_t>(max_b - min_b);
+  const uint32_t bpm =
+      static_cast<uint32_t>(min_b) +
+      (static_cast<uint32_t>(adc) * span + 511u) / 1023u;
+  const uint32_t mbpm = bpm * 1000u;
+  if (mbpm == last_mbpm) {
+    return;
+  }
+  last_mbpm = mbpm;
+  control_queue_push(
+      {ControlCommand::Kind::kSetTempo, static_cast<int32_t>(mbpm)});
+}
+
 void ui_task(void*) {
   const oledui::PanelKind kind = oledui::panel_kind() != oledui::PanelKind::kNone
                                      ? oledui::panel_kind()
@@ -101,6 +146,12 @@ void ui_task(void*) {
         break;
       case halesp::EncoderPress::kNone:
         break;
+    }
+    // E0 pot → BPM. Off while no slider is wired: a floating ADC on E0
+    // would wander across the pickup threshold and steal tempo.
+    constexpr bool kPotDrivesTempo = false;
+    if (kPotDrivesTempo) {
+      poll_pot_tempo();
     }
     if (menu.take_dirty()) {
       // Merge rather than write the whole struct back: the menu holds a

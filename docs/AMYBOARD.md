@@ -14,7 +14,7 @@ TRS MIDI, front-panel Grove I2C).
 | Reset In           | CV in 2 (ADS1015 ch1) | Rising edge ≥ 1 V |
 | TRS MIDI out       | MIDI OUT (GPIO 14, Type A) | UART1 @ 31250 baud |
 | OLED 128×128       | Front Grove I2C (SDA 17 / SCL 18) | Same as `amyboard.init_display()` |
-| Encoder / LEDs     | NULLLAB GPIO expander @ 0x24 | E0 = 10k B pot, E1/E2/E3 = EC11; OLED stays on a Grove hub port |
+| Encoder / LEDs     | NULLLAB GPIO expander @ 0x24 | E1/E2/E3 = KY-040 (CLK/DT/SW); E0 = 10k B pot → BPM when enabled; OLED stays on a Grove hub port |
 | Ethernet           | — | Not present; WiFi + setup AP only |
 
 ### Display support (128×128)

@@ -156,4 +156,24 @@ bool i2c_write_read(uint8_t addr7, const uint8_t* wr, size_t wr_len,
   return err == ESP_OK;
 }
 
+bool i2c_write_stop_read(uint8_t addr7, const uint8_t* wr, size_t wr_len,
+                         uint8_t* rd, size_t rd_len, int timeout_ms) {
+  if (g_bus == nullptr || wr == nullptr || wr_len == 0 || rd == nullptr ||
+      rd_len == 0) {
+    return false;
+  }
+  lock();
+  i2c_master_dev_handle_t handle = get_dev(addr7);
+  if (handle == nullptr) {
+    unlock();
+    return false;
+  }
+  esp_err_t err = i2c_master_transmit(handle, wr, wr_len, timeout_ms);
+  if (err == ESP_OK) {
+    err = i2c_master_receive(handle, rd, rd_len, timeout_ms);
+  }
+  unlock();
+  return err == ESP_OK;
+}
+
 }  // namespace halesp

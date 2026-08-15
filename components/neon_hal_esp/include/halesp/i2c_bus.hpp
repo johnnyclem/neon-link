@@ -20,5 +20,9 @@ bool i2c_write(uint8_t addr7, const uint8_t* data, size_t len,
                int timeout_ms = 50);
 bool i2c_write_read(uint8_t addr7, const uint8_t* wr, size_t wr_len,
                     uint8_t* rd, size_t rd_len, int timeout_ms = 50);
+// Write, STOP, then read. The NULLLAB expander (and some other Grove
+// slaves) do not implement repeated-START register reads.
+bool i2c_write_stop_read(uint8_t addr7, const uint8_t* wr, size_t wr_len,
+                         uint8_t* rd, size_t rd_len, int timeout_ms = 50);
 
 }  // namespace halesp

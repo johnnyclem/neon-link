@@ -93,6 +93,7 @@ void i2c_encoder_task(void*) {
   neon::QuadDecoder quad;
   uint8_t a = 1;
   uint8_t b = 1;
+  uint8_t sw = 1;
   if (gpio_exp_get_level(kGpioExpEncA, &a) &&
       gpio_exp_get_level(kGpioExpEncB, &b)) {
     unsigned ab = (static_cast<unsigned>(a) << 1) | b;
@@ -106,22 +107,29 @@ void i2c_encoder_task(void*) {
   int64_t sw_change_us = esp_timer_get_time();
   bool long_fired = false;
   unsigned pot_div = 0;
+  unsigned log_div = 0;
+  uint8_t last_logged_a = 0xff;
+  uint8_t last_logged_b = 0xff;
+  uint8_t last_logged_sw = 0xff;
 
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
-    if (gpio_exp_get_level(kGpioExpEncA, &a) &&
-        gpio_exp_get_level(kGpioExpEncB, &b)) {
+    const bool got_ab = gpio_exp_get_level(kGpioExpEncA, &a) &&
+                        gpio_exp_get_level(kGpioExpEncB, &b);
+    if (got_ab) {
       unsigned ab = (static_cast<unsigned>(a) << 1) | b;
       if (kI2cInvert) {
         ab = ((ab & 1u) << 1) | ((ab >> 1) & 1u);
       }
-      const int d = quad.feed(ab);
+      // I2C sampling misses states, so each legal gray step is one menu
+      // tick — x4 decode would almost never reach a detent.
+      const int d = neon::gray_step(quad.last_ab(), ab);
+      quad.reset(ab);
       if (d != 0) {
         g_i2c_detents.fetch_add(d, std::memory_order_relaxed);
       }
     }
 
-    uint8_t sw = 1;
     if (gpio_exp_get_level(kGpioExpEncSw, &sw)) {
       constexpr int64_t kDebounceUs = 20000;
       constexpr int64_t kLongUs = 600000;
@@ -143,13 +151,21 @@ void i2c_encoder_task(void*) {
       }
     }
 
-    // Pot is not in the menu path; refresh ~32 ms so a reader sees motion.
     if ((++pot_div & 7u) == 0u) {
       uint16_t adc = 0;
       (void)gpio_exp_adc(kGpioExpPot, &adc);
     }
 
-    vTaskDelayUntil(&wake, pdMS_TO_TICKS(4));
+    if ((++log_div % 250u) == 0u || a != last_logged_a || b != last_logged_b ||
+        sw != last_logged_sw) {
+      ESP_LOGI(kTag, "exp E1/E2/E3 A=%u B=%u SW=%u%s", a, b, sw,
+               got_ab ? "" : " (read fail)");
+      last_logged_a = a;
+      last_logged_b = b;
+      last_logged_sw = sw;
+    }
+
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(2));
   }
 }
 
@@ -194,6 +210,7 @@ bool encoder_init(int pin_a, int pin_b, int pin_sw) {
     g_backend = Backend::kI2cExp;
     return true;
   }
+  ESP_LOGW(kTag, "no GPIO encoder and no expander @ 0x24 — panel is display-only");
   g_backend = Backend::kNone;
   g_unit = nullptr;
   g_pin_sw = -1;
