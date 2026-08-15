@@ -1,16 +1,20 @@
-# NEON LINK on the Daisy Family — Seed OLED, Pod, patch.init()
+# NEON LINK on the Daisy Family — Seed OLED, Pod, patch.init(), netlink
 
 **Status**: Standalone-clock target family — the full pulse engine,
 TRS MIDI clock, CLK/RST IN external clock following, audio engine on the
 built-in codec, Tempo CV on a true DAC, config + presets in QSPI flash.
-No network features (no network interface on this hardware — see §1).
-Three build configurations share the code in `daisy/`:
+The three offline configs have no network features (no network
+interface on stock hardware — see §1); the fourth, **netlink**, turns
+the Seed's USB port into a network interface and carries real Ableton
+Link plus the web editor / VST REST surface over it (§9). Four build
+configurations share the code in `daisy/`:
 
-| Config | Board | Screen | Doc |
-|---|---|---|---|
-| `daisy/` | **Daisy Seed** + 128×64 SSD1306/1309 OLED, 2 encoders | yes | this file, §2-§7 |
-| `daisy/pod/` | **Daisy Pod** (headless) | no | §8 |
-| `daisy/patch_init/` | **patch.init()** (headless, Eurorack-native) | no | §8 |
+| Config | Board | Screen | Network | Doc |
+|---|---|---|---|---|
+| `daisy/` | **Daisy Seed** + 128×64 SSD1306/1309 OLED, 2 encoders | yes | no | this file, §2-§7 |
+| `daisy/pod/` | **Daisy Pod** (headless) | no | no | §8 |
+| `daisy/patch_init/` | **patch.init()** (headless, Eurorack-native) | no | no | §8 |
+| `daisy/netlink/` | **Daisy Seed** + OLED (the `daisy/` hardware) | yes | USB gadget | §9 |
 
 **Hardware (Seed config)**: Electrosmith **Daisy Seed** (STM32H750 @
 400 MHz, 64 MB SDRAM, 8 MB QSPI flash, stereo codec), a **128×64
@@ -56,8 +60,9 @@ knows about means bumping the submodule, nothing here.
   the portable `ExtClockEstimator`; when the config allows
   (`clock_source` auto or external), the external tempo drives the
   timeline and RST IN anchors the downbeat. **This is the only external
-  sync the target has**, which makes it more central here than on any
-  other build — it is how the Seed joins someone else's clock.
+  sync the offline configs have**, which makes it more central here
+  than on any other build — it is how a stock Seed joins someone else's
+  clock. (The netlink config adds real Ableton Link on top; §9.)
 - **TRS MIDI out**: session-derived 24 PPQN clock from a 500 µs TIM4
   ISR (immune to UI and QSPI stalls), Start/Stop on transport changes,
   honouring `midi_clock_out`, the clock policy, and the MIDI nudge.
@@ -90,17 +95,18 @@ knows about means bumping the submodule, nothing here.
 - **64 MB SDRAM** initialized by `DaisySeed::Init()` (nothing uses it
   yet — it is headroom for the audio follow-ups).
 
-### Not on this hardware
+### Not on this hardware (offline configs)
 
 - **Ableton Link and the web editor** need a network interface the
   stock Seed does not have — no Ethernet MAC wired out, no radio. This
-  is a hardware fact, not a porting gap: the Teensy target's
-  transport-agnostic Link platform layer exists, but there is nothing
-  on this board to bind a socket to. The only credible future path is
-  USB gadget networking (CDC-NCM + lwIP, so a host computer bridges the
-  Seed onto the LAN) — a real project, tracked in §7, not promised.
+  is a hardware fact, not a porting gap: there is nothing on the board
+  to bind a socket to. The one credible path — USB gadget networking,
+  where a host computer bridges the Seed onto the LAN — is now real as
+  the separate `daisy/netlink/` config (§9); the three offline configs
+  stay network-free.
 - **WiFi, the setup access point, and BLE MIDI**: no radio. Permanently
-  out of scope for the stock board, as on the Teensy.
+  out of scope for the stock board, as on the Teensy — the netlink
+  config doesn't change this either.
 - **Network OTA**: flash over USB DFU (§3).
 - **AMY synth / Link Audio**: ESP32-only components.
 
@@ -343,14 +349,16 @@ CI proves the build; these need a Seed and a scope:
    clock-follow as a second external tempo source. Seed: USART1 RX
    (D14); Pod: its own TRS MIDI IN jack; patch.init(): the A2 header
    pin.
-5. **USB gadget networking** (CDC-NCM + lwIP) if Link on this hardware
-   ever becomes real — the Teensy platform layer
-   (`teensy41/link_platform/`) is transport-agnostic and is the
-   starting point; only its socket layer and runtime pump are
-   QNEthernet-specific. Same path would carry the web editor. Weeks,
-   not days; do not start it casually.
+5. ~~USB gadget networking~~ — **done** (§9): the `daisy/netlink/`
+   config. CDC-ECM (not NCM — simpler, and FS bandwidth doesn't reward
+   NCM's aggregation) + lwIP + the Teensy platform layer re-plumbed
+   onto raw UDP/TCP, carrying real Ableton Link, the web editor, and
+   the VST REST surface. As predicted, the Teensy layer was
+   transport-agnostic: its nine shim headers ported by rename, and only
+   the socket runtime and httpd byte-plumbing were rewritten.
 6. **Use the SDRAM**: longer audio buffers / Link Audio jitter buffers
-   land here for free once networking exists.
+   land here for free now that networking exists (the netlink build
+   already parks lwIP's pools there; §9).
 
 
 ---
@@ -364,16 +372,18 @@ control-queue commands the encoders push on the Seed build. The link
 service, pulse engine, CLK/RST IN follow, TRS MIDI clock, audio engine,
 and QSPI config store are byte-for-byte the same services.
 
-**On "controlled via the web interface / VST":** not on this hardware.
-The web editor and the VST plugin speak to the `/api` REST surface that
-the ESP32 and Teensy targets serve over their networks — the Daisy has
-no network interface to serve it on, which is the same hardware fact
-that rules out Ableton Link (§1). Until USB gadget networking exists
-(§7 follow-up 5), a headless Daisy is configured by its panel controls,
-CLK/RST IN, and presets: save a preset on a networked target (or the
-Seed OLED build), and the shared blob codec recalls it here. What the
-headless panels *can* do live is tempo, transport, tap, resync, and
-clock-source selection — the performance surface.
+**On "controlled via the web interface / VST":** not on these two
+boards. The web editor and the VST plugin speak to the `/api` REST
+surface that the ESP32 and Teensy targets serve over their networks —
+a stock Daisy has no network interface to serve it on, which is the
+same hardware fact that rules out Ableton Link (§1). (The Seed netlink
+config serves both over USB — §9 — but it targets the Seed's OTG port
+and the OLED flagship hardware, not the Pod or patch.init().) A
+headless Daisy is configured by its panel controls, CLK/RST IN, and
+presets: save a preset on a networked target (or the Seed OLED build),
+and the shared blob codec recalls it here. What the headless panels
+*can* do live is tempo, transport, tap, resync, and clock-source
+selection — the performance surface.
 
 ### Daisy Pod (`daisy/pod/`)
 
@@ -439,3 +449,107 @@ follow-ups.
    inverting stage), knob-pickup behavior across a power cycle, CV OUT 2
    tempo scaling against a voltmeter.
 3. Both: preset recall from a blob saved on another target.
+
+---
+
+## 9. USB gadget networking: the netlink build (`daisy/netlink/`)
+
+The Seed's USB-C port becomes the network interface the family
+otherwise lacks: the module enumerates as a **USB Ethernet adapter
+(CDC-ECM)**, the host bridges or shares its connection, and the
+firmware runs **real Ableton Link**, serves the **web editor** at
+`http://<device-name>.local/`, and answers the same `/api` REST surface
+the **VST plugin** speaks. Same Seed + OLED + encoders hardware as the
+`daisy/` flagship; same wiring (§2).
+
+```
+make -C third_party/libDaisy -j
+make -C daisy/netlink -j          # build/neon-link-netlink.{elf,bin}
+```
+
+### Host-side reality, stated honestly
+
+- **macOS / Linux**: ECM is supported natively — the Seed shows up as a
+  USB Ethernet interface, no driver. Use *Internet Sharing* (macOS) or
+  a bridge / shared connection (Linux `nm-connection-editor`,
+  `systemd-networkd`) to put it on the LAN; DHCP is tried first and
+  AutoIP (169.254.x.x link-local) covers a host-only cable, which is
+  all Link needs for host↔module sync.
+- **Windows**: no in-box ECM driver. Out of scope for now (NCM or RNDIS
+  would be the fix; the class driver is one file if it becomes worth
+  it).
+- **Peers**: Link peers are whoever the *host* lets the module reach —
+  a bridged module joins the LAN session like any other participant; a
+  host-only cable still syncs module↔host (e.g. Live on the same
+  laptop).
+- **VID/PID**: development builds use the openly licensed
+  **pid.codes test allocation 0x1209/0x0001**. It must be replaced with
+  a real allocation before any hardware ships.
+
+### Why BOOT_SRAM (and why not BOOT_QSPI)
+
+Link + lwIP + the web bundle do not fit the STM32H750's single 128 KB
+internal-flash sector the offline configs execute from. The netlink
+image is built `APP_TYPE=BOOT_SRAM`: it lives in QSPI at `0x90040000`
+and the **Daisy bootloader** copies it into the 480 KB AXI SRAM at
+boot, executing entirely from RAM. Flash flow:
+
+```
+make -C daisy/netlink program-boot   # once: install the Daisy bootloader
+make -C daisy/netlink program-dfu    # then: flash the app via the bootloader
+```
+
+`BOOT_QSPI` (executing in place from QSPI) is **forbidden** for the
+whole family: the config store (§5) erases QSPI sectors at runtime, and
+erasing the chip you execute from is a crash. BOOT_SRAM keeps the store
+safe — nothing executes from QSPI after boot — and the store's
+stall-hardening (the pre-persist pulse top-up) already covers the erase
+windows. lwIP's heap and packet pools live in the 64 MB SDRAM
+(`.sdram_bss`), keeping the DTCM free for the app's hot state.
+
+### How it is put together
+
+```
+daisy/netlink/
+  Makefile                   BOOT_SRAM config; lwIP + Link sources via boards.mk hooks
+  port/lwipopts.h            NO_SYS=1, IPv4, DHCP+AutoIP, IGMP, mDNS responder
+  src/usbd_ecm.c             CDC-ECM class on the ST USBD core in libdaisy.a
+  src/usbd_ecm_desc.c        device/string descriptors (MAC doubles as serial)
+  src/usbnet_daisy.cpp       lwIP netif over the ECM pipe + net service hooks
+  src/httpd_netlink.cpp      the Teensy web server on raw lwIP TCP
+  src/link_runtime_netlink.cpp  polled Link runtime on raw lwIP UDP
+  src/link_session_netlink.cpp  real ableton::Link behind daisy_session()
+  link_platform/             the Teensy asio-free platform, renamed netdaisy
+  stdshim/                   no-op std::mutex / pumped condition_variable
+```
+
+- **The seam did its job**: `main.cpp`, the link service, and the UI are
+  untouched. The offline configs bind `daisy_session()` to the internal
+  timeline and leave five weak `neon_daisy_net_*` hooks as no-ops; this
+  config links strong definitions of the same symbols and the whole
+  network stack comes alive (§5's `session_daisy.h`).
+- **One thread, no RTOS.** lwIP runs NO_SYS with every callback on the
+  main loop; the Link platform is the Teensy polled runtime (timers,
+  posted jobs, one-shot receive handlers) re-plumbed from QNEthernet
+  onto raw `udp_pcb`s. The USB ISR only moves bytes between the FIFO
+  and the ECM frame queues — no lwIP call, no SeqLock read, preserving
+  the family's ISR rules (§5). OTG_FS interrupt priority is re-ranked
+  below pulse/MIDI/audio: a delayed USB frame is throughput, a delayed
+  pulse edge is an audible miss.
+- **The pulse engine is untouched**: same TIM5 compare emitter, same
+  horizon, same QSPI stall hardening. Link tempo changes flow through
+  the identical service loop the ESP32 and Teensy run.
+- **MIDI, CLK IN, encoders, audio**: all identical to `daisy/`. CLK IN
+  still outranks Link when the config says external.
+
+### Netlink bench list (on top of §6)
+
+1. Enumeration + bridge on macOS and Linux hosts (ECM alt-setting,
+   DHCP vs AutoIP paths, `<device-name>.local` resolution).
+2. Link session join/leave against Live on a bridged LAN: tempo lock,
+   transport, peer count on the OLED status row.
+3. Sustained web-editor traffic while pulses run: `late_max_us` must
+   stay honest (<10 µs) through page loads and config saves.
+4. QSPI config-save during an active Link session + editor poll.
+5. USB unplug/replug mid-session: AutoIP fallback, Link re-join, no
+   watchdog trips.

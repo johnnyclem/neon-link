@@ -164,3 +164,6 @@ build-*/
 
 # The style guide is a review artifact, rebuilt on demand — not shipped.
 web/dist-styleguide/
+
+# Generated at netlink build parse time from the committed web bundle.
+daisy/netlink/gen/

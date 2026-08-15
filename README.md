@@ -134,7 +134,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[docs/AUDIOLINK.md](docs/AUDIOLINK.md)** | Software / Firmware | **AudioLink design spec** — Link 4.0 upgrade, sample-accurate audio engine on the AMYboard codec (metronome, pulses-as-audio, AMY synth), and Link Audio streaming to/from Live 12.4 |
 | **[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)** | Everyone | Row-by-row audit against the Circuit Happy ML:2m and Missing Link Junior manuals |
 | **[docs/TEENSY41.md](docs/TEENSY41.md)** | Hardware / Firmware | Teensy 4.1 build target — Ableton Link over native Ethernet, web editor, TRS MIDI, CLK/RST IN, audio engine, 2.8" SPI colour touchscreen (ILI9341 + XPT2046), two rotary encoders, 16 MB PSRAM; wiring and PlatformIO build |
-| **[docs/DAISY.md](docs/DAISY.md)** | Hardware / Firmware | Daisy-family build targets — Seed with a 128×64 SSD1306/1309 OLED, plus headless Daisy Pod and Eurorack-native patch.init() configs; internal timeline (no network on this hardware), pulse engine, TRS MIDI, CLK/RST IN, audio engine on the built-in codec, Tempo CV on the true DAC, QSPI config store; wiring and Makefile/libDaisy build |
+| **[docs/DAISY.md](docs/DAISY.md)** | Hardware / Firmware | Daisy-family build targets — Seed with a 128×64 SSD1306/1309 OLED, headless Daisy Pod and Eurorack-native patch.init() configs (internal timeline, no network on stock hardware), and the netlink config (Ableton Link + web editor + VST REST over USB CDC-ECM gadget networking); pulse engine, TRS MIDI, CLK/RST IN, audio engine on the built-in codec, Tempo CV on the true DAC, QSPI config store; wiring and Makefile/libDaisy build |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
 | **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
@@ -266,11 +266,14 @@ pio run -t upload && pio device monitor
 The portable core also builds for an Electrosmith **Daisy Seed**
 (STM32H750, 64 MB SDRAM, built-in stereo codec) with a 128×64
 SSD1306/SSD1309 OLED and two rotary encoders. No network interface on
-this hardware, so no Link or web editor — the module runs its own
-timeline (tap/nudge tempo, quantized transport) and follows CLK/RST IN;
+the stock hardware, so the three standard configs run an internal
+timeline (tap/nudge tempo, quantized transport) and follow CLK/RST IN;
 TRS MIDI clock, the audio engine on the built-in codec, Tempo CV on the
-true DAC, and config + presets in QSPI flash all work. See
-**[docs/DAISY.md](docs/DAISY.md)** for wiring and details.
+true DAC, and config + presets in QSPI flash all work. A fourth config,
+**netlink**, turns the Seed's USB port into a USB Ethernet gadget
+(CDC-ECM + lwIP) and carries real Ableton Link, the web editor, and the
+VST REST surface over it. See **[docs/DAISY.md](docs/DAISY.md)** for
+wiring and details.
 
 ```bash
 git submodule update --init --recursive
@@ -278,7 +281,9 @@ make -C third_party/libDaisy -j
 make -C daisy -j              # Seed + OLED; or:
 make -C daisy/pod -j          #   headless Daisy Pod (encoder/buttons/LEDs)
 make -C daisy/patch_init -j   #   headless patch.init() (Eurorack-native jacks)
-make -C daisy program-dfu     # hold BOOT, tap RESET first (any of the three)
+make -C daisy/netlink -j      #   Seed + OLED + Link/web editor over USB
+make -C daisy program-dfu     # hold BOOT, tap RESET first (netlink flashes
+                              #   via the Daisy bootloader; docs/DAISY.md §9)
 ```
 
 **Hardware Engineer**  

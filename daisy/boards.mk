@@ -32,9 +32,16 @@ CORE_SRC = $(REPO_ROOT)/components/neon_core/src
 
 # The portable firmware core compiles in place — same sources as the
 # ESP32-S3, Teensy 4.1, and host-test builds, no copies. config_json.cpp
-# (and its cJSON dependency) is the one core source left out: it exists
-# for the web editor's REST surface, and these targets have no network
-# to serve it on (docs/DAISY.md §1).
+# (and its cJSON dependency) is the one core source left out of the
+# offline configs: it exists for the web editor's REST surface, and they
+# have no network to serve it on (docs/DAISY.md §1). The netlink config
+# clears CORE_EXCLUDE — it serves that surface over USB.
+CORE_EXCLUDE ?= $(CORE_SRC)/config_json.cpp
+# The session behind the daisy_session() seam: the InternalTimeline for
+# the offline configs; the netlink build overrides this with its real
+# ableton::Link peer (session_daisy.h).
+SESSION_SRC ?= link_session_daisy.cpp
+
 SHARED_SRCS = \
 app_state_daisy.cpp \
 audio_daisy.cpp \
@@ -42,30 +49,39 @@ board_daisy.cpp \
 clkin_daisy.cpp \
 config_store_daisy.cpp \
 link_service_daisy.cpp \
-link_session_daisy.cpp \
+$(SESSION_SRC) \
 midi_daisy.cpp \
 pulse_hw_daisy.cpp \
 timebase_daisy.cpp
 
+# EXTRA_* are per-board hooks (empty for the offline configs): the
+# netlink build hangs its USB/lwIP/Link sources, C sources, defines, and
+# include roots off them without forking this fragment.
 CPP_SOURCES = \
 $(addprefix $(DAISY_DIR)/src/,$(SHARED_SRCS) $(BOARD_SRCS)) \
-$(filter-out $(CORE_SRC)/config_json.cpp, $(wildcard $(CORE_SRC)/*.cpp)) \
-$(wildcard $(CORE_SRC)/audio/*.cpp)
+$(filter-out $(CORE_EXCLUDE), $(wildcard $(CORE_SRC)/*.cpp)) \
+$(wildcard $(CORE_SRC)/audio/*.cpp) \
+$(EXTRA_CPP_SOURCES)
 
-C_DEFS = -D$(BOARD_DEF)
+C_SOURCES += $(EXTRA_C_SOURCES)
+
+C_DEFS = -D$(BOARD_DEF) $(EXTRA_C_DEFS)
 
 C_INCLUDES = \
 -I$(DAISY_DIR)/include \
 -I$(REPO_ROOT)/components/neon_core/include \
 -I$(REPO_ROOT)/components/neon_hal/include \
--I$(REPO_ROOT)/components/app_state/include
+-I$(REPO_ROOT)/components/app_state/include \
+$(EXTRA_C_INCLUDES)
 
 # Internal flash, no bootloader: code executes XIP from 0x08000000, which
 # is what makes the QSPI config store safe to erase/program at runtime
-# (config_store_daisy.cpp). Switching to APP_TYPE=BOOT_QSPI would put the
-# code and the config store on the same chip — do not, without moving the
-# store first.
-APP_TYPE = BOOT_NONE
+# (config_store_daisy.cpp). The netlink config overrides this with
+# BOOT_SRAM — code copied out of QSPI into AXI SRAM by the Daisy
+# bootloader and executed from RAM, which keeps the QSPI store equally
+# safe. APP_TYPE=BOOT_QSPI (XIP from the QSPI chip) would NOT be: the
+# store erases that chip at runtime.
+APP_TYPE ?= BOOT_NONE
 
 include $(SYSTEM_FILES_DIR)/Makefile
 
@@ -88,6 +104,11 @@ CPPFLAGS += -Wextra \
 # stock -Wattributes note (FP clobber in the reset handler) is upstream's
 # to keep, not ours to fix.
 CFLAGS += -Wno-attributes
+
+# Post-include C++ flags hook: the netlink build appends -fexceptions
+# here (Ableton Link throws), which must land after the core Makefile's
+# -fno-exceptions to win.
+CPPFLAGS += $(EXTRA_CPPFLAGS_POST)
 
 # Convenience: rebuild the libdaisy.a these apps link against.
 .PHONY: libdaisy
