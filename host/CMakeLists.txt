@@ -80,6 +80,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../plugin/client/CMakeLists.txt")
     ../plugin/client/tests/test_http.cpp
     ../plugin/client/tests/test_client.cpp
     ../plugin/client/tests/test_backoff.cpp
+    ../plugin/client/tests/test_mic.cpp
   )
   target_include_directories(neon_client_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest)

@@ -12,7 +12,10 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
       network_(host_),
       midi_(host_),
       audio_(host_),
-      system_(host_) {
+      system_(host_),
+      mic_([this](std::function<void(neon::plugin::MicController&)> fn) {
+        sendMic(std::move(fn));
+      }) {
   setLookAndFeel(&lnf_);
   setSize(700, 780);
   setResizable(true, false);
@@ -59,7 +62,7 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
   };
   addAndMakeVisible(bind_);
 
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 7; ++i) {
     addAndMakeVisible(*tabs_[i]);
     tabs_[i]->onClick = [this, i] { showTab(i); };
   }
@@ -117,6 +120,9 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
     else if (!b.connect_host.empty())
       hostField_.setText(b.connect_host);
   }
+  if (auto* m = processor_.micController()) {
+    m->setEditorOpen(true);
+  }
 
   last_tick_ms_ = juce::Time::getMillisecondCounterHiRes();
   startTimerHz(24);
@@ -125,6 +131,7 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
 NeonLinkEditor::~NeonLinkEditor() {
   setLookAndFeel(nullptr);
   if (auto* c = processor_.controller()) c->setEditorOpen(false);
+  if (auto* m = processor_.micController()) m->setEditorOpen(false);
 }
 
 void NeonLinkEditor::send(
@@ -132,8 +139,13 @@ void NeonLinkEditor::send(
   if (auto* c = processor_.controller()) fn(*c);
 }
 
+void NeonLinkEditor::sendMic(
+    std::function<void(neon::plugin::MicController&)> fn) {
+  if (auto* c = processor_.micController()) fn(*c);
+}
+
 void NeonLinkEditor::styleTabs() {
-  for (int i = 0; i < 6; ++i) neon::ui::styleBtn(*tabs_[i], i == tab_);
+  for (int i = 0; i < 7; ++i) neon::ui::styleBtn(*tabs_[i], i == tab_);
 }
 
 void NeonLinkEditor::patch(std::function<void(neon::Config&)> fn) {
@@ -187,6 +199,7 @@ void NeonLinkEditor::doSave() {
 }
 
 void NeonLinkEditor::showTab(int index) {
+  const int prev = tab_;
   tab_ = index;
   styleTabs();
   juce::Component* page = &live_;
@@ -195,6 +208,7 @@ void NeonLinkEditor::showTab(int index) {
   else if (index == 3) page = &midi_;
   else if (index == 4) page = &audio_;
   else if (index == 5) page = &system_;
+  else if (index == 6) page = &mic_;
   viewport_.setViewedComponent(page, false);
   if (have_draft_) {
     if (auto* c = processor_.controller()) {
@@ -210,7 +224,18 @@ void NeonLinkEditor::showTab(int index) {
   if (index == 4) {
     send([](neon::plugin::DeviceController& c) { c.refreshAudioChannels(); });
   }
-  relayoutPage();
+  if (index == 6) {
+    processor_.ensureControllerStarted();
+    sendMic([](neon::plugin::MicController& c) { c.refreshSources(); });
+    if (auto* m = processor_.micController()) {
+      if (auto snap = m->snapshot()) mic_.load(*snap);
+    }
+  }
+  if (prev == 6 || index == 6) {
+    resized();
+  } else {
+    relayoutPage();
+  }
 }
 
 void NeonLinkEditor::relayoutPage() {
@@ -223,6 +248,7 @@ void NeonLinkEditor::relayoutPage() {
   else if (page == &midi_) h = midi_.preferredHeight();
   else if (page == &audio_) h = audio_.preferredHeight();
   else if (page == &system_) h = system_.preferredHeight();
+  else if (page == &mic_) h = mic_.preferredHeight();
   const int w = viewport_.getMaximumVisibleWidth();
   page->setSize(juce::jmax(1, w), h);
 }
@@ -266,17 +292,17 @@ void NeonLinkEditor::resized() {
   r.removeFromTop(10);
   auto tabRow = r.removeFromTop(40);
   const int gap = 4;
-  const int tw = (tabRow.getWidth() - gap * 5) / 6;
-  for (int i = 0; i < 6; ++i) {
+  const int tw = (tabRow.getWidth() - gap * 6) / 7;
+  for (int i = 0; i < 7; ++i) {
     tabs_[i]->setBounds(tabRow.removeFromLeft(tw));
-    if (i < 5) tabRow.removeFromLeft(gap);
+    if (i < 6) tabRow.removeFromLeft(gap);
   }
 
   r.removeFromTop(8);
 
   stats_.setBounds(r.removeFromBottom(20));
   banner_.setBounds(r.removeFromBottom(22));
-  const bool showSave = dirty_ || save_.isVisible();
+  const bool showSave = tab_ != 6 && (dirty_ || save_.isVisible());
   auto saveRow = r.removeFromBottom(showSave ? 36 : 0);
   if (showSave) {
     r.removeFromBottom(8);
@@ -387,11 +413,11 @@ void NeonLinkEditor::refreshFromSnapshot() {
   if (snap->saving) {
     save_.setButtonText("Saving...");
     save_.setEnabled(false);
-    save_.setVisible(true);
+    save_.setVisible(tab_ != 6);
   } else {
     save_.setButtonText("Save");
     save_.setEnabled(dirty_);
-    save_.setVisible(dirty_ || now < save_ok_until_);
+    save_.setVisible(tab_ != 6 && (dirty_ || now < save_ok_until_));
   }
   if (!dirty_ && now >= save_ok_until_ && !snap->saving) {
     if (saveMsg_.getText() == "Saved.") saveMsg_.setText({}, juce::dontSendNotification);
@@ -411,6 +437,11 @@ void NeonLinkEditor::refreshFromSnapshot() {
 
   if (tab_ == 2) network_.tickStatus(*snap);
   if (tab_ == 4) audio_.tickStatus(*snap);
+  if (tab_ == 6) {
+    if (auto* m = processor_.micController()) {
+      if (auto ms = m->snapshot()) mic_.load(*ms);
+    }
+  }
 
   const bool saveVis = save_.isVisible();
   if (saveVis != save_row_vis_) {

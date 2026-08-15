@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "cJSON.h"
+#include "neon/client/mic.hpp"
 #include "neon/config/json.hpp"
 
 namespace neon::client {
@@ -81,6 +82,10 @@ Result<Status> DeviceClient::getStatus() {
   }
   Result<Status> out;
   out.http_status = r.status;
+  if (probe_document_kind(r.body.c_str(), r.body.size()) == DocumentKind::PhoneMic) {
+    out.error = kKindMismatchMic;
+    return out;
+  }
   if (!parse_status(r.body.c_str(), r.body.size(), &out.value)) {
     out.error = "status parse failed";
     return out;

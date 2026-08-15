@@ -9,6 +9,8 @@ add_library(neon_client STATIC
   src/bind.cpp
   src/backoff.cpp
   src/http.cpp
+  src/mic.cpp
+  src/mic_api.cpp
   src/patch.cpp
   src/ratelimit.cpp
   src/status.cpp

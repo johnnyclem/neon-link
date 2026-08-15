@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "DeviceController.h"
+#include "MicController.h"
 
 class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
  public:
@@ -37,13 +38,17 @@ class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
 
   void ensureControllerStarted();
   neon::plugin::DeviceController* controller() { return controller_.get(); }
+  neon::plugin::MicController* micController() { return mic_.get(); }
 
  private:
   void timerCallback() override;
 
   std::unique_ptr<neon::plugin::DeviceController> controller_;
+  std::unique_ptr<neon::plugin::MicController> mic_;
   juce::String pending_host_;
   juce::String pending_ip_;
+  juce::String pending_mic_host_;
+  juce::String pending_mic_ip_;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeonLinkProcessor)
 };

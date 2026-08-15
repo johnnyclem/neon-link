@@ -1,0 +1,17 @@
+{
+  "kind": "phone-mic",
+  "config_version": 1,
+  "rev": 4,
+  "peer_name": "iPhone",
+  "gain_db": 0,
+  "source_id": "",
+  "keep_alive": true,
+  "start_stop_sync": true,
+  "publish": true,
+  "jitter_ms": 60,
+  "metronome_enabled": false,
+  "metronome_gain_db": -6,
+  "metronome_sound": "sine",
+  "metronome_accent": true,
+  "monitor_gain_db": -60
+}

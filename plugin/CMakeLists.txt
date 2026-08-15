@@ -6,7 +6,7 @@
 # idf.py never sees this directory.
 
 cmake_minimum_required(VERSION 3.22)
-project(neon_link_plugin VERSION 0.2.4 LANGUAGES C CXX)
+project(neon_link_plugin VERSION 0.2.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,7 +26,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/client neon_client)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Juce.cmake)
 
 juce_add_plugin(NeonLink
-  VERSION 0.2.4
+  VERSION 0.2.5
   COMPANY_NAME "Tulip"
   BUNDLE_ID com.tulipcc.neon-link
   PLUGIN_MANUFACTURER_CODE Neon
@@ -47,10 +47,12 @@ target_sources(NeonLink PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
   Source/DeviceController.cpp
+  Source/MicController.cpp
   Source/ui/HeroTempo.cpp
   Source/ui/PhaseBar.cpp
   Source/ui/Form.cpp
   Source/ui/Pages.cpp
+  Source/ui/MicPage.cpp
 )
 
 target_compile_definitions(NeonLink
@@ -65,10 +67,12 @@ set_source_files_properties(
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
   Source/DeviceController.cpp
+  Source/MicController.cpp
   Source/ui/HeroTempo.cpp
   Source/ui/PhaseBar.cpp
   Source/ui/Form.cpp
   Source/ui/Pages.cpp
+  Source/ui/MicPage.cpp
   PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
 
 target_link_libraries(NeonLink

@@ -12,19 +12,32 @@ NeonLinkProcessor::NeonLinkProcessor()
 NeonLinkProcessor::~NeonLinkProcessor() {
   stopTimer();
   if (controller_) controller_->requestStop();
+  if (mic_) mic_->requestStop();
 }
 
 void NeonLinkProcessor::ensureControllerStarted() {
-  if (controller_ != nullptr) return;
+  if (controller_ != nullptr && mic_ != nullptr) return;
   stopTimer();
-  controller_ = std::make_unique<neon::plugin::DeviceController>();
-  if (pending_ip_.isNotEmpty()) {
-    controller_->hintIp(pending_ip_.toStdString());
+  if (controller_ == nullptr) {
+    controller_ = std::make_unique<neon::plugin::DeviceController>();
+    if (pending_ip_.isNotEmpty()) {
+      controller_->hintIp(pending_ip_.toStdString());
+    }
+    if (pending_host_.isNotEmpty()) {
+      controller_->bind(pending_host_.toStdString());
+    }
+    controller_->startThread();
   }
-  if (pending_host_.isNotEmpty()) {
-    controller_->bind(pending_host_.toStdString());
+  if (mic_ == nullptr) {
+    mic_ = std::make_unique<neon::plugin::MicController>();
+    if (pending_mic_ip_.isNotEmpty()) {
+      mic_->hintIp(pending_mic_ip_.toStdString());
+    }
+    if (pending_mic_host_.isNotEmpty()) {
+      mic_->bind(pending_mic_host_.toStdString());
+    }
+    mic_->startThread();
   }
-  controller_->startThread();
 }
 
 void NeonLinkProcessor::timerCallback() {
@@ -60,7 +73,7 @@ void NeonLinkProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 void NeonLinkProcessor::getStateInformation(juce::MemoryBlock& dest) {
   auto xml = std::make_unique<juce::XmlElement>("NEONLINK");
-  xml->setAttribute("state_version", 1);
+  xml->setAttribute("state_version", 2);
   juce::String host = "neon-link.local";
   juce::String ip;
   if (controller_) {
@@ -73,6 +86,25 @@ void NeonLinkProcessor::getStateInformation(juce::MemoryBlock& dest) {
   }
   xml->setAttribute("host", host);
   if (ip.isNotEmpty()) xml->setAttribute("ip", ip);
+
+  juce::String mic_host = "neon-mic.local:17001";
+  juce::String mic_ip;
+  if (mic_) {
+    const auto b = mic_->bind_state();
+    const int port = mic_->port();
+    if (!b.connect_host.empty()) {
+      mic_host = b.connect_host;
+      if (port > 0 && port != neon::client::kMicDefaultPort) {
+        mic_host += ":" + juce::String(port);
+      }
+    }
+    if (!b.ip.empty()) mic_ip = b.ip;
+  } else {
+    if (pending_mic_host_.isNotEmpty()) mic_host = pending_mic_host_;
+    mic_ip = pending_mic_ip_;
+  }
+  xml->setAttribute("mic_host", mic_host);
+  if (mic_ip.isNotEmpty()) xml->setAttribute("mic_ip", mic_ip);
   copyXmlToBinary(*xml, dest);
 }
 
@@ -81,9 +113,16 @@ void NeonLinkProcessor::setStateInformation(const void* data, int size) {
   if (xml == nullptr || !xml->hasTagName("NEONLINK")) return;
   pending_host_ = xml->getStringAttribute("host", "neon-link.local");
   pending_ip_ = xml->getStringAttribute("ip");
+  pending_mic_host_ =
+      xml->getStringAttribute("mic_host", "neon-mic.local:17001");
+  pending_mic_ip_ = xml->getStringAttribute("mic_ip");
   if (controller_) {
     if (pending_ip_.isNotEmpty()) controller_->hintIp(pending_ip_.toStdString());
     controller_->bind(pending_host_.toStdString());
+  }
+  if (mic_) {
+    if (pending_mic_ip_.isNotEmpty()) mic_->hintIp(pending_mic_ip_.toStdString());
+    mic_->bind(pending_mic_host_.toStdString());
   }
 }
 

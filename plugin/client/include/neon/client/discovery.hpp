@@ -14,6 +14,7 @@ struct Discovered {
   std::string device_name;  // TXT name, or empty
   std::string firmware;     // TXT fw
   std::string id;           // TXT id
+  std::string kind;         // TXT kind; empty means neon-link
 };
 
 class DiscoveryBackend {

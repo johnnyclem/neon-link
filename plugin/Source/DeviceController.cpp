@@ -2,6 +2,7 @@
 
 #include "neon/client/backoff.hpp"
 #include "neon/client/bind.hpp"
+#include "neon/client/mic.hpp"
 #include "neon/client/patch.hpp"
 
 namespace neon::plugin {
@@ -190,6 +191,7 @@ void DeviceController::apply_bind(const std::string& raw) {
   http_.close();
   have_config_ = false;
   last_status_rev_ = 0;
+  kind_mismatch_ = false;
 }
 
 void DeviceController::fill_status(Snapshot* s,
@@ -231,8 +233,12 @@ bool DeviceController::fetch_config() {
 bool DeviceController::poll_once() {
   auto r = client_.getStatus();
   if (!r.ok) {
+    if (r.error == neon::client::kKindMismatchMic) {
+      kind_mismatch_ = true;
+    }
     return false;
   }
+  kind_mismatch_ = false;
   const bool need_cfg =
       !have_config_ || (r.value.rev != 0 && r.value.rev != last_status_rev_);
   if (need_cfg) {
@@ -453,8 +459,11 @@ void DeviceController::run() {
         backoff.reset();
         reach = Reachability::Online;
       } else {
-        reach = ever_online ? Reachability::Reconnecting
-                            : Reachability::Connecting;
+        reach = ever_online && !kind_mismatch_ ? Reachability::Reconnecting
+                                               : Reachability::Connecting;
+        if (kind_mismatch_) {
+          reach = Reachability::Offline;
+        }
         Snapshot s;
         {
           const std::lock_guard<std::mutex> g(mu_);
@@ -462,11 +471,15 @@ void DeviceController::run() {
         }
         s.bind = bind_;
         s.reach = reach;
-        s.banner = reach == Reachability::Reconnecting
-                       ? "Lost the module — retrying over HTTP (Link peers are not the VST)."
-                       : "Looking for " +
-                             (bind_.ip.empty() ? bind_.connect_host : bind_.ip) +
-                             " over HTTP — Bind is not Ableton Link.";
+        if (kind_mismatch_) {
+          s.banner = neon::client::kKindMismatchMic;
+        } else {
+          s.banner = reach == Reachability::Reconnecting
+                         ? "Lost the module — retrying over HTTP (Link peers are not the VST)."
+                         : "Looking for " +
+                               (bind_.ip.empty() ? bind_.connect_host : bind_.ip) +
+                               " over HTTP — Bind is not Ableton Link.";
+        }
         publish(std::move(s));
 
         if (ever_online && !bind_.ip.empty() &&

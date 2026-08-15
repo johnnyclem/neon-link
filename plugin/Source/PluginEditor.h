@@ -4,6 +4,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/Form.h"
+#include "ui/MicPage.h"
 #include "ui/Pages.h"
 
 class NeonLinkEditor : public juce::AudioProcessorEditor, private juce::Timer {
@@ -18,6 +19,7 @@ class NeonLinkEditor : public juce::AudioProcessorEditor, private juce::Timer {
   void timerCallback() override;
   void refreshFromSnapshot();
   void send(std::function<void(neon::plugin::DeviceController&)> fn);
+  void sendMic(std::function<void(neon::plugin::MicController&)> fn);
   void patch(std::function<void(neon::Config&)> fn);
   void adoptConfig(const neon::plugin::Snapshot&);
   void doSave();
@@ -53,8 +55,9 @@ class NeonLinkEditor : public juce::AudioProcessorEditor, private juce::Timer {
   juce::TextButton tabMidi_{"MIDI"};
   juce::TextButton tabAud_{"AUD"};
   juce::TextButton tabSys_{"SYS"};
-  juce::TextButton* tabs_[6] = {&tabLive_, &tabOut_,  &tabNet_,
-                                &tabMidi_, &tabAud_, &tabSys_};
+  juce::TextButton tabMic_{"MIC"};
+  juce::TextButton* tabs_[7] = {&tabLive_, &tabOut_,  &tabNet_, &tabMidi_,
+                                &tabAud_,  &tabSys_,  &tabMic_};
 
   juce::Viewport viewport_;
   neon::plugin::LivePage live_;
@@ -63,6 +66,7 @@ class NeonLinkEditor : public juce::AudioProcessorEditor, private juce::Timer {
   neon::plugin::MidiPage midi_;
   neon::plugin::AudioPage audio_;
   neon::plugin::SystemPage system_;
+  neon::plugin::MicPage mic_;
   int tab_ = 0;
 
   juce::TextButton save_{"Save"};

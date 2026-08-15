@@ -10,3 +10,6 @@
 [submodule "third_party/lwip"]
 	path = third_party/lwip
 	url = https://github.com/lwip-tcpip/lwip.git
+[submodule "neon-mic"]
+	path = neon-mic
+	url = git@github.com:johnnyclem/neon-mic.git

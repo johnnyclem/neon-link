@@ -38,9 +38,9 @@ ctest --test-dir build-host -R neon_client_tests --output-on-failure
 - Stereo passthrough. No DSP. No sockets on the audio callback.
 - Does **not** vendor Ableton Link. Live is already the Link peer.
 - Does **not** perform OTA firmware upload (use the web editor for that).
-- Full editor: Live, Outputs, Network, MIDI, Audio, System — same
-  config and commands as the web app, including Wi-Fi join, reboot,
-  and factory reset.
+- Full editor: Live, Outputs, Network, MIDI, Audio, System, Mic — same
+  module config as the web app, plus a second bind (`neon-mic.local:17001`)
+  for a Neon Mic phone. Audio never goes through this plugin.
 
 ## License
 

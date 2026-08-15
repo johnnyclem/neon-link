@@ -107,6 +107,7 @@ class DeviceController : public juce::Thread {
 
   neon::client::AudioChannels audio_channels_;
   bool audio_refreshing_ = false;
+  bool kind_mismatch_ = false;
 
   std::shared_ptr<const Snapshot> snap_;
 };
