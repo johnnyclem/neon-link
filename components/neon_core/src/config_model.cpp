@@ -173,6 +173,25 @@ void config_sanitize(Config* cfg) {
   clamp<uint16_t>(&a.la_jitter_ms, 5, 800);
   a.la_channel_name[sizeof(a.la_channel_name) - 1] = '\0';
   a.la_sub_channel_id[sizeof(a.la_sub_channel_id) - 1] = '\0';
+
+  if (cfg->priority_profile != PriorityProfile::kLegacy) {
+    cfg->priority_profile = PriorityProfile::kFixed;
+  }
+  cfg->telemetry_uart_csv = cfg->telemetry_uart_csv ? 1 : 0;
+}
+
+int link_asio_task_priority(PriorityProfile profile) {
+  // 12: above the timeline poll (10) and the Link Audio pump (9) — see
+  // link_overrides/ableton/platforms/esp32/Context.hpp. 8 recreates the
+  // inversion the fix corrected (docs/STUDIO_MODE_TEST_PLAN.md Phase 2).
+  return profile == PriorityProfile::kLegacy ? 8 : 12;
+}
+
+int link_pump_task_priority(PriorityProfile profile) {
+  // 9: below the asio service task and the timeline poll — see
+  // components/ableton_link/src/link_audio_esp.cpp. 11 recreates the
+  // inversion the fix corrected.
+  return profile == PriorityProfile::kLegacy ? 11 : 9;
 }
 
 AudioEngineConfig audio_engine_config(const Config& cfg) {
@@ -194,6 +213,7 @@ AudioEngineConfig audio_engine_config(const Config& cfg) {
   out.la_fullband = a.la_fullband;
   out.la_jitter_ms = a.la_jitter_ms;
   out.quantum_beats = cfg.quantum_beats;
+  out.priority_profile = static_cast<uint8_t>(cfg.priority_profile);
   return out;
 }
 

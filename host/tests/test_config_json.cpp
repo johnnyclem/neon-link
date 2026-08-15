@@ -15,6 +15,42 @@ std::string encode(const neon::Config& cfg) {
 }
 }  // namespace
 
+// docs/STUDIO_MODE_TEST_PLAN.md's debug-only test knobs: defaults to
+// normal operation, round-trips through JSON like everything else, and a
+// garbage string leaves the profile alone rather than adopting it.
+TEST_CASE("config JSON: debug.priority_profile / telemetry_uart_csv") {
+  neon::Config a;
+  CHECK(a.priority_profile == neon::PriorityProfile::kFixed);
+  CHECK(a.telemetry_uart_csv == 0);
+
+  const std::string json1 = encode(a);
+  CHECK(json1.find("\"debug\"") != std::string::npos);
+  CHECK(json1.find("\"priority_profile\":\"fixed\"") != std::string::npos);
+  CHECK(json1.find("\"telemetry_uart_csv\":false") != std::string::npos);
+
+  neon::Config decoded;
+  REQUIRE(neon::config_from_json(json1.data(), json1.size(), &decoded));
+  CHECK(decoded.priority_profile == neon::PriorityProfile::kFixed);
+  CHECK(decoded.telemetry_uart_csv == 0);
+
+  a.priority_profile = neon::PriorityProfile::kLegacy;
+  a.telemetry_uart_csv = 1;
+  const std::string json2 = encode(a);
+  CHECK(json2.find("\"priority_profile\":\"legacy\"") != std::string::npos);
+  CHECK(json2.find("\"telemetry_uart_csv\":true") != std::string::npos);
+  REQUIRE(neon::config_from_json(json2.data(), json2.size(), &decoded));
+  CHECK(decoded.priority_profile == neon::PriorityProfile::kLegacy);
+  CHECK(decoded.telemetry_uart_csv == 1);
+
+  // An unrecognized profile string is ignored, not adopted as some other
+  // enumerator: the field simply keeps its prior value.
+  const std::string garbage =
+      "{\"debug\":{\"priority_profile\":\"turbo\"}}";
+  neon::Config kept = a;  // still kLegacy from above
+  REQUIRE(neon::config_from_json(garbage.data(), garbage.size(), &kept));
+  CHECK(kept.priority_profile == neon::PriorityProfile::kLegacy);
+}
+
 TEST_CASE("config JSON round-trips every field") {
   neon::Config a;
   a.engine.clocks[0].ppqn = 24;

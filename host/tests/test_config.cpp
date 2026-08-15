@@ -160,6 +160,35 @@ TEST_CASE("an AP password shorter than WPA2 allows fails closed") {
   CHECK(std::string(cfg.ap_pass) == "longenough");
 }
 
+TEST_CASE("priority_profile sanitizes to a known enumerator") {
+  neon::Config cfg;
+  CHECK(cfg.priority_profile == neon::PriorityProfile::kFixed);
+
+  cfg.priority_profile = neon::PriorityProfile::kLegacy;
+  neon::config_sanitize(&cfg);
+  CHECK(cfg.priority_profile == neon::PriorityProfile::kLegacy);
+
+  // A garbage byte (a corrupt NVS blob, say) falls back to the safe
+  // default rather than being read as some other enumerator.
+  cfg.priority_profile = static_cast<neon::PriorityProfile>(0xaa);
+  neon::config_sanitize(&cfg);
+  CHECK(cfg.priority_profile == neon::PriorityProfile::kFixed);
+}
+
+// docs/STUDIO_MODE_TEST_PLAN.md Phase 2: kFixed must reproduce the shipped
+// fix's numbers (asio above the Link Audio pump) and kLegacy must
+// reproduce the pre-fix inversion it corrected — both pulled out as pure
+// functions specifically so this is checkable without FreeRTOS.
+TEST_CASE("link task priorities: fixed keeps asio above the pump, legacy inverts it") {
+  const int asio_fixed = neon::link_asio_task_priority(neon::PriorityProfile::kFixed);
+  const int pump_fixed = neon::link_pump_task_priority(neon::PriorityProfile::kFixed);
+  CHECK(asio_fixed > pump_fixed);
+
+  const int asio_legacy = neon::link_asio_task_priority(neon::PriorityProfile::kLegacy);
+  const int pump_legacy = neon::link_pump_task_priority(neon::PriorityProfile::kLegacy);
+  CHECK(asio_legacy < pump_legacy);
+}
+
 TEST_CASE("an empty WiFi slot never keeps a stale password") {
   neon::Config cfg;
   cfg.wifi[1].ssid[0] = '\0';

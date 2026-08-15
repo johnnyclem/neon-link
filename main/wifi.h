@@ -27,6 +27,10 @@ void neon_wifi_apply_credentials(void);
 uint8_t neon_wifi_last_disconnect_reason(void);
 // SSID of the network currently being attempted (never null).
 const char* neon_wifi_current_ssid(void);
+// Associated AP's RSSI in dBm, or 0 when STA is not currently associated
+// (including AP-only / SoftAP mode). Non-blocking: reads the WiFi driver's
+// cached state, no radio round trip.
+int8_t neon_wifi_rssi(void);
 // Blocking scan rendered straight to a JSON array, so components/web_ui
 // can offer a pick-list without depending on main/. Returns bytes written
 // (0 on failure); always emits a valid array, possibly empty.
@@ -42,7 +46,8 @@ bool neon_wifi_wait_ip(uint32_t timeout_ms);
 struct NeonWifiScanEntry {
   char ssid[33];
   int8_t rssi;
-  uint8_t open;  // 1 = no password required
+  uint8_t open;    // 1 = no password required
+  uint8_t channel; // 2.4 GHz channel 1..14
 };
 
 // Blocking scan for nearby 2.4 GHz networks, so the editor can offer a

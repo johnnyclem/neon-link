@@ -18,6 +18,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -29,6 +30,7 @@
 #include "app_state/timeline_bus.h"
 #include "board_pins.h"
 #include "halesp/i2s_audio.hpp"
+#include "netman/net_manager.h"
 #include "neon/audio/beat_window.hpp"
 #include "neon/audio/click.hpp"
 #include "neon/audio/jitter_buffer.hpp"
@@ -36,7 +38,9 @@
 #include "neon/audio/mixer.hpp"
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
+#include "neon/telemetry/csv.hpp"
 #include "tasks.h"
+#include "wifi.h"
 
 #if CONFIG_NEON_AUDIO
 
@@ -435,7 +439,8 @@ void audio_task(void*) {
       status.sub_state = static_cast<uint8_t>(g_jitter.state());
       status.sub_dropped = g_jitter.dropped();
       status.sub_rate = g_jitter.sender_rate();
-      status.fill_ms = (g_jitter.fill_frames() * 1000u) / kSampleRate;
+      status.fill_frames = g_jitter.fill_frames();
+      status.fill_ms = (status.fill_frames * 1000u) / kSampleRate;
       status.clock_ppm = clock.ppm();
       status.clock_residual_us = static_cast<int32_t>(clock.residual_us());
       status.rx_dropped = link_audio.source_dropped();
@@ -443,6 +448,17 @@ void audio_task(void*) {
       status.tx_dropped = link_audio.sink_dropped();
       status.trim_ppm = g_jitter.trim_ppm();
       status.concealed = g_jitter.concealed();
+      status.rx_high_water = link_audio.rx_high_water();
+      status.i2s_write_failures = io.write_failures();
+      status.heap_free_internal =
+          static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+      status.heap_free_psram =
+          static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      status.rssi = neon_wifi_rssi();
+      status.priority_profile = cfg.priority_profile;
+      status.req_jitter_ms = static_cast<uint16_t>(g_jitter.jitter_ms());
+      status.eff_jitter_ms =
+          static_cast<uint16_t>(g_jitter.effective_jitter_ms());
       audio_status_bus().publish(status);
     }
   }
@@ -502,6 +518,12 @@ void audio_ctl_task(void*) {
   neon::AudioStatus prev{};
   uint8_t last_state = 0;
   uint32_t log_countdown = 0;
+
+  // P4 UART CSV telemetry (docs/STUDIO_MODE_TEST_PLAN.md), off by default:
+  // a header line whenever cfg.telemetry_uart_csv turns on, then one data
+  // line per second while it stays on.
+  bool telemetry_was_on = false;
+  uint32_t telemetry_countdown = 0;
 
   for (;;) {
     const neon::Config& cfg = neon_config();
@@ -564,6 +586,52 @@ void audio_ctl_task(void*) {
     // --- receive/publish diagnostics --------------------------------
     neon::AudioStatus st;
     audio_status_bus().read(st);
+
+    // --- P4 UART CSV telemetry --------------------------------------
+    const bool want_telemetry = cfg.telemetry_uart_csv != 0;
+    if (want_telemetry && !telemetry_was_on) {
+      char header[224];  // the header line itself is 200 bytes
+      const size_t hn = neon::telemetry_csv_header(header, sizeof(header));
+      if (hn != 0) {
+        printf("TEL,%s\n", header);
+      }
+      telemetry_countdown = 0;
+    }
+    telemetry_was_on = want_telemetry;
+    if (want_telemetry && telemetry_countdown-- == 0) {
+      telemetry_countdown = 3;  // this loop runs every 250 ms; emit at 1 Hz
+      const neon::ActiveNet net = netman::preference().active();
+      const bool ap_up = netman::ap_is_up();
+      const bool sta_up = net == neon::ActiveNet::kWifi;
+      const char* mode = net == neon::ActiveNet::kEthernet ? "eth"
+                         : ap_up && sta_up                  ? "apsta"
+                         : ap_up                             ? "ap"
+                         : sta_up                             ? "sta"
+                                                              : "none";
+      neon::TelemetrySample sample;
+      sample.uptime_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
+      sample.mode = mode;
+      sample.prio_set = st.priority_profile;
+      sample.req_jitter_ms = st.req_jitter_ms;
+      sample.eff_jitter_ms = st.eff_jitter_ms;
+      sample.jit_fill_frames = st.fill_frames;
+      sample.jit_underruns = st.jit_underruns;
+      sample.jit_conceals = st.concealed;
+      sample.jit_state = st.sub_state;
+      sample.rx_dropped = st.rx_dropped;
+      sample.rx_high_water = st.rx_high_water;
+      sample.la_trim_ppm = st.trim_ppm;
+      sample.i2s_write_failures = st.i2s_write_failures;
+      sample.rssi = st.rssi;
+      sample.heap_free_internal = st.heap_free_internal;
+      sample.heap_free_psram = st.heap_free_psram;
+      char line[192];
+      const size_t ln = neon::telemetry_csv_line(sample, line, sizeof(line));
+      if (ln != 0) {
+        printf("TEL,%s\n", line);
+      }
+    }
+
     if (st.sub_state != last_state) {
       ESP_LOGI(kTag, "sub %s -> %s (fill %lu ms, rx_drop %lu, jit_drop %lu)",
                last_state == 0 ? "idle" : last_state == 1 ? "buffering"

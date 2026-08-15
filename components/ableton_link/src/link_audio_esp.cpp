@@ -28,6 +28,7 @@
 #include <new>
 
 #include "ablink/audio.hpp"
+#include "ablink/priority.hpp"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -382,6 +383,11 @@ class LinkAudioEsp final : public hal::ILinkAudio {
 
   uint32_t source_dropped() const override { return rx_ring_.dropped(); }
   uint32_t sink_dropped() const override { return sink_dropped_; }
+  // High-water mark of the receive ring's queue depth against kRxSlots —
+  // how close a WiFi burst came to overflowing it, the loss the jitter
+  // buffer downstream cannot see. Peak-since-last-read; pump()'s ~5 s log
+  // line also resets it, so two readers share one decaying peak.
+  uint32_t rx_high_water() const override { return rx_high_water_; }
 
   uint32_t subscriber_count() const override {
     uint32_t n = 0;
@@ -521,14 +527,16 @@ void link_audio_start_pump() {
   if (g_pump_task != nullptr) {
     return;
   }
-  // Priority 9: below Link's asio service task (12) and the timeline poll
-  // in link_svc (10). The pump at 11 had it inverted — under network load
-  // the scheduler shipped audio first and ran Link's timing protocol last,
-  // degrading the sync that is the whole product. The block scratch lives
-  // in g_pump_block rather than on this stack; commit() still runs lwIP's
-  // send path underneath, hence the size.
-  xTaskCreatePinnedToCore(pump_task, "linkaudio", 6144, nullptr, 9,
-                          &g_pump_task, 0);
+  // Priority 9 (link_pump_priority()'s default): below Link's asio service
+  // task (12) and the timeline poll in link_svc (10). The pump at 11 had
+  // it inverted — under network load the scheduler shipped audio first and
+  // ran Link's timing protocol last, degrading the sync that is the whole
+  // product. Read through link_pump_priority() rather than hardcoded so
+  // docs/STUDIO_MODE_TEST_PLAN.md Phase 2 can reproduce that inversion on
+  // demand. The block scratch lives in g_pump_block rather than on this
+  // stack; commit() still runs lwIP's send path underneath, hence the size.
+  xTaskCreatePinnedToCore(pump_task, "linkaudio", 6144, nullptr,
+                          link_pump_priority(), &g_pump_task, 0);
 }
 
 }  // namespace ablink

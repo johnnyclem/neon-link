@@ -534,6 +534,12 @@ const char* sub_state_str(uint8_t state) {
   }
 }
 
+// AudioStatus::priority_profile, as a word matching config_json.cpp's
+// "debug.priority_profile" string.
+const char* priority_profile_str(uint8_t profile) {
+  return profile == 1 ? "legacy" : "fixed";
+}
+
 // GET /api/audio/channels — Link Audio discovery for the subscribe picker.
 esp_err_t handle_audio_channels(httpd_req_t* req) {
   if (!check_local_origin(req)) {
@@ -585,7 +591,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1600];
+  char buf[1800];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -601,7 +607,10 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"sub_state\":\"%s\",\"sub_rate\":%u,\"sub_dropped\":%u,"
       "\"fill_ms\":%u,\"clock_ppm\":%d,\"rx_dropped\":%u,"
       "\"jit_underruns\":%u,\"tx_dropped\":%u,\"trim_ppm\":%d,"
-      "\"concealed\":%u}}",
+      "\"concealed\":%u,\"fill_frames\":%u,\"rx_high_water\":%u,"
+      "\"i2s_write_failures\":%u,\"heap_free_internal\":%u,"
+      "\"heap_free_psram\":%u,\"rssi\":%d,\"priority_profile\":\"%s\","
+      "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -632,7 +641,16 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.jit_underruns),
       static_cast<unsigned>(audio.tx_dropped),
       static_cast<int>(audio.trim_ppm),
-      static_cast<unsigned>(audio.concealed));
+      static_cast<unsigned>(audio.concealed),
+      static_cast<unsigned>(audio.fill_frames),
+      static_cast<unsigned>(audio.rx_high_water),
+      static_cast<unsigned>(audio.i2s_write_failures),
+      static_cast<unsigned>(audio.heap_free_internal),
+      static_cast<unsigned>(audio.heap_free_psram),
+      static_cast<int>(audio.rssi),
+      priority_profile_str(audio.priority_profile),
+      static_cast<unsigned>(audio.req_jitter_ms),
+      static_cast<unsigned>(audio.eff_jitter_ms));
   if (n < 0) {
     return httpd_resp_send_500(req);
   }

@@ -60,6 +60,10 @@ const char* ap_policy_str(ApPolicy p) {
   }
 }
 
+const char* priority_profile_str(PriorityProfile p) {
+  return p == PriorityProfile::kLegacy ? "legacy" : "fixed";
+}
+
 const char* source_str(ClockSource s) {
   switch (s) {
     case ClockSource::kLinkMaster:
@@ -353,6 +357,14 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(ap, "hidden", cfg.ap_hidden != 0);
   cJSON_AddNumberToObject(ap, "channel", cfg.ap_channel);
 
+  // Debug-only test knobs (docs/STUDIO_MODE_TEST_PLAN.md); both default to
+  // normal operation. Not surfaced in the editor UI.
+  cJSON* debug = cJSON_AddObjectToObject(root, "debug");
+  cJSON_AddStringToObject(debug, "priority_profile",
+                          priority_profile_str(cfg.priority_profile));
+  cJSON_AddBoolToObject(debug, "telemetry_uart_csv",
+                        cfg.telemetry_uart_csv != 0);
+
   const bool ok = cJSON_PrintPreallocated(root, buf, static_cast<int>(cap),
                                           /*fmt=*/false);
   cJSON_Delete(root);
@@ -576,6 +588,18 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     get_bool_u8(ap, "require_pass", &cfg->ap_require_pass);
     get_bool_u8(ap, "hidden", &cfg->ap_hidden);
     get_u8(ap, "channel", &cfg->ap_channel);
+  }
+
+  const cJSON* debug = cJSON_GetObjectItemCaseSensitive(root, "debug");
+  if (cJSON_IsObject(debug)) {
+    const cJSON* pp =
+        cJSON_GetObjectItemCaseSensitive(debug, "priority_profile");
+    if (str_eq(pp, "fixed")) {
+      cfg->priority_profile = PriorityProfile::kFixed;
+    } else if (str_eq(pp, "legacy")) {
+      cfg->priority_profile = PriorityProfile::kLegacy;
+    }
+    get_bool_u8(debug, "telemetry_uart_csv", &cfg->telemetry_uart_csv);
   }
 
   cJSON_Delete(root);

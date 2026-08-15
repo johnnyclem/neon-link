@@ -64,6 +64,15 @@ struct AudioEngineConfig {
   uint16_t la_jitter_ms = 60;
 
   uint32_t quantum_beats = 4;
+
+  // Mirrors neon::PriorityProfile (0 = fixed, 1 = legacy) without pulling
+  // in config/model.hpp: the render task must read this off the seqlock
+  // like everything else here, never neon_config() directly — g_config is
+  // an unsynchronized global core 0 writes to, and this struct exists
+  // specifically so core 1 never touches it. See config_model.cpp's
+  // audio_engine_config() for the cast at the writing end and
+  // main/audio_service.cpp's status block for the read.
+  uint8_t priority_profile = 0;
 };
 
 // Status published back to the UI (web / OLED) by the audio task.
@@ -81,6 +90,7 @@ struct AudioStatus {
   uint32_t sub_rate = 0;    // sender sample rate, 0 when not receiving
   uint32_t subscribers = 0; // peers listening to our published channels
   uint32_t fill_ms = 0;     // receive-buffer fill, milliseconds
+  uint32_t fill_frames = 0; // receive-buffer fill, frames (jit_fill_frames)
   int32_t clock_ppm = 0;    // SampleClock rate correction
   int32_t clock_residual_us = 0;
 
@@ -93,6 +103,28 @@ struct AudioStatus {
   uint32_t tx_dropped = 0;     // publish blocks lost audio→pump ring
   int32_t trim_ppm = 0;        // receive resampler servo trim
   uint32_t concealed = 0;      // beat-time holes written as in-place silence
+
+  // Added for docs/STUDIO_MODE_TEST_PLAN.md's P4 telemetry: the plan
+  // needs a few counters that used to live only in a rate-limited log
+  // line (or nowhere), split out the same way rx_dropped/jit_underruns/
+  // tx_dropped already are — one field per failure mode, so a log line or
+  // /api/status can say *which* stage is bleeding.
+  uint32_t rx_high_water = 0;      // receive ring high-water / kRxSlots
+  uint32_t i2s_write_failures = 0; // I2S write() calls that found no room
+                                    // (also folded into `underruns` above)
+  uint32_t heap_free_internal = 0; // bytes, MALLOC_CAP_INTERNAL
+  uint32_t heap_free_psram = 0;    // bytes, MALLOC_CAP_SPIRAM
+  int8_t rssi = 0;                 // associated STA AP RSSI, dBm; 0 if not
+                                    // associated (AP mode, no STA link)
+  uint8_t priority_profile = 0;    // PriorityProfile as configured: 0 =
+                                    // fixed (shipped), 1 = legacy (debug)
+  uint16_t req_jitter_ms = 0;      // la_jitter_ms as configured, after the
+                                    // 5..800 ms sanity clamp
+  uint16_t eff_jitter_ms = 0;      // actual buffer target after
+                                    // JitterBuffer further clamps to half
+                                    // its ring capacity — the two differ
+                                    // exactly when that clamp is silently
+                                    // truncating the requested value
 };
 
 }  // namespace neon

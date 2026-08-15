@@ -82,6 +82,17 @@ enum class ApPolicy : uint8_t {
   kOff = 2,       // never create an access point
 };
 
+// Debug-only override of the FreeRTOS priorities Link's asio service task
+// and the Link Audio pump task run at. kFixed is the shipped, corrected
+// ordering (asio above the pump); kLegacy reproduces the pre-fix inversion
+// (docs/STUDIO_MODE_TEST_PLAN.md Phase 2 needs both, on demand, without a
+// separate firmware build, to run the priority-fix regression as an A/B
+// rather than take it on faith).
+enum class PriorityProfile : uint8_t {
+  kFixed = 0,
+  kLegacy = 1,
+};
+
 struct Config {
   EngineConfig engine;
 
@@ -146,10 +157,18 @@ struct Config {
   // Appended in v4 (docs/AUDIOLINK.md). A v3 blob decodes with the whole
   // block back at its defaults — see config_decode.
   AudioConfig audio;
+
+  // Appended in v5 (docs/STUDIO_MODE_TEST_PLAN.md). Debug-only test knobs,
+  // both default to normal operation: priority_profile reproduces the
+  // pre-fix task-priority inversion on demand (see the enum above), and
+  // telemetry_uart_csv turns on the one-line-per-second CSV telemetry
+  // stream the plan's P4 wants for offline analysis.
+  PriorityProfile priority_profile = PriorityProfile::kFixed;
+  uint8_t telemetry_uart_csv = 0;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 4;
+inline constexpr uint16_t kConfigVersion = 5;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;
@@ -187,6 +206,16 @@ uint32_t crc32(const uint8_t* data, size_t len);
 // restart-scoped fields (publish flags, subscription) stay behind on
 // core 0, which is the only place that can act on them.
 AudioEngineConfig audio_engine_config(const Config& cfg);
+
+// The FreeRTOS priority Link's asio service task and the Link Audio pump
+// task run at, given `profile`. Pulled out as pure functions so the
+// pre-fix/post-fix numbers are host-testable without dragging in FreeRTOS:
+// components/ableton_link/link_overrides/.../Context.hpp and
+// components/ableton_link/src/link_audio_esp.cpp read these (via
+// ablink::set_link_asio_priority / set_link_pump_priority, applied once at
+// boot) instead of carrying the numbers as hardcoded constants.
+int link_asio_task_priority(PriorityProfile profile);
+int link_pump_task_priority(PriorityProfile profile);
 
 // The name the module publishes its mix under: the explicit
 // audio.la_channel_name when set, otherwise "<Device Name> Out" / " In".

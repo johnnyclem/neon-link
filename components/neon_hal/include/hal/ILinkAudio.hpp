@@ -86,6 +86,13 @@ class ILinkAudio {
   virtual uint32_t source_dropped() const = 0;
   virtual uint32_t sink_dropped() const = 0;
 
+  // High-water mark of the receive ring's queue depth, since the last
+  // reset (the implementation may reset it periodically for its own log
+  // line — treat this as approximate, not a precise per-call sample).
+  // Diagnostic only: how close a WiFi burst came to overflowing the
+  // receive ring, the loss the jitter buffer downstream cannot see.
+  virtual uint32_t rx_high_water() const = 0;
+
   // Peers listening to anything we publish.
   virtual uint32_t subscriber_count() const = 0;
 
