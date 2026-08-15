@@ -24,19 +24,21 @@ volatile uint32_t g_edges = 0;
 volatile uint32_t g_late_max_us = 0;
 volatile uint64_t g_late_sum_us = 0;
 
-daisy::GPIO g_pins[6];
+daisy::GPIO g_pins[kNumPulsePins];
 daisy::TimerHandle g_timer;
 
+// The level word tracks all six virtual channels (the RUN LED and the
+// UI read it) even on boards where only some land on physical pins —
+// kPulsePinChannel maps each real jack to its channel bit.
 inline void apply_masks(uint32_t set_mask, uint32_t clear_mask) {
-  for (int i = 0; i < 6; ++i) {
-    const uint32_t bit = 1u << i;
+  g_levels = (g_levels | set_mask) & ~clear_mask;
+  for (int i = 0; i < kNumPulsePins; ++i) {
+    const uint32_t bit = 1u << kPulsePinChannel[i];
     if (set_mask & bit) {
       g_pins[i].Write(true);
-      g_levels |= bit;
     }
     if (clear_mask & bit) {
       g_pins[i].Write(false);
-      g_levels &= ~bit;
     }
   }
 }
@@ -70,7 +72,7 @@ void pulse_isr(void*) {
 }  // namespace
 
 bool PulseHwDaisy::init() {
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < kNumPulsePins; ++i) {
     g_pins[i].Init(kPulsePins[i], daisy::GPIO::Mode::OUTPUT);
     g_pins[i].Write(false);
   }

@@ -13,8 +13,8 @@
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
 
+#include "board_daisy.h"
 #include "irq_lock_daisy.h"
-#include "seed_hw_daisy.h"
 #include "timebase_daisy.h"
 
 namespace audioeng {
@@ -183,11 +183,10 @@ void init() {
   g_clock.reset(kRate);
   g_click.reset(kRate);
   g_pulse.reset(kRate);
-  g_seed.SetAudioBlockSize(kBlockFrames);
-  g_seed.SetAudioSampleRate(daisy::SaiHandle::Config::SampleRate::SAI_48KHZ);
-  g_seed.StartAudio(audio_callback);
+  board_audio_start(audio_callback, kBlockFrames);
   // Below the pulse emitter and MIDI tick — see pulse_hw_daisy.cpp for
-  // the ranking. libDaisy parks the SAI DMA streams at priority 0.
+  // the ranking. libDaisy parks the SAI1 DMA streams (used by every
+  // board in this family) at priority 0.
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 8, 0);
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 8, 0);
 }

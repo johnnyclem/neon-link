@@ -18,8 +18,8 @@
 #include "app_state/audio_bus.h"
 #include "app_state/timeline_bus.h"
 
+#include "board_daisy.h"
 #include "config_store_daisy.h"
-#include "seed_hw_daisy.h"
 #include "timebase_daisy.h"
 
 namespace {
@@ -53,17 +53,17 @@ bool write_slot(int slot, const uint8_t* data, size_t len) {
     g_pre_persist(kPersistStallBudgetUs);
   }
   const uint32_t off = slot_offset(slot);
-  if (g_seed.qspi.Erase(off, off + kSectorBytes) !=
+  if (board_qspi().Erase(off, off + kSectorBytes) !=
       daisy::QSPIHandle::Result::OK) {
     return false;
   }
-  return g_seed.qspi.Write(off, static_cast<uint32_t>(len),
+  return board_qspi().Write(off, static_cast<uint32_t>(len),
                            const_cast<uint8_t*>(data)) ==
          daisy::QSPIHandle::Result::OK;
 }
 
 bool read_slot(int slot, uint8_t* buf, size_t cap, size_t* len) {
-  const void* src = g_seed.qspi.GetData(slot_offset(slot));
+  const void* src = board_qspi().GetData(slot_offset(slot));
   if (src == nullptr) {
     return false;
   }
@@ -186,7 +186,7 @@ bool neon_config_factory_reset() {
   if (g_pre_persist != nullptr) {
     g_pre_persist(kPersistStallBudgetUs * (1 + kPresetSlots));
   }
-  const bool ok = g_seed.qspi.Erase(slot_offset(-1),
+  const bool ok = board_qspi().Erase(slot_offset(-1),
                                     slot_offset(kPresetSlots)) ==
                   daisy::QSPIHandle::Result::OK;
   g_config = neon::Config{};

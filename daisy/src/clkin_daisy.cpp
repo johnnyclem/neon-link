@@ -1,5 +1,6 @@
 #include "clkin_daisy.h"
 
+#include "board_pins_daisy.h"
 #include "irq_lock_daisy.h"
 
 namespace clkin {
@@ -36,20 +37,21 @@ void capture(Kind kind, int64_t now) {
 }  // namespace
 
 void init(daisy::Pin clk_pin, daisy::Pin rst_pin) {
-  // External input conditioning holds the line low when idle
-  // (HARDWARE.md §5.4); no pull needed, but a pulldown keeps a floating
-  // bench setup quiet.
-  g_clk.Init(clk_pin, daisy::GPIO::Mode::INPUT, daisy::GPIO::Pull::PULLDOWN);
-  g_rst.Init(rst_pin, daisy::GPIO::Mode::INPUT, daisy::GPIO::Pull::PULLDOWN);
+  // Pull and polarity come from the board header: the Seed/Pod builds
+  // expect the HARDWARE.md §5.4 non-inverting conditioning (pulldown
+  // keeps a floating bench setup quiet); patch.init()'s gate inputs
+  // invert and hold the line themselves.
+  g_clk.Init(clk_pin, daisy::GPIO::Mode::INPUT, kClkInPull);
+  g_rst.Init(rst_pin, daisy::GPIO::Mode::INPUT, kClkInPull);
 }
 
 void sample_isr(int64_t now_us) {
-  const bool clk = g_clk.Read();
+  const bool clk = g_clk.Read() != kClkInInverted;
   if (clk && !g_level[0]) {
     capture(Kind::kClock, now_us);
   }
   g_level[0] = clk;
-  const bool rst = g_rst.Read();
+  const bool rst = g_rst.Read() != kClkInInverted;
   if (rst && !g_level[1]) {
     capture(Kind::kReset, now_us);
   }

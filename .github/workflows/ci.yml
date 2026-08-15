@@ -179,11 +179,15 @@ jobs:
       # Compiles the same neon_core sources as the host, ESP-IDF, and
       # Teensy jobs, but with the arm-none-eabi toolchain and the
       # bare-metal glue in daisy/src — catches target-only breakage
-      # (docs/DAISY.md). The image must keep fitting the STM32H750's
+      # (docs/DAISY.md). Each image must keep fitting the STM32H750's
       # single 128 KB internal-flash sector; the linker fails the job if
-      # it stops fitting.
-      - name: Build firmware
+      # one stops fitting.
+      - name: Build firmware (Seed OLED)
         run: make -C daisy -j$(nproc)
+      - name: Build firmware (Pod headless)
+        run: make -C daisy/pod -j$(nproc)
+      - name: Build firmware (patch.init() headless)
+        run: make -C daisy/patch_init -j$(nproc)
 
   plugin-macos:
     name: Plugin (macOS VST3)

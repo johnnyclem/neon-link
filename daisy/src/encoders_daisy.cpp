@@ -14,7 +14,7 @@ constexpr uint32_t kLongPressMs = 600;
 
 // Set true per encoder if yours counts backwards (A/B swapped on the
 // footprint is the usual cause).
-constexpr bool kInvert[2] = {false, false};
+constexpr bool kInvert[kNumEncoders] = {};
 
 struct Enc {
   daisy::GPIO a, b, sw;
@@ -29,7 +29,7 @@ struct Enc {
   bool long_fired = false;
 };
 
-Enc g_enc[2];
+Enc g_enc[kNumEncoders];
 
 inline void sample(Enc& e) {
   const unsigned ab = (static_cast<unsigned>(e.a.Read()) << 1) |
@@ -40,15 +40,14 @@ inline void sample(Enc& e) {
 }  // namespace
 
 void init() {
-  const daisy::Pin pins[2][3] = {
-      {kPinEnc1A, kPinEnc1B, kPinEnc1Sw},
-      {kPinEnc2A, kPinEnc2B, kPinEnc2Sw},
-  };
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < kNumEncoders; ++i) {
     Enc& e = g_enc[i];
-    e.a.Init(pins[i][0], daisy::GPIO::Mode::INPUT, daisy::GPIO::Pull::PULLUP);
-    e.b.Init(pins[i][1], daisy::GPIO::Mode::INPUT, daisy::GPIO::Pull::PULLUP);
-    e.sw.Init(pins[i][2], daisy::GPIO::Mode::INPUT, daisy::GPIO::Pull::PULLUP);
+    e.a.Init(kEncPins[i][0], daisy::GPIO::Mode::INPUT,
+             daisy::GPIO::Pull::PULLUP);
+    e.b.Init(kEncPins[i][1], daisy::GPIO::Mode::INPUT,
+             daisy::GPIO::Pull::PULLUP);
+    e.sw.Init(kEncPins[i][2], daisy::GPIO::Mode::INPUT,
+              daisy::GPIO::Pull::PULLUP);
     const unsigned ab = (static_cast<unsigned>(e.a.Read()) << 1) |
                         static_cast<unsigned>(e.b.Read());
     e.decoder.reset(ab);
@@ -56,8 +55,9 @@ void init() {
 }
 
 void sample_isr() {
-  sample(g_enc[0]);
-  sample(g_enc[1]);
+  for (int i = 0; i < kNumEncoders; ++i) {
+    sample(g_enc[i]);
+  }
 }
 
 int take_detents(int index) {

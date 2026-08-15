@@ -31,6 +31,7 @@
 #include "neon/ui/render.hpp"
 
 #include "audio_daisy.h"
+#include "board_daisy.h"
 #include "board_pins_daisy.h"
 #include "clkin_daisy.h"
 #include "config_store_daisy.h"
@@ -39,11 +40,7 @@
 #include "midi_daisy.h"
 #include "oled_daisy.h"
 #include "pulse_hw_daisy.h"
-#include "seed_hw_daisy.h"
-#include "tempo_cv_daisy.h"
 #include "timebase_daisy.h"
-
-daisy::DaisySeed g_seed;
 
 namespace {
 
@@ -210,7 +207,7 @@ void service_ui(int64_t now_us) {
   g_led_beat.Write(beat_on);
   g_led_run.Write((PulseHwDaisy::levels() & (1u << neon::kChRun)) != 0);
   g_led_ext.Write(status.ext_clock);
-  g_seed.SetLed(status.playing);  // onboard LED mirrors the transport
+  board_set_led(status.playing);  // onboard LED mirrors the transport
 }
 
 }  // namespace
@@ -223,7 +220,7 @@ void neon_daisy_input_sample_isr(int64_t now_us) {
 }
 
 int main() {
-  g_seed.Init();  // SDRAM, QSPI (memory-mapped), codec, clocks
+  board_init();  // SDRAM, QSPI (memory-mapped), codec, clocks, CV DAC
   daisy_time_init();
 
   neon_config_load();
@@ -242,7 +239,6 @@ int main() {
   }
 
   enc::init();
-  tempocv::init();
 
   const int64_t now = daisy_now_us();
   g_cursor = now + kLeadUs;
@@ -250,7 +246,7 @@ int main() {
   // calling the sampling hook.
   linksvc::init(now);
   if (!g_pulse_hw.init()) {
-    g_seed.SetLed(true);  // pulse timer failed: solid onboard LED
+    board_set_led(true);  // pulse timer failed: solid onboard LED
   }
   miditrs::init();
   audioeng::init();

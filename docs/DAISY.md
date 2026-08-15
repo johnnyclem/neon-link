@@ -1,13 +1,21 @@
-# NEON LINK on the Daisy Seed — SSD1306/1309 OLED Build Target
+# NEON LINK on the Daisy Family — Seed OLED, Pod, patch.init()
 
-**Status**: Standalone-clock target — the full pulse engine, OLED UI,
+**Status**: Standalone-clock target family — the full pulse engine,
 TRS MIDI clock, CLK/RST IN external clock following, audio engine on the
 built-in codec, Tempo CV on a true DAC, config + presets in QSPI flash.
 No network features (no network interface on this hardware — see §1).
-**Hardware**: Electrosmith **Daisy Seed** (STM32H750 @ 400 MHz, 64 MB
-SDRAM, 8 MB QSPI flash, stereo codec), a **128×64 SSD1306 or SSD1309
-OLED** on SPI, **two EC11 rotary encoders**, six pulse outputs, CLK/RST
-IN, TRS MIDI out, and three status LEDs.
+Three build configurations share the code in `daisy/`:
+
+| Config | Board | Screen | Doc |
+|---|---|---|---|
+| `daisy/` | **Daisy Seed** + 128×64 SSD1306/1309 OLED, 2 encoders | yes | this file, §2-§7 |
+| `daisy/pod/` | **Daisy Pod** (headless) | no | §8 |
+| `daisy/patch_init/` | **patch.init()** (headless, Eurorack-native) | no | §8 |
+
+**Hardware (Seed config)**: Electrosmith **Daisy Seed** (STM32H750 @
+400 MHz, 64 MB SDRAM, 8 MB QSPI flash, stereo codec), a **128×64
+SSD1306 or SSD1309 OLED** on SPI, **two EC11 rotary encoders**, six
+pulse outputs, CLK/RST IN, TRS MIDI out, and three status LEDs.
 
 This target builds the same portable firmware core as the ESP32-S3 and
 Teensy 4.1 targets — `components/neon_core` against the header-only
@@ -89,9 +97,11 @@ than pretended at.
 
 ## 2. Wiring
 
-All pins are defined in one place: `daisy/include/board_pins_daisy.h`.
-These tables mirror it. Pin numbers are Daisy Seed "D" GPIO names
-(silkscreen 1–40 maps to D0–D30 per the Electrosmith pinout card).
+All pins are defined in one place per board:
+`daisy/include/board_pins_seed.h` (this section; the headless boards'
+maps are in §8, dispatched through `board_pins_daisy.h`). These tables
+mirror it. Pin numbers are Daisy Seed "D" GPIO names (silkscreen 1–40
+maps to D0–D30 per the Electrosmith pinout card).
 
 ### 128×64 SSD1306/SSD1309 OLED (SPI1, 4-wire)
 
@@ -111,7 +121,7 @@ layout) but are not wired here: a full frame is ~25 ms at 400 kHz vs
 Prefer the SPI variant of the module.
 
 SSD1309 modules running external VCC: set `kOledExternalVcc = true` in
-`board_pins_daisy.h` to skip the SSD1306 charge-pump command.
+`board_pins_seed.h` to skip the SSD1306 charge-pump command.
 
 ### Rotary encoders (A/B/switch to GND, internal pullups)
 
@@ -157,14 +167,21 @@ sudo apt-get install gcc-arm-none-eabi dfu-util   # once (or the xPack toolchain
 cd neon-link
 git submodule update --init --recursive           # libDaisy + its ST drivers
 make -C third_party/libDaisy -j                   # once: libdaisy.a
-make -C daisy -j                                  # build/neon-link-daisy.{elf,bin}
+make -C daisy -j                                  # Seed OLED build
+make -C daisy/pod -j                              # Daisy Pod headless (§8)
+make -C daisy/patch_init -j                       # patch.init() headless (§8)
 ```
+
+Each configuration builds into its own directory
+(`daisy/build/neon-link-daisy.bin`, `daisy/pod/build/neon-link-pod.bin`,
+`daisy/patch_init/build/neon-link-patch-init.bin`), so switching boards
+never mixes object files.
 
 Flashing over USB DFU: hold the Seed's **BOOT** button, tap **RESET**,
 release BOOT (the Seed enumerates as an STM DFU device), then:
 
 ```bash
-make -C daisy program-dfu
+make -C daisy program-dfu           # or -C daisy/pod / -C daisy/patch_init
 ```
 
 The image runs from internal flash (`APP_TYPE = BOOT_NONE`) and
@@ -313,3 +330,89 @@ CI proves the build; these need a Seed and a scope:
    not days; do not start it casually.
 6. **Use the SDRAM**: longer audio buffers / Link Audio jitter buffers
    land here for free once networking exists.
+
+
+---
+
+## 8. Headless boards: Daisy Pod and patch.init()
+
+Two screenless configurations reuse everything in `daisy/src` except
+the menu/display path: `main_headless.cpp` swaps `render_ui()` + the
+OLED flush for a per-board `controls_*.cpp` that pushes the same
+control-queue commands the encoders push on the Seed build. The link
+service, pulse engine, CLK/RST IN follow, TRS MIDI clock, audio engine,
+and QSPI config store are byte-for-byte the same services.
+
+**On "controlled via the web interface / VST":** not on this hardware.
+The web editor and the VST plugin speak to the `/api` REST surface that
+the ESP32 and Teensy targets serve over their networks — the Daisy has
+no network interface to serve it on, which is the same hardware fact
+that rules out Ableton Link (§1). Until USB gadget networking exists
+(§7 follow-up 5), a headless Daisy is configured by its panel controls,
+CLK/RST IN, and presets: save a preset on a networked target (or the
+Seed OLED build), and the shared blob codec recalls it here. What the
+headless panels *can* do live is tempo, transport, tap, resync, and
+clock-source selection — the performance surface.
+
+### Daisy Pod (`daisy/pod/`)
+
+The Pod's own controls carry the performance surface; clock I/O rides
+the free Seed GPIO on the expansion headers
+(`daisy/include/board_pins_pod.h`):
+
+| Control | Function |
+|---|---|
+| Encoder rotate | tempo ±1 BPM |
+| Encoder click | start/stop (quantized, through the transport latch) |
+| Button 1 | tap tempo |
+| Button 2 | resync at next loop |
+| LED 1 | beat flash (white) while playing; dim red when stopped |
+| LED 2 | green = RUN gate live; amber = locked to CLK IN |
+| Knobs 1/2 | unmapped (follow-up) |
+
+| Function | Pin | Function | Pin |
+|----------|-----|----------|-----|
+| CLK1     | D0  | RESET    | D10 |
+| CLK2     | D7  | RUN      | D16 |
+| CLK3     | D8  | Tempo CV | D22 (DAC2 → op-amp to 0-5 V) |
+| CLK4     | D9  | CLK IN / RST IN | D29 / D30 |
+| MIDI TX (UART4) | D12 | MIDI RX (UART4, reserved) | D11 |
+
+The Pod's encoder click owns D13 (USART1 TX), so TRS MIDI OUT moves to
+UART4 on D12; the Pod's own TRS **MIDI IN** jack (USART1 RX, D14) is
+reserved for the MIDI-in follow-up. D29/D30 double as USB HS — reclaim
+them first if USB HS is ever wired. The microSD slot (D1-D6) is
+untouched.
+
+### patch.init() (`daisy/patch_init/`)
+
+Eurorack-native: the module's own jacks are the clock I/O, with proper
+0-5 V levels both directions and no external conditioning
+(`daisy/include/board_pins_patch_init.h`):
+
+| Panel | Function |
+|---|---|
+| GATE OUT 1 / 2 | CLK1 / RESET |
+| GATE IN 1 / 2 | CLK IN / RST IN (inverting input stage handled in software) |
+| CV OUT 2 | Tempo CV — the module's real 0-5 V output stage |
+| Button (B7) | start/stop (quantized); hold = resync at next loop |
+| Toggle (B8) | up = auto-follow CLK IN, down = internal clock only |
+| Knob 1 (CV_1) | tempo 20-300 BPM, soft-pickup (inert until moved) |
+| Panel LED | beat flash while playing |
+| TRS MIDI OUT | the A-header "UART1" pins (A3 TX — UART4 on the STM32) |
+
+Only two gate jacks exist, so CLK2-4 and RUN have no physical pin — the
+virtual channels still run, and the **audio outputs can carry
+clock/reset/run as pulse-as-audio roles** (the audio engine's
+`role_l`/`role_r` config), which is the intended way to get more clock
+outputs from this panel. CV OUT 1 is left free (it drives the panel LED
+on stock hardware); CV ins 2-8 and the remaining ADCs are unmapped
+follow-ups.
+
+### Headless bench list (on top of §6)
+
+1. Pod: encoder direction (`kInvert[]`), tap-tempo feel, LED colors.
+2. patch.init(): GATE IN polarity against a real gate source (the
+   inverting stage), knob-pickup behavior across a power cycle, CV OUT 2
+   tempo scaling against a voltmeter.
+3. Both: preset recall from a blob saved on another target.

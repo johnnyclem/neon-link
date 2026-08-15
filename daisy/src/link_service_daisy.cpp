@@ -7,10 +7,10 @@
 #include "neon/tempo_cv.hpp"
 #include "neon/transport.hpp"
 
+#include "board_daisy.h"
 #include "board_pins_daisy.h"
 #include "clkin_daisy.h"
 #include "link_session_daisy.h"
-#include "tempo_cv_daisy.h"
 #include "timebase_daisy.h"
 
 namespace linksvc {
@@ -37,7 +37,7 @@ void update_tempo_cv(uint32_t milli_bpm) {
   const auto& cfg = neon_config();
   const uint16_t ratio = neon::tempo_cv_ratio_q16(
       milli_bpm, cfg.tempo_cv_min_bpm, cfg.tempo_cv_max_bpm);
-  tempocv::write_ratio_q16(ratio);
+  board_tempo_cv_write(ratio);
 }
 
 void drain_control_queue(hal::ILinkSession& session, int64_t now) {

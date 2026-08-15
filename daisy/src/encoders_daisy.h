@@ -2,7 +2,8 @@
 
 #include <cstdint>
 
-// Two EC11 encoders + push switches, decoded by the portable
+// The board's EC11 encoders (kNumEncoders of them) + push switches,
+// decoded by the portable
 // neon::QuadDecoder from the 10 kHz input sampler (the pulse-timer ISR)
 // rather than pin-change interrupts — libDaisy has no EXTI wrapper, and
 // 10 kHz oversampling comfortably beats any human detent rate. libDaisy

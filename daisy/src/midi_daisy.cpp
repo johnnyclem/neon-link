@@ -29,10 +29,10 @@ volatile int32_t g_nudge_us = 0;
 // the tempo ceiling, so the TX register is effectively always free; the
 // FIFO-full check just refuses to block the ISR if it ever is not.
 inline bool tx_byte(uint8_t b) {
-  if ((USART1->ISR & USART_ISR_TXE_TXFNF) == 0) {
+  if ((NEON_MIDI_UART_REGS->ISR & USART_ISR_TXE_TXFNF) == 0) {
     return false;
   }
-  USART1->TDR = b;
+  NEON_MIDI_UART_REGS->TDR = b;
   return true;
 }
 
@@ -78,7 +78,7 @@ void tick_isr(void*) {
 
 void init() {
   daisy::UartHandler::Config ucfg;
-  ucfg.periph = daisy::UartHandler::Config::Peripheral::USART_1;
+  ucfg.periph = kMidiUartPeriph;
   ucfg.mode = daisy::UartHandler::Config::Mode::TX;
   ucfg.baudrate = 31250;
   ucfg.pin_config.tx = kPinMidiTx;
