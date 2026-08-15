@@ -197,7 +197,9 @@ void service_ui(int64_t now_us) {
       oled::set_brightness(g_brightness);
     }
     if (g_brightness != 0) {
-      neon::render_ui(g_menu, status, g_fb);
+      // Native mode draws the design system's compact 128×64 layout;
+      // the legacy modes draw the full 128×128 one (oled_daisy.h).
+      neon::render_ui(g_menu, status, g_fb, oled::layout());
       oled::flush(g_fb);
     }
   }

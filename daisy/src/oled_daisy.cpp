@@ -118,8 +118,10 @@ bool flush(const neon::Framebuffer& fb) {
 
   const uint8_t* src = fb.data();
   uint8_t out[128 * 8];
-  if (kDisplayMode == DisplayMode::kTopHalf) {
-    // FB pages 0..7 are exactly the panel's 8 pages.
+  if (kDisplayMode != DisplayMode::kDownsample) {
+    // kNative: the compact layout only ever draws in the top half, so FB
+    // pages 0..7 ARE the frame (the host suite asserts the invariant).
+    // kTopHalf: same bytes, cropping the 128×128 layout instead.
     for (int i = 0; i < 128 * 8; ++i) {
       out[i] = src[i];
     }

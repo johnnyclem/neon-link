@@ -28,7 +28,8 @@ int draw_hero_text(Framebuffer& fb, int x, int y, const char* text);
 // The tempo readout: the one hero element on the live screen. `valid` is
 // false before the first Link sync, which renders the "--.-" placeholder
 // at the same optical weight rather than a misleading 0.0.
-void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid);
+void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid,
+                   int y = kHeroY);
 
 // ---- chrome -------------------------------------------------------------
 
@@ -50,12 +51,13 @@ void draw_status_row(Framebuffer& fb, int y, const char* const* words,
 // is stopped the fill is dithered rather than solid, so a held position is
 // visibly not advancing.
 void draw_bar(Framebuffer& fb, int y, uint32_t phase_milli_beats,
-              uint32_t quantum_beats, bool running);
+              uint32_t quantum_beats, bool running, int h = kBarH,
+              int tick_h = kBarTickH);
 
 // Full-panel beat number for a playing transport. 1-based `beat`. Odd
 // beats (1, 3, …) are the largest white glyph that fits inside a 2 px
 // black border; even beats invert the panel (black glyph, white field).
-void draw_giant_beat(Framebuffer& fb, uint32_t beat);
+void draw_giant_beat(Framebuffer& fb, uint32_t beat, int height = kHeight);
 
 // ---- lists --------------------------------------------------------------
 
@@ -66,13 +68,15 @@ void draw_focus(Framebuffer& fb, int y, int h);
 // One list row: caret when focused, full inversion while editing so the
 // encoder's mode is unambiguous at a glance.
 void draw_list_row(Framebuffer& fb, int row, const char* label,
-                   const char* value, bool focused, bool editing);
+                   const char* value, bool focused, bool editing,
+                   int top = kListTop, int row_h = kListRowH);
 
 // ---- confirmation -------------------------------------------------------
 
 // The destructive-action pattern (DESIGN_SYSTEM.md §6). The unselected
 // choice is outlined, the selected one inverted.
 void draw_confirm(Framebuffer& fb, const char* title, const char* line1,
-                  const char* line2, bool yes_selected);
+                  const char* line2, bool yes_selected,
+                  const Layout& layout = kLayout128);
 
 }  // namespace neon::ui

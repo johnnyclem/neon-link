@@ -12,9 +12,11 @@ const data = screensData as unknown as {
   width: number;
   height: number;
   screens: Screen[];
+  compact: { width: number; height: number; screens: Screen[] };
 };
 
 export const screens = data.screens;
+export const compactScreens = data.compact.screens;
 
 /**
  * Unpacks the panel's own framebuffer format.
@@ -45,8 +47,17 @@ function unpack(base64: string, width: number, height: number): Uint8Array {
  * firmware's own render_ui(). Nothing here redraws the panel's design — it
  * only displays what the panel would have drawn.
  */
-export function DeviceSim({ screen, scale = 2 }: { screen: Screen; scale?: number }) {
-  const { width, height } = data;
+export function DeviceSim({
+  screen,
+  scale = 2,
+  compact = false,
+}: {
+  screen: Screen;
+  scale?: number;
+  compact?: boolean;
+}) {
+  const width = compact ? data.compact.width : data.width;
+  const height = compact ? data.compact.height : data.height;
   const pixels = useMemo(() => unpack(screen.bits, width, height), [screen.bits, width, height]);
 
   const rects: preact.JSX.Element[] = [];

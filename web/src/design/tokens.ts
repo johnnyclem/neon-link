@@ -81,7 +81,29 @@ export const tokens = {
     "list_rows": 9,
     "list_gutter": 10,
     "icon_size": 8,
-    "focus_inset": 1
+    "focus_inset": 1,
+    "confirm_line1_y": 40,
+    "confirm_line2_y": 52,
+    "confirm_box_y": 84,
+    "confirm_box_h": 18
+  },
+  "deviceCompact": {
+    "width": 128,
+    "height": 64,
+    "hero_y": 15,
+    "unit_y": -1,
+    "status_y": 44,
+    "ident_y": -1,
+    "bar_y": 54,
+    "bar_h": 8,
+    "bar_tick_h": 2,
+    "list_top": 16,
+    "list_row_h": 12,
+    "list_rows": 4,
+    "confirm_line1_y": 17,
+    "confirm_line2_y": 27,
+    "confirm_box_y": 42,
+    "confirm_box_h": 16
   },
   "phaseBar": {
     "aspect": 8.0,

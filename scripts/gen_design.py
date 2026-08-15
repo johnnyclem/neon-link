@@ -232,6 +232,12 @@ def emit_tokens_css(tokens: dict) -> str:
     for name, value in device.items():
         if isinstance(value, int):
             out.append(f"  --device-{name.replace('_', '-')}: {value};")
+
+    out.append("")
+    out.append("  /* compact (128x64) device geometry - same panel width, halved flow */")
+    for name, value in strip_meta(tokens["device_compact"]).items():
+        if isinstance(value, int):
+            out.append(f"  --device64-{name.replace('_', '-')}: {value};")
     out.append(f"  --phase-bar-aspect: {tokens['phase_bar']['aspect']};")
     out.append(f"  --phase-bar-inset-ratio: {tokens['phase_bar']['inset_ratio']};")
     out.append(f"  --phase-bar-tick-ratio: {tokens['phase_bar']['tick_ratio']};")
@@ -251,6 +257,7 @@ def emit_tokens_ts(tokens: dict) -> str:
         },
         "motion": strip_meta(tokens["motion"]),
         "device": strip_meta(tokens["device"]),
+        "deviceCompact": strip_meta(tokens["device_compact"]),
         "phaseBar": strip_meta(tokens["phase_bar"]),
         "touchMin": tokens["touch"]["min"],
         "contrastPairs": tokens["contrast"]["pairs"],
@@ -409,8 +416,33 @@ def cpp_ident(name: str) -> str:
     return "".join(part.capitalize() for part in name.replace("-", "_").split("_"))
 
 
+# The rows of the vertical flow — everything that differs between the
+# 128x128 layout and the 128x64 compact one. Shared chrome (margin,
+# header_text_y, header_rule_y, bar_inset, list_gutter, icon_size,
+# focus_inset) stays plain constants; both token sections must define
+# every field below (a missing one fails generation loudly).
+LAYOUT_FIELDS = [
+    "height",
+    "hero_y",
+    "unit_y",
+    "status_y",
+    "ident_y",
+    "bar_y",
+    "bar_h",
+    "bar_tick_h",
+    "list_top",
+    "list_row_h",
+    "list_rows",
+    "confirm_line1_y",
+    "confirm_line2_y",
+    "confirm_box_y",
+    "confirm_box_h",
+]
+
+
 def emit_theme_gen_hpp(tokens: dict, strings: dict) -> str:
     device = strip_meta(tokens["device"])
+    compact = strip_meta(tokens["device_compact"])
     out = [banner("//"), "", "#pragma once", "", "#include <cstdint>", "", "namespace neon::ui {", ""]
 
     out.append("// 128x128 panel geometry. Every screen positions itself from these -")
@@ -418,6 +450,20 @@ def emit_theme_gen_hpp(tokens: dict, strings: dict) -> str:
     for name, value in device.items():
         if isinstance(value, int):
             out.append(f"inline constexpr int k{cpp_ident(name)} = {value};")
+
+    out.append("")
+    out.append("// The vertical flow, as a value: the rows that differ between the")
+    out.append("// full 128x128 layout and the compact 128x64 one (native")
+    out.append("// SSD1306/1309 panels). render_ui() takes one of the two instances")
+    out.append("// below; -1 marks a band the compact flow drops (unit label,")
+    out.append("// identity row). Shared chrome stays in the constants above.")
+    out.append("struct Layout {")
+    for name in LAYOUT_FIELDS:
+        out.append(f"  int {name};")
+    out.append("};")
+    for cpp_name, section in (("kLayout128", device), ("kLayout64", compact)):
+        fields = ", ".join(str(section[name]) for name in LAYOUT_FIELDS)
+        out.append(f"inline constexpr Layout {cpp_name} = {{{fields}}};")
 
     out.append("")
     out.append("// Shared status vocabulary. The web shows the long form of the same")

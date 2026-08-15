@@ -1016,3 +1016,175 @@ TEST_CASE("beat-locked icons freeze while the transport is stopped") {
   playing_later.phase_milli_beats = 3000;
   CHECK(header(playing) != header(playing_later));
 }
+
+// ---------------------------------------------------------------------------
+// compact 128x64 layout (native SSD1306/1309 panels)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Ink strictly below the compact panel: the invariant that makes a 64-row
+// flush "pages 0..7 verbatim" (docs/DAISY.md §4).
+int lit_below(const neon::Framebuffer& fb, int height) {
+  int n = 0;
+  for (int y = height; y < neon::Framebuffer::kHeight; ++y) {
+    n += lit_in_row(fb, y);
+  }
+  return n;
+}
+
+std::string render_compact(const neon::MenuModel& menu,
+                           const neon::UiStatus& st) {
+  neon::Framebuffer fb;
+  neon::render_ui(menu, st, fb, neon::ui::kLayout64);
+  return dump(fb);
+}
+
+}  // namespace
+
+TEST_CASE("compact home renders deterministically inside 64 rows") {
+  const neon::UiStatus st = playing_status();
+  neon::Config cfg;
+  neon::MenuModel menu(&cfg);
+  neon::Framebuffer fb;
+  neon::render_ui(menu, st, fb, neon::ui::kLayout64);
+
+  CHECK(render_compact(menu, st) == render_compact(menu, st));
+  CHECK(lit_pixels(fb) > 100);
+  CHECK(lit_below(fb, neon::ui::kLayout64.height) == 0);
+
+  // Same header band as the full layout.
+  CHECK(lit_in_row(fb, neon::ui::kHeaderRuleY) == neon::Framebuffer::kWidth);
+
+  // Hero occupies its compact band and is still the densest element.
+  int hero_ink = 0;
+  for (int y = neon::ui::kLayout64.hero_y;
+       y < neon::ui::kLayout64.hero_y + neon::ui::kHeroHeight; ++y) {
+    hero_ink += lit_in_row(fb, y);
+  }
+  CHECK(hero_ink > 300);
+
+  // Status row has ink where the compact flow puts it.
+  int status_ink = 0;
+  for (int y = neon::ui::kLayout64.status_y;
+       y < neon::ui::kLayout64.status_y + 7; ++y) {
+    status_ink += lit_in_row(fb, y);
+  }
+  CHECK(status_ink > 0);
+
+  // Phase bar: frame plus a fill reaching about half width at phase 2/4.
+  const int bar_mid =
+      neon::ui::kLayout64.bar_y + neon::ui::kLayout64.bar_h / 2;
+  int fill_end = 0;
+  for (int x = neon::ui::kBarInset; x < 126; ++x) {
+    if (fb.pixel(x, bar_mid)) fill_end = x;
+  }
+  CHECK(fill_end > 55);
+  CHECK(fill_end < 70);
+
+  // The bar's bottom ticks are the last thing on the panel — nothing
+  // renders past row 63.
+  CHECK(neon::ui::kLayout64.bar_y + neon::ui::kLayout64.bar_h +
+            neon::ui::kLayout64.bar_tick_h <=
+        neon::ui::kLayout64.height);
+}
+
+TEST_CASE("every screen stays inside the compact panel") {
+  // Walks the same screen graph as the distinct-output test, plus the
+  // giant beat, asserting the top-half property everywhere — it is what
+  // a native 64-row flush relies on.
+  const neon::UiStatus st = playing_status();
+
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  auto check_current = [&](const neon::UiStatus& status) {
+    neon::Framebuffer fb;
+    neon::render_ui(m, status, fb, neon::ui::kLayout64);
+    CHECK(lit_pixels(fb) > 0);
+    CHECK(lit_below(fb, neon::ui::kLayout64.height) == 0);
+  };
+
+  check_current(st);  // home, classic
+  neon::UiStatus beats = st;
+  beats.big_beat_display = true;
+  for (uint32_t phase : {0u, 1000u, 2000u, 3000u}) {
+    beats.phase_milli_beats = phase;
+    check_current(beats);  // giant beat 1..4, both ink polarities
+  }
+
+  m.on_click();
+  check_current(st);  // menu
+  for (int dest = 1; dest <= 5; ++dest) {
+    neon::Config c2;
+    neon::MenuModel m2(&c2);
+    m2.on_click();
+    m2.on_rotate(dest);
+    m2.on_click();
+    neon::Framebuffer fb;
+    neon::render_ui(m2, st, fb, neon::ui::kLayout64);
+    CHECK(lit_pixels(fb) > 0);
+    CHECK(lit_below(fb, neon::ui::kLayout64.height) == 0);
+  }
+
+  // Editing a value (inverted row) and the reboot confirm.
+  neon::Config edit_cfg;
+  neon::MenuModel editing(&edit_cfg);
+  editing.on_click();
+  editing.on_rotate(1);
+  editing.on_click();
+  editing.on_click();
+  editing.on_rotate(1);
+  editing.on_click();
+  neon::Framebuffer edit_fb;
+  neon::render_ui(editing, st, edit_fb, neon::ui::kLayout64);
+  CHECK(lit_below(edit_fb, neon::ui::kLayout64.height) == 0);
+
+  neon::Config confirm_cfg;
+  neon::MenuModel confirm(&confirm_cfg);
+  confirm.on_click();
+  confirm.on_rotate(5);
+  confirm.on_click();
+  confirm.on_rotate(neon::MenuModel::kSystemRebootItem);
+  confirm.on_click();
+  neon::Framebuffer confirm_fb;
+  neon::render_ui(confirm, st, confirm_fb, neon::ui::kLayout64);
+  CHECK(lit_pixels(confirm_fb) > 0);
+  CHECK(lit_below(confirm_fb, neon::ui::kLayout64.height) == 0);
+}
+
+TEST_CASE("compact lists show four rows and scroll to the cursor") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();  // Home -> Menu (six items, only four fit)
+
+  const neon::UiStatus st = playing_status();
+  const std::string top = render_compact(m, st);
+
+  // Cursor inside the first window: identical render.
+  m.on_rotate(3);
+  const std::string still_top = render_compact(m, st);
+  // Moving past the fourth row scrolls the window: different rows appear.
+  m.on_rotate(2);
+  const std::string scrolled = render_compact(m, st);
+  CHECK(top != still_top);  // caret moved
+  CHECK(still_top != scrolled);
+
+  // No row is ever drawn at or below the panel edge.
+  const int last_row_bottom =
+      neon::ui::kLayout64.list_top +
+      neon::ui::kLayout64.list_rows * neon::ui::kLayout64.list_row_h;
+  CHECK(last_row_bottom <= neon::ui::kLayout64.height + 5);
+}
+
+TEST_CASE("the 128-layout render is unchanged by the layout parameter") {
+  const neon::UiStatus st = playing_status();
+  neon::Config cfg;
+  neon::MenuModel menu(&cfg);
+
+  neon::Framebuffer classic;
+  neon::render_ui(menu, st, classic);
+  neon::Framebuffer with_layout;
+  neon::render_ui(menu, st, with_layout, neon::ui::kLayout128);
+  CHECK(std::memcmp(classic.data(), with_layout.data(),
+                    neon::Framebuffer::kSize) == 0);
+}

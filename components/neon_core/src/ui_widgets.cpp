@@ -73,7 +73,7 @@ int draw_hero_text(Framebuffer& fb, int x, int y, const char* text) {
   return cx - x;
 }
 
-void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid) {
+void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid, int y) {
   char text[12];
   if (valid) {
     // One decimal, rounded (.5 and up goes up). 32850 → "32.9",
@@ -87,7 +87,7 @@ void draw_hero_bpm(Framebuffer& fb, uint32_t milli_bpm, bool valid) {
     std::snprintf(text, sizeof(text), "--.-");
   }
   const int w = hero_text_width(text);
-  draw_hero_text(fb, (kWidth - w) / 2, kHeroY, text);
+  draw_hero_text(fb, (kWidth - w) / 2, y, text);
 }
 
 // ---- chrome -------------------------------------------------------------
@@ -140,8 +140,8 @@ void draw_status_row(Framebuffer& fb, int y, const char* const* words,
 }
 
 void draw_bar(Framebuffer& fb, int y, uint32_t phase_milli_beats,
-              uint32_t quantum_beats, bool running) {
-  fb.rect(0, y, kWidth, kBarH, true);
+              uint32_t quantum_beats, bool running, int h, int tick_h) {
+  fb.rect(0, y, kWidth, h, true);
 
   const uint32_t quantum = quantum_beats != 0 ? quantum_beats : 4;
   const uint32_t span = quantum * 1000;
@@ -154,15 +154,15 @@ void draw_bar(Framebuffer& fb, int y, uint32_t phase_milli_beats,
   const int fill =
       static_cast<int>(static_cast<uint64_t>(track) * phase / span);
   if (fill > 0) {
-    fb.fill_rect_dither(kBarInset, y + kBarInset, fill, kBarH - 2 * kBarInset,
+    fb.fill_rect_dither(kBarInset, y + kBarInset, fill, h - 2 * kBarInset,
                         running ? Dither::kSolid : Dither::kHalf);
   }
 
   for (uint32_t b = 1; b < quantum; ++b) {
     const int x =
         static_cast<int>(static_cast<uint64_t>(kWidth) * b / quantum);
-    fb.fill_rect(x, y - kBarTickH, 1, kBarTickH, true);
-    fb.fill_rect(x, y + kBarH, 1, kBarTickH, true);
+    fb.fill_rect(x, y - tick_h, 1, tick_h, true);
+    fb.fill_rect(x, y + h, 1, tick_h, true);
   }
 }
 
@@ -173,8 +173,9 @@ void draw_focus(Framebuffer& fb, int y, int h) {
 }
 
 void draw_list_row(Framebuffer& fb, int row, const char* label,
-                   const char* value, bool focused, bool editing) {
-  const int y = kListTop + row * kListRowH;
+                   const char* value, bool focused, bool editing, int top,
+                   int row_h) {
+  const int y = top + row * row_h;
 
   if (focused && !editing) {
     draw_label(fb, kMargin, y, ">");
@@ -194,26 +195,27 @@ void draw_list_row(Framebuffer& fb, int row, const char* label,
 // ---- confirmation -------------------------------------------------------
 
 void draw_confirm(Framebuffer& fb, const char* title, const char* line1,
-                  const char* line2, bool yes_selected) {
+                  const char* line2, bool yes_selected,
+                  const Layout& layout) {
   draw_header(fb, title);
-  draw_label(fb, kAlignPanel, 40, line1, Align::kCenter);
-  draw_label(fb, kAlignPanel, 52, line2, Align::kCenter);
+  draw_label(fb, kAlignPanel, layout.confirm_line1_y, line1, Align::kCenter);
+  draw_label(fb, kAlignPanel, layout.confirm_line2_y, line2, Align::kCenter);
 
   constexpr int kBoxW = 44;
-  constexpr int kBoxH = 18;
-  constexpr int kBoxY = 84;
+  const int box_h = layout.confirm_box_h;
+  const int box_y = layout.confirm_box_y;
   const int gap = (kWidth - 2 * kBoxW) / 3;
   const int no_x = gap;
   const int yes_x = 2 * gap + kBoxW;
-  const int text_y = kBoxY + (kBoxH - Framebuffer::glyph_height(kFontBody)) / 2;
+  const int text_y = box_y + (box_h - Framebuffer::glyph_height(kFontBody)) / 2;
 
-  fb.rect(no_x, kBoxY, kBoxW, kBoxH, true);
+  fb.rect(no_x, box_y, kBoxW, box_h, true);
   draw_label(fb, no_x + kBoxW / 2, text_y, "NO", Align::kCenter);
-  fb.rect(yes_x, kBoxY, kBoxW, kBoxH, true);
+  fb.rect(yes_x, box_y, kBoxW, box_h, true);
   draw_label(fb, yes_x + kBoxW / 2, text_y, "YES", Align::kCenter);
 
   const int sel_x = yes_selected ? yes_x : no_x;
-  fb.invert_rect(sel_x, kBoxY, kBoxW, kBoxH);
+  fb.invert_rect(sel_x, box_y, kBoxW, box_h);
 }
 
 // ---- giant beat ---------------------------------------------------------
@@ -257,22 +259,22 @@ void paint_digit(Framebuffer& fb, int origin_x, int origin_y, int cell,
   }
 }
 
-void paint_border(Framebuffer& fb) {
+void paint_border(Framebuffer& fb, int height) {
   fb.fill_rect(0, 0, kWidth, kBeatInset, false);
-  fb.fill_rect(0, kHeight - kBeatInset, kWidth, kBeatInset, false);
-  fb.fill_rect(0, 0, kBeatInset, kHeight, false);
-  fb.fill_rect(kWidth - kBeatInset, 0, kBeatInset, kHeight, false);
+  fb.fill_rect(0, height - kBeatInset, kWidth, kBeatInset, false);
+  fb.fill_rect(0, 0, kBeatInset, height, false);
+  fb.fill_rect(kWidth - kBeatInset, 0, kBeatInset, height, false);
 }
 
 }  // namespace
 
-void draw_giant_beat(Framebuffer& fb, uint32_t beat) {
+void draw_giant_beat(Framebuffer& fb, uint32_t beat, int height) {
   if (beat == 0) {
     beat = 1;
   }
   const bool invert = (beat % 2u) == 0u;
   if (invert) {
-    fb.fill_rect(0, 0, kWidth, kHeight, true);
+    fb.fill_rect(0, 0, kWidth, height, true);
   } else {
     fb.clear();
   }
@@ -283,10 +285,11 @@ void draw_giant_beat(Framebuffer& fb, uint32_t beat) {
                               static_cast<unsigned>(beat));
   const int gap = 1;
   const int cols = n * kDigitW + (n - 1) * gap;
-  const int inner = kWidth - 2 * kBeatInset;
-  int cell = inner / kDigitH;
-  if (cell * cols > inner) {
-    cell = inner / cols;
+  const int inner_w = kWidth - 2 * kBeatInset;
+  const int inner_h = height - 2 * kBeatInset;
+  int cell = inner_h / kDigitH;
+  if (cell * cols > inner_w) {
+    cell = inner_w / cols;
   }
   if (cell < 1) {
     cell = 1;
@@ -294,13 +297,13 @@ void draw_giant_beat(Framebuffer& fb, uint32_t beat) {
   const int box_w = cols * cell;
   const int box_h = kDigitH * cell;
   const int x0 = (kWidth - box_w) / 2;
-  const int y0 = (kHeight - box_h) / 2;
+  const int y0 = (height - box_h) / 2;
   int x = x0;
   for (int i = 0; i < n; ++i) {
     paint_digit(fb, x, y0, cell, digits[i] - '0', ink);
     x += (kDigitW + gap) * cell;
   }
-  paint_border(fb);
+  paint_border(fb, height);
 }
 
 }  // namespace neon::ui
