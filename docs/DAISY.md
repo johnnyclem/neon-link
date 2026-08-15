@@ -63,11 +63,12 @@ knows about means bumping the submodule, nothing here.
   written for. Metronome click, pulse-as-audio taps (clock / reset / run
   roles), and the mixer render inside libDaisy's audio callback against
   the session grid via the portable `SampleClock`.
-- **Device UI on the 128×64 panel**: `render_ui()`'s 128×128 frame,
-  vertically downsampled 2:1 at flush time so the hero BPM, status row,
-  and phase bar all fit (§4). ENC1 = menu (rotate/click/hold-for-back),
-  ENC2 = tempo ±1 BPM, click = quantized start/stop through the
-  transport latch. `display_brightness` maps to the contrast register.
+- **Device UI on the 128×64 panel**: the design system's native compact
+  layout (`ui::kLayout64`), drawn pixel-perfect by the same pure
+  `render_ui()` as every other target (§4). ENC1 = menu
+  (rotate/click/hold-for-back), ENC2 = tempo ±1 BPM, click = quantized
+  start/stop through the transport latch. `display_brightness` maps to
+  the contrast register.
 - **Tempo CV** from the STM32H7's true 12-bit DAC (no PWM filter
   needed); **config + 4 presets** in raw QSPI sectors using the same
   magic/CRC blob codec as the ESP32's NVS and the Teensy's LittleFS
@@ -206,35 +207,34 @@ and appear in every Daisy build; project sources compile with
 
 ---
 
-## 4. The display: 128×128 UI on a 128×64 panel
+## 4. The display: the native 128×64 layout
 
 The portable `neon::Framebuffer` is already in SSD1306 page layout
 (1 byte = 8 vertical pixels, pages of 8 rows), so the flush is a
-page-window set plus a 1 KB stream — no pixel conversion. What needs
-deciding is geometry: the renderer draws 128×128, the panel is 128×64,
-and the bottom half of the live screen holds the status row and the
-phase bar — the two things a clock module must show. A naive top-half
-crop loses both.
+page-window set plus a 1 KB stream — no pixel conversion. The geometry
+question — the renderer's screens were born 128×128, the panel is
+128×64 — is answered by the design system itself
+(DESIGN_SYSTEM.md §5): `design/tokens.json` carries a second vertical
+flow (`device_compact`), `gen_design.py` emits it as `ui::kLayout64`,
+and the same pure `render_ui()` draws it. Hero BPM, status row, and
+phase bar are purpose-set for 64 rows; the unit label and identity row
+are the two bands the compact flow drops (nothing on this hardware has
+a network identity to show); lists keep their 12 px pitch at four rows.
 
-`daisy/src/oled_daisy.h` implements two modes behind `kDisplayMode`:
+The compact flow renders into the **top half** of the shared 128×128
+framebuffer — rows 64..127 provably blank (the host suite asserts it
+for every screen) — so the panel flush is FB pages 0..7 verbatim. Both
+geometries of every fixture are committed in `design/screens.json` and
+shown side by side in the web style guide.
 
-- **`kDownsample`** (default): OR adjacent pixel rows 2:1 at flush time
-  (a 256-byte LUT, ~20 lines). The whole UI fits; text is half height —
-  the hero BPM and medium fonts stay legible, `kSmall` (the identity
-  row) gets marginal. This is the shipping default so no information is
-  lost.
-- **`kTopHalf`**: rows 0..63 pixel-perfect (header + hero BPM), losing
-  the status row and phase bar. Kept as a build-time escape hatch for
-  panels/mountings where the halved text does not survive.
+`daisy/src/oled_daisy.h` keeps three modes behind `kDisplayMode`:
 
-The honest fix is a third option: a native 128×64 layout in the design
-system (`design/tokens.json` → `gen_design.py` → a second geometry
-rendered by the same pure `render_ui()`), with the golden fixtures
-regenerated and the `design-system` / `device-screens` CI jobs green.
-That touches the portable core and the style-guide pipeline, so it is
-deliberately **not** part of this port — it is the top follow-up in §7,
-as its own PR. Until then `render_ui()` is untouched and the golden
-tests keep passing.
+- **`kNative`** (default): the compact layout, pixel-perfect.
+- **`kDownsample`**: the full 128×128 layout OR'd 2:1 at flush time
+  (256-byte LUT). Text is half height; kept for anyone who prefers the
+  big layout's information density (identity row, unit label).
+- **`kTopHalf`**: rows 0..63 of the 128×128 layout. A bring-up
+  diagnostic.
 
 ---
 
@@ -314,9 +314,9 @@ CI proves the build; these need a Seed and a scope:
 
 ## 7. Follow-ups, in order
 
-1. **Native 128×64 layout in the design system** (§4) — the correct
-   display outcome; its own PR touching `design/tokens.json`,
-   `gen_design.py`, the renderer, and the golden fixtures.
+1. ~~Native 128×64 layout in the design system~~ — **done** (§4):
+   `device_compact` tokens → `ui::kLayout64` → the same `render_ui()`,
+   with both geometries in the golden fixtures and the style guide.
 2. **Measure `kDacLatencyUs`** on the codec path and pin it (§6.4).
 3. **~µs pulse placement**: replace the 100 µs tick with a 1 MHz TIM
    compare interrupt re-armed to the next edge.

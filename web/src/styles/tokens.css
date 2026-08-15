@@ -78,6 +78,28 @@
   --device-list-gutter: 10;
   --device-icon-size: 8;
   --device-focus-inset: 1;
+  --device-confirm-line1-y: 40;
+  --device-confirm-line2-y: 52;
+  --device-confirm-box-y: 84;
+  --device-confirm-box-h: 18;
+
+  /* compact (128x64) device geometry - same panel width, halved flow */
+  --device64-width: 128;
+  --device64-height: 64;
+  --device64-hero-y: 15;
+  --device64-unit-y: -1;
+  --device64-status-y: 44;
+  --device64-ident-y: -1;
+  --device64-bar-y: 54;
+  --device64-bar-h: 8;
+  --device64-bar-tick-h: 2;
+  --device64-list-top: 16;
+  --device64-list-row-h: 12;
+  --device64-list-rows: 4;
+  --device64-confirm-line1-y: 17;
+  --device64-confirm-line2-y: 27;
+  --device64-confirm-box-y: 42;
+  --device64-confirm-box-h: 16;
   --phase-bar-aspect: 8.0;
   --phase-bar-inset-ratio: 0.1875;
   --phase-bar-tick-ratio: 0.1875;

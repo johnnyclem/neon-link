@@ -86,7 +86,14 @@ void navigate(neon::MenuModel& m, int menu_index, int descend_clicks = 0) {
 
 int main() {
   std::vector<Fixture> fixtures;
+  std::vector<Fixture> fixtures64;
 
+  // Every fixture is rendered twice: once with the full 128x128 layout
+  // and once with the compact 128x64 one, so a layout change is reviewed
+  // on both geometries in the same diff. The compact flow only ever
+  // touches the top half of the framebuffer (that property is what makes
+  // a 64-row panel's flush pages 0-7 verbatim), so its capture is the
+  // first 8 pages.
   auto capture = [&](const std::string& id, const std::string& title,
                      const std::string& note, const neon::MenuModel& menu,
                      const neon::UiStatus& status) {
@@ -94,6 +101,13 @@ int main() {
     neon::render_ui(menu, status, fb);
     fixtures.push_back(
         {id, title, note, base64(fb.data(), neon::Framebuffer::kSize)});
+
+    neon::Framebuffer fb64;
+    neon::render_ui(menu, status, fb64, neon::ui::kLayout64);
+    fixtures64.push_back({id, title, note,
+                          base64(fb64.data(), neon::Framebuffer::kWidth *
+                                                  neon::ui::kLayout64.height /
+                                                  8)});
   };
 
   // ---- live screen, through its real states --------------------------
@@ -296,17 +310,31 @@ int main() {
   std::printf(
       "  \"format\": \"base64 of the raw framebuffer: 16 pages x 128 columns, "
       "one byte = 8 vertical pixels, LSB is the topmost row\",\n");
+  auto emit_screens = [](const std::vector<Fixture>& list, const char* indent) {
+    for (size_t i = 0; i < list.size(); ++i) {
+      const Fixture& f = list[i];
+      std::printf("%s{\n", indent);
+      std::printf("%s  \"id\": \"%s\",\n", indent, escape(f.id).c_str());
+      std::printf("%s  \"title\": \"%s\",\n", indent,
+                  escape(f.title).c_str());
+      std::printf("%s  \"note\": \"%s\",\n", indent, escape(f.note).c_str());
+      std::printf("%s  \"bits\": \"%s\"\n", indent, f.data.c_str());
+      std::printf("%s}%s\n", indent, i + 1 < list.size() ? "," : "");
+    }
+  };
   std::printf("  \"screens\": [\n");
-  for (size_t i = 0; i < fixtures.size(); ++i) {
-    const Fixture& f = fixtures[i];
-    std::printf("    {\n");
-    std::printf("      \"id\": \"%s\",\n", escape(f.id).c_str());
-    std::printf("      \"title\": \"%s\",\n", escape(f.title).c_str());
-    std::printf("      \"note\": \"%s\",\n", escape(f.note).c_str());
-    std::printf("      \"bits\": \"%s\"\n", f.data.c_str());
-    std::printf("    }%s\n", i + 1 < fixtures.size() ? "," : "");
-  }
-  std::printf("  ]\n");
+  emit_screens(fixtures, "    ");
+  std::printf("  ],\n");
+  std::printf("  \"compact\": {\n");
+  std::printf("    \"$comment\": \"The same fixtures through the compact ");
+  std::printf("128x64 layout (ui::kLayout64) - native SSD1306/1309 panels. ");
+  std::printf("8 pages x 128 columns, same packing.\",\n");
+  std::printf("    \"width\": %d,\n", neon::Framebuffer::kWidth);
+  std::printf("    \"height\": %d,\n", neon::ui::kLayout64.height);
+  std::printf("    \"screens\": [\n");
+  emit_screens(fixtures64, "      ");
+  std::printf("    ]\n");
+  std::printf("  }\n");
   std::printf("}\n");
   return 0;
 }

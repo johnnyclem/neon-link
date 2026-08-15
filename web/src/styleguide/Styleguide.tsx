@@ -16,7 +16,7 @@ import {
   TextField,
   Toggle,
 } from "../components/controls";
-import { DeviceSim, screens } from "./DeviceSim";
+import { DeviceSim, compactScreens, screens } from "./DeviceSim";
 
 function ratio(fg: string, bg: string): number {
   const lum = (hex: string) => {
@@ -92,6 +92,22 @@ export function Styleguide() {
         >
           {screens.map((s) => (
             <DeviceSim key={s.id} screen={s} scale={scale} />
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        id="device-compact"
+        title="The device — compact 128×64"
+        lede="The same fixtures through the design system's compact layout (native SSD1306/1309 panels, docs/DAISY.md §4): the hero, status row and phase bar re-flow into 64 rows, drawn by the same render_ui() with ui::kLayout64."
+      >
+        <div
+          style={`display:grid;grid-template-columns:repeat(auto-fill,minmax(${
+            128 * scale + 40
+          }px,1fr));gap:var(--space-5)`}
+        >
+          {compactScreens.map((s) => (
+            <DeviceSim key={s.id} screen={s} scale={scale} compact />
           ))}
         </div>
       </Section>

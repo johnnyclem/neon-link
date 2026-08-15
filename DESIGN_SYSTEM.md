@@ -139,6 +139,22 @@ Nothing is fetched from a CDN. The module serves this page from its own access p
 
 Every offset comes from `design/tokens.json` via `neon/ui/theme_gen.hpp`. Screens compose the primitives in `neon/ui/widgets.hpp`; no screen may hard-code a pixel coordinate.
 
+### Device — compact (128×64)
+
+Native SSD1306/1309 panels (the Daisy Seed target, docs/DAISY.md §4) get a second vertical flow from the same design system — `device_compact` in `design/tokens.json`, emitted as `ui::kLayout64` and rendered by the same pure `render_ui()`:
+
+```
+┌────────────────────────────┐
+│ NEON              [icons]  │  ← same header band as the big layout
+│ ────────────────────────── │
+│         128.0              │  ← hero BPM, same seven-segment face
+│  LINK  RUN  STA  2P        │  ← state row
+│ ████████░░░░░░░░░░░░░░░░░░ │  ← phase / progress (8 px)
+└────────────────────────────┘
+```
+
+Two bands are dropped rather than squeezed (`unit_y` / `ident_y` = −1): the hero is self-evidently a tempo, and the panels that ship this layout have no network identity to show. Lists keep the exact 12 px row pitch — four rows instead of nine — and the density rule survives the halving: nothing gets a smaller font. The compact flow renders into the **top half** of the shared 128×128 framebuffer (rows 64–127 provably blank, asserted by the host suite), so a 64-row panel's flush is pages 0–7 verbatim. Both geometries of every fixture live side by side in `design/screens.json` and the style guide.
+
 **Encoder navigation model**
 
 - Rotate: move focus, or adjust the focused value
