@@ -37,6 +37,7 @@ add_executable(neon_tests
   tests/test_ext_clock.cpp
   tests/test_ui.cpp
   tests/test_midi.cpp
+  tests/test_midi_serial.cpp
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
   tests/test_transport.cpp

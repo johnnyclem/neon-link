@@ -112,6 +112,15 @@ void service_inputs(int64_t now_us, uint32_t now_ms) {
     control_queue_push({ControlCommand::Kind::kToggle, 0});
   }
 
+  // MIDI note gates: applied immediately at the pin (an edge injected
+  // into the ordered ring would wait behind the scheduled stream).
+  GateEvent gate;
+  while (gate_queue_pop(&gate)) {
+    if (gate.channel < neon::kChannelCount) {
+      PulseHwDaisy::set_level_now(gate.channel, gate.on);
+    }
+  }
+
   // Menu side effects.
   if (g_menu.take_dirty()) {
     neon_config_apply(g_ui_cfg);

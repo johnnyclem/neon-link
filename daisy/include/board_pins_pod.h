@@ -62,13 +62,21 @@ inline constexpr daisy::DacHandle::Channel kTempoCvDacChannel =
     daisy::DacHandle::Channel::TWO;
 
 // --- TRS MIDI out: UART4 (USART1 TX is the encoder click). D11 is
-// UART4 RX, reserved for a future MIDI-in merge alongside the Pod's
-// own TRS MIDI IN jack (USART1 RX, owned by the Pod hardware). --------
+// UART4 RX, unused. -----------------------------------------------------
 inline constexpr daisy::UartHandler::Config::Peripheral kMidiUartPeriph =
     daisy::UartHandler::Config::Peripheral::UART_4;
 inline constexpr daisy::Pin kPinMidiTx = daisy::seed::D12;
 inline constexpr daisy::Pin kPinMidiRx = daisy::seed::D11;
 #define NEON_MIDI_UART_REGS UART4
+
+// --- TRS MIDI in: the Pod's own MIDI IN jack (USART1 RX, D14). A
+// separate RX-only UART init; its tx pin stays PORTX so the encoder
+// click on the USART1 TX pin is never reconfigured. --------------------
+inline constexpr bool kMidiInSharedUart = false;
+inline constexpr daisy::UartHandler::Config::Peripheral kMidiInPeriph =
+    daisy::UartHandler::Config::Peripheral::USART_1;
+inline constexpr daisy::Pin kPinMidiIn = daisy::seed::D14;
+#define NEON_MIDI_IN_UART_REGS USART1
 
 // Everything else on the header belongs to the Pod circuit; nothing is
 // left free.

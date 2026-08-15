@@ -35,10 +35,14 @@ knows about means bumping the submodule, nothing here.
 
 ## 1. What works
 
-- **The full pulse engine.** CLK1–4 / RESET / RUN from a 100 µs TIM5
-  edge emitter draining the same pre-scheduled edge stream as every
-  other target, with the honest lateness diagnostics
-  (`late_max_us` / `late_avg_us`).
+- **The full pulse engine.** CLK1–4 / RESET / RUN from a TIM5
+  compare-interrupt emitter: the timer free-runs at 1 MHz and a compare
+  channel is re-armed to the exact microsecond of each pending edge, so
+  placement error is interrupt latency (~1–2 µs) rather than a polled
+  tick's ±100 µs. A second compare channel keeps the 10 kHz
+  housekeeping tick (timebase wrap service, input sampling). The honest
+  lateness diagnostics remain (`late_max_us` / `late_avg_us`, with
+  "late" now meaning >10 µs).
 - **The internal timeline.** With no Link session to join, the module
   runs its own beat grid (`daisy/src/internal_timeline.h`, recovered
   from the Teensy target's pre-Link build): tempo edits re-anchor the
@@ -54,10 +58,20 @@ knows about means bumping the submodule, nothing here.
   timeline and RST IN anchors the downbeat. **This is the only external
   sync the target has**, which makes it more central here than on any
   other build — it is how the Seed joins someone else's clock.
-- **TRS MIDI out** on USART1: session-derived 24 PPQN clock from a
-  500 µs TIM4 ISR (immune to UI and QSPI stalls), Start/Stop on
-  transport changes, honouring `midi_clock_out`, the clock policy, and
-  the MIDI nudge.
+- **TRS MIDI out**: session-derived 24 PPQN clock from a 500 µs TIM4
+  ISR (immune to UI and QSPI stalls), Start/Stop on transport changes,
+  honouring `midi_clock_out`, the clock policy, and the MIDI nudge.
+- **TRS MIDI in** through the portable `SerialMidiParser` →
+  `MidiRouter` — the same router the ESP32 runs for BLE MIDI: notes
+  gate a pulse output (applied immediately at the pin), pitch maps to
+  the Tempo CV jack (1 V/oct) when enabled, CCs edit latency/shuffle,
+  Start/Stop drives the transport, Program Change recalls presets, and
+  the incoming clock stream can be forwarded to the TRS output per the
+  clock policy. Independently, incoming **MIDI clock is a second
+  external tempo source** (fixed 24 PPQN) feeding its own
+  `ExtClockEstimator`; the CLK IN jack outranks it when both are alive,
+  and phase anchoring stays RST IN's alone (MIDI has no downbeat
+  message — Start restarts beat 0 through the transport instead).
 - **Audio engine on the built-in codec** — the best-fit subsystem: the
   codec runs 48 kHz, exactly the rate the portable audio services are
   written for. Metronome click, pulse-as-audio taps (clock / reset / run
@@ -142,11 +156,10 @@ If an encoder counts backwards, flip its entry in `kInvert[]`
 | CLK2     | D16 | RUN      | D20 |
 | CLK3     | D17 | Tempo CV | D23 (DAC1 → op-amp to 0–5 V) |
 | CLK4     | D18 | CLK IN / RST IN | D21 / D22 |
-| MIDI TX (USART1) | D13 | LED Beat / Run / Ext | D24 / D25 / D26 |
+| MIDI TX / RX (USART1) | D13 / D14 | LED Beat / Run / Ext | D24 / D25 / D26 |
 
-D14 (USART1 RX) is reserved for MIDI in. Free for expansion: D6, D12,
-D27, D28, D29, D30 (D29/D30 double as USB HS on the header — leave them
-last).
+Free for expansion: D6, D12, D27, D28, D29, D30 (D29/D30 double as USB
+HS on the header — leave them last).
 
 Outputs are **3.3 V logic** — level-shift to 5 V for Eurorack use
 (HARDWARE.md §5 applies unchanged). Inputs need the usual series
@@ -252,12 +265,16 @@ Daisy versions differ only where the silicon does):
   µs conversion divides extended ticks so no error accumulates).
   Everything schedules in this one domain — engine, MIDI solve,
   ext-clock capture, `SampleClock` marks.
-- **`pulse_hw_daisy`** — `hal::IPulseHw`: SPSC edge ring drained by a
-  100 µs TIM5 ISR (±100 µs edge placement, counted honestly). The same
-  tick samples the encoders and CLK/RST IN (libDaisy has no EXTI
-  wrapper; 10 kHz oversampling beats any human detent rate and lands
-  ext-clock capture jitter well inside the estimator's median filter).
-  A 1 MHz compare-interrupt one-shot is the ~µs follow-up (§7).
+- **`pulse_hw_daisy`** — `hal::IPulseHw`: SPSC edge ring, TIM5
+  free-running at 1 MHz. Compare channel 1 is re-armed to the exact
+  microsecond of the next pending edge (placement error = interrupt
+  latency at NVIC priority 4); compare channel 2 is the 10 kHz
+  housekeeping tick that services the timebase wrap extender, samples
+  the encoders and CLK/RST IN (libDaisy has no EXTI wrapper; 10 kHz
+  oversampling lands capture jitter well inside the estimator's median
+  filter), and arms channel 1 for whatever falls due next — the ≥2 ms
+  scheduling lead means the producer never touches the timer. MIDI note
+  gates bypass the ordered ring entirely (`set_level_now`).
 - **`app_state_daisy` / `config_store_daisy`** — the shared seqlock
   buses + IRQ-masked rings, and the `config_store.h` API over raw QSPI
   sectors (config + 4 presets at the top of the 8 MB chip, one 4 KB
@@ -318,10 +335,14 @@ CI proves the build; these need a Seed and a scope:
    `device_compact` tokens → `ui::kLayout64` → the same `render_ui()`,
    with both geometries in the golden fixtures and the style guide.
 2. **Measure `kDacLatencyUs`** on the codec path and pin it (§6.4).
-3. **~µs pulse placement**: replace the 100 µs tick with a 1 MHz TIM
-   compare interrupt re-armed to the next edge.
-4. **MIDI in** on the reserved USART1 RX (D14): clock-follow and the
-   portable MIDI router the other targets already run.
+3. ~~µs pulse placement~~ — **done** (§1, §5): TIM5 free-runs at 1 MHz
+   with a compare channel re-armed to each edge's exact microsecond; a
+   second compare keeps the 10 kHz housekeeping tick.
+4. ~~MIDI in~~ — **done** (§1): the portable `SerialMidiParser` (new,
+   host-tested) feeds the same `MidiRouter` the ESP32 runs, plus MIDI
+   clock-follow as a second external tempo source. Seed: USART1 RX
+   (D14); Pod: its own TRS MIDI IN jack; patch.init(): the A2 header
+   pin.
 5. **USB gadget networking** (CDC-NCM + lwIP) if Link on this hardware
    ever becomes real — the Teensy platform layer
    (`teensy41/link_platform/`) is transport-agnostic and is the
@@ -376,11 +397,13 @@ the free Seed GPIO on the expansion headers
 | CLK2     | D7  | RUN      | D16 |
 | CLK3     | D8  | Tempo CV | D22 (DAC2 → op-amp to 0-5 V) |
 | CLK4     | D9  | CLK IN / RST IN | D29 / D30 |
-| MIDI TX (UART4) | D12 | MIDI RX (UART4, reserved) | D11 |
+| MIDI TX (UART4) | D12 | MIDI IN | the Pod's own TRS jack |
 
 The Pod's encoder click owns D13 (USART1 TX), so TRS MIDI OUT moves to
-UART4 on D12; the Pod's own TRS **MIDI IN** jack (USART1 RX, D14) is
-reserved for the MIDI-in follow-up. D29/D30 double as USB HS — reclaim
+UART4 on D12; the Pod's own TRS **MIDI IN** jack (USART1 RX, D14) feeds
+the router and the MIDI clock-follow (§1) through a separate RX-only
+UART init that never touches the encoder's pin. D29/D30 double as USB
+HS — reclaim
 them first if USB HS is ever wired. The microSD slot (D1-D6) is
 untouched.
 
@@ -399,7 +422,7 @@ Eurorack-native: the module's own jacks are the clock I/O, with proper
 | Toggle (B8) | up = auto-follow CLK IN, down = internal clock only |
 | Knob 1 (CV_1) | tempo 20-300 BPM, soft-pickup (inert until moved) |
 | Panel LED | beat flash while playing |
-| TRS MIDI OUT | the A-header "UART1" pins (A3 TX — UART4 on the STM32) |
+| TRS MIDI OUT / IN | the A-header "UART1" pins (A3 TX, A2 RX — UART4 on the STM32) |
 
 Only two gate jacks exist, so CLK2-4 and RUN have no physical pin — the
 virtual channels still run, and the **audio outputs can carry

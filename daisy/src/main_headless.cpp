@@ -143,6 +143,15 @@ int main() {
 
     controls::poll(now_us, now_ms);
 
+    // MIDI note gates: applied immediately at the pin (an edge injected
+    // into the ordered ring would wait behind the scheduled stream).
+    GateEvent gate;
+    while (gate_queue_pop(&gate)) {
+      if (gate.channel < neon::kChannelCount) {
+        PulseHwDaisy::set_level_now(gate.channel, gate.on);
+      }
+    }
+
     linksvc::poll(now_us);
     miditrs::poll(now_us);
     audioeng::poll(now_us);
