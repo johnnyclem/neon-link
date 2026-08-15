@@ -60,10 +60,6 @@ const char* ap_policy_str(ApPolicy p) {
   }
 }
 
-const char* priority_profile_str(PriorityProfile p) {
-  return p == PriorityProfile::kLegacy ? "legacy" : "fixed";
-}
-
 const char* source_str(ClockSource s) {
   switch (s) {
     case ClockSource::kLinkMaster:

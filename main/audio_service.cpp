@@ -39,6 +39,7 @@
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
 #include "neon/telemetry/csv.hpp"
+#include "neon/telemetry/emitter.hpp"
 #include "tasks.h"
 #include "wifi.h"
 
@@ -521,9 +522,10 @@ void audio_ctl_task(void*) {
 
   // P4 UART CSV telemetry (docs/STUDIO_MODE_TEST_PLAN.md), off by default:
   // a header line whenever cfg.telemetry_uart_csv turns on, then one data
-  // line per second while it stays on.
-  bool telemetry_was_on = false;
-  uint32_t telemetry_countdown = 0;
+  // line per second while it stays on. This loop runs every 250 ms, so 4
+  // ticks per line is 1 Hz; the cadence/edge-triggering logic itself lives
+  // in neon_core (host-tested) rather than here.
+  neon::TelemetryTicker telemetry_ticker(/*ticks_per_line=*/4);
 
   for (;;) {
     const neon::Config& cfg = neon_config();
@@ -588,43 +590,22 @@ void audio_ctl_task(void*) {
     audio_status_bus().read(st);
 
     // --- P4 UART CSV telemetry --------------------------------------
-    const bool want_telemetry = cfg.telemetry_uart_csv != 0;
-    if (want_telemetry && !telemetry_was_on) {
+    const neon::TelemetryTick tick =
+        telemetry_ticker.tick(cfg.telemetry_uart_csv != 0);
+    if (tick.want_header) {
       char header[224];  // the header line itself is 200 bytes
       const size_t hn = neon::telemetry_csv_header(header, sizeof(header));
       if (hn != 0) {
         printf("TEL,%s\n", header);
       }
-      telemetry_countdown = 0;
     }
-    telemetry_was_on = want_telemetry;
-    if (want_telemetry && telemetry_countdown-- == 0) {
-      telemetry_countdown = 3;  // this loop runs every 250 ms; emit at 1 Hz
+    if (tick.want_line) {
       const neon::ActiveNet net = netman::preference().active();
-      const bool ap_up = netman::ap_is_up();
-      const bool sta_up = net == neon::ActiveNet::kWifi;
-      const char* mode = net == neon::ActiveNet::kEthernet ? "eth"
-                         : ap_up && sta_up                  ? "apsta"
-                         : ap_up                             ? "ap"
-                         : sta_up                             ? "sta"
-                                                              : "none";
-      neon::TelemetrySample sample;
-      sample.uptime_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
-      sample.mode = mode;
-      sample.prio_set = st.priority_profile;
-      sample.req_jitter_ms = st.req_jitter_ms;
-      sample.eff_jitter_ms = st.eff_jitter_ms;
-      sample.jit_fill_frames = st.fill_frames;
-      sample.jit_underruns = st.jit_underruns;
-      sample.jit_conceals = st.concealed;
-      sample.jit_state = st.sub_state;
-      sample.rx_dropped = st.rx_dropped;
-      sample.rx_high_water = st.rx_high_water;
-      sample.la_trim_ppm = st.trim_ppm;
-      sample.i2s_write_failures = st.i2s_write_failures;
-      sample.rssi = st.rssi;
-      sample.heap_free_internal = st.heap_free_internal;
-      sample.heap_free_psram = st.heap_free_psram;
+      const char* mode = neon::telemetry_mode_str(
+          net == neon::ActiveNet::kEthernet, netman::ap_is_up(),
+          net == neon::ActiveNet::kWifi);
+      const neon::TelemetrySample sample = neon::telemetry_sample_from_status(
+          st, mode, static_cast<uint64_t>(esp_timer_get_time() / 1000));
       char line[192];
       const size_t ln = neon::telemetry_csv_line(sample, line, sizeof(line));
       if (ln != 0) {

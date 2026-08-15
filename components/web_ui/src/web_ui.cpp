@@ -534,12 +534,6 @@ const char* sub_state_str(uint8_t state) {
   }
 }
 
-// AudioStatus::priority_profile, as a word matching config_json.cpp's
-// "debug.priority_profile" string.
-const char* priority_profile_str(uint8_t profile) {
-  return profile == 1 ? "legacy" : "fixed";
-}
-
 // GET /api/audio/channels — Link Audio discovery for the subscribe picker.
 esp_err_t handle_audio_channels(httpd_req_t* req) {
   if (!check_local_origin(req)) {
@@ -648,7 +642,8 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.heap_free_internal),
       static_cast<unsigned>(audio.heap_free_psram),
       static_cast<int>(audio.rssi),
-      priority_profile_str(audio.priority_profile),
+      neon::priority_profile_str(
+          static_cast<neon::PriorityProfile>(audio.priority_profile)),
       static_cast<unsigned>(audio.req_jitter_ms),
       static_cast<unsigned>(audio.eff_jitter_ms));
   if (n < 0) {

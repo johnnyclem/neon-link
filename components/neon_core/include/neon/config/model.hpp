@@ -217,6 +217,14 @@ AudioEngineConfig audio_engine_config(const Config& cfg);
 int link_asio_task_priority(PriorityProfile profile);
 int link_pump_task_priority(PriorityProfile profile);
 
+// "fixed" | "legacy" — the single source of truth for how a PriorityProfile
+// (or AudioStatus::priority_profile, which mirrors it as a plain uint8_t —
+// see neon/audio/types.hpp) is spelled over JSON/CSV. Both
+// components/neon_core/src/config_json.cpp and
+// components/web_ui/src/web_ui.cpp call this rather than each carrying
+// their own copy of the mapping.
+const char* priority_profile_str(PriorityProfile profile);
+
 // The name the module publishes its mix under: the explicit
 // audio.la_channel_name when set, otherwise "<Device Name> Out" / " In".
 size_t audio_channel_name(const Config& cfg, bool line_in, char* out,

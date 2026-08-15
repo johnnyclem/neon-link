@@ -194,6 +194,10 @@ int link_pump_task_priority(PriorityProfile profile) {
   return profile == PriorityProfile::kLegacy ? 11 : 9;
 }
 
+const char* priority_profile_str(PriorityProfile profile) {
+  return profile == PriorityProfile::kLegacy ? "legacy" : "fixed";
+}
+
 AudioEngineConfig audio_engine_config(const Config& cfg) {
   const AudioConfig& a = cfg.audio;
   AudioEngineConfig out;

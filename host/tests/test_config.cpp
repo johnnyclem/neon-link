@@ -189,6 +189,13 @@ TEST_CASE("link task priorities: fixed keeps asio above the pump, legacy inverts
   CHECK(asio_legacy < pump_legacy);
 }
 
+TEST_CASE("priority_profile_str: the single source of truth for both JSON producers") {
+  CHECK(std::string(neon::priority_profile_str(neon::PriorityProfile::kFixed)) ==
+        "fixed");
+  CHECK(std::string(neon::priority_profile_str(neon::PriorityProfile::kLegacy)) ==
+        "legacy");
+}
+
 TEST_CASE("an empty WiFi slot never keeps a stale password") {
   neon::Config cfg;
   cfg.wifi[1].ssid[0] = '\0';
