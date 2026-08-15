@@ -1,5 +1,7 @@
 #include "link_session_daisy.h"
 
+#include "session_daisy.h"
+
 #include "neon/transport.hpp"
 
 #include "timebase_daisy.h"
@@ -60,3 +62,5 @@ TimelineSession& session() {
 }
 
 }  // namespace tsession
+
+hal::ILinkSession& daisy_session() { return tsession::session(); }

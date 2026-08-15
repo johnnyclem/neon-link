@@ -188,6 +188,10 @@ jobs:
         run: make -C daisy/pod -j$(nproc)
       - name: Build firmware (patch.init() headless)
         run: make -C daisy/patch_init -j$(nproc)
+      # The netlink config adds Ableton Link + lwIP + the web editor
+      # over USB gadget networking (BOOT_SRAM app; docs/DAISY.md §9).
+      - name: Build firmware (Seed netlink)
+        run: make -C daisy/netlink -j$(nproc)
 
   plugin-macos:
     name: Plugin (macOS VST3)

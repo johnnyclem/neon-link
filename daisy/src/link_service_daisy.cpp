@@ -10,8 +10,8 @@
 #include "board_daisy.h"
 #include "board_pins_daisy.h"
 #include "clkin_daisy.h"
-#include "link_session_daisy.h"
 #include "midi_daisy.h"
+#include "session_daisy.h"
 #include "timebase_daisy.h"
 
 namespace linksvc {
@@ -176,7 +176,7 @@ void init(int64_t now_us) {
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
   g_midi_clock.set_input_ppqn(24);  // MIDI clock is 24 PPQN by definition
 
-  auto& session = tsession::session();
+  auto& session = daisy_session();
   apply_session_settings(session);
   session.start(static_cast<double>(neon_config().tempo_milli_bpm) / 1000.0);
   update_tempo_cv(neon_config().tempo_milli_bpm);
@@ -184,12 +184,19 @@ void init(int64_t now_us) {
 }
 
 void poll(int64_t now_us) {
+  // The Link runtime (netlink build: sockets, timers, posted jobs)
+  // pumps every call; the capture/publish work runs on the 10 ms
+  // cadence. No-op on the offline configs.
+  if (&neon_daisy_link_pump != nullptr) {
+    neon_daisy_link_pump();
+  }
+
   if (now_us < g_next_capture_us) {
     return;
   }
   g_next_capture_us = now_us + kCapturePeriodUs;
 
-  auto& session = tsession::session();
+  auto& session = daisy_session();
   apply_session_settings(session);
   drain_control_queue(session, now_us);
   follow_external_clock(session, now_us);

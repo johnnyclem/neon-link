@@ -42,6 +42,26 @@
 #include "pulse_hw_daisy.h"
 #include "timebase_daisy.h"
 
+// Network hooks: no-ops on the offline configs; the netlink build
+// (daisy/netlink — USB gadget networking) provides strong definitions
+// that bring up lwIP over CDC-ECM, serve the web editor, and report
+// the bridge's address into the UI.
+extern "C" {
+__attribute__((weak)) void neon_daisy_net_init(const char* hostname) {
+  (void)hostname;
+}
+__attribute__((weak)) void neon_daisy_net_poll(int64_t now_us) {
+  (void)now_us;
+}
+__attribute__((weak)) bool neon_daisy_net_reboot_requested() { return false; }
+__attribute__((weak)) uint8_t neon_daisy_net_active() { return 0; }
+__attribute__((weak)) void neon_daisy_net_ip(char* out, unsigned cap) {
+  if (cap != 0) {
+    out[0] = '\0';
+  }
+}
+}
+
 namespace {
 
 // Engine scheduling: 15 ms refill with a 60 ms horizon — comfortable
@@ -187,13 +207,14 @@ void assemble_status(neon::UiStatus* s, int64_t now_us) {
   s->phase_milli_beats = neon::phase_milli_beats(tl, now_us);
   s->anim_tick =
       static_cast<uint32_t>(now_us / (1000000 / neon::ui::kIconTickHz));
-  s->active_net = 0;  // no network interface on this hardware
+  // 0 on the offline configs; the netlink build reports its USB bridge.
+  s->active_net = neon_daisy_net_active();
   s->peers = app_status_peers();
   s->ext_clock = app_status_ext_clock();
   s->setup_ap = false;
   s->ble_on = false;
   s->big_beat_display = neon_config().big_beat_display != 0;
-  s->ip[0] = '\0';
+  neon_daisy_net_ip(s->ip, sizeof(s->ip));
 }
 
 void service_ui(int64_t now_us) {
@@ -261,6 +282,7 @@ int main() {
   }
   miditrs::init();
   audioeng::init();
+  neon_daisy_net_init(neon_config().device_name);
 
   for (;;) {
     const int64_t now_us = daisy_now_us();
@@ -269,6 +291,7 @@ int main() {
     sync_ui_config();
     service_inputs(now_us, now_ms);
 
+    neon_daisy_net_poll(now_us);
     linksvc::poll(now_us);
     miditrs::poll(now_us);
     audioeng::poll(now_us);
@@ -283,6 +306,9 @@ int main() {
       service_ui(now_us);
     }
 
+    if (neon_daisy_net_reboot_requested() && g_reboot_at_us == 0) {
+      g_reboot_at_us = now_us + 600000;  // let the response drain first
+    }
     if (g_reboot_at_us != 0 && now_us >= g_reboot_at_us) {
       do_reboot();
     }

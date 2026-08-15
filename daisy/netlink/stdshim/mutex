@@ -1,0 +1,47 @@
+// std::mutex for the gthread-less arm-none-eabi libstdc++.
+//
+// Ableton Link's protocol headers use std::mutex / std::lock_guard for
+// cross-thread safety. On this target every Link call and the polled io
+// context run on the one main thread (ISRs never touch Link), so a
+// no-op lockable preserves the semantics the locks exist to provide.
+// libstdc++ only defines std::mutex when _GLIBCXX_HAS_GTHREADS is set;
+// this shim fills the gap and defines nothing when a future toolchain
+// grows real threads.
+//
+// The directory holding this file must precede the toolchain's C++
+// include directories (a plain -I does), so include_next reaches the
+// real <mutex> for lock_guard / unique_lock / tag types.
+
+#pragma once
+
+#include_next <mutex>
+
+#if !defined(_GLIBCXX_HAS_GTHREADS) && !defined(NEON_NETLINK_STD_MUTEX_SHIM)
+#define NEON_NETLINK_STD_MUTEX_SHIM
+
+namespace std
+{
+class mutex
+{
+public:
+  constexpr mutex() noexcept = default;
+  mutex(const mutex&) = delete;
+  mutex& operator=(const mutex&) = delete;
+  void lock() {}
+  bool try_lock() { return true; }
+  void unlock() {}
+};
+
+class recursive_mutex
+{
+public:
+  recursive_mutex() = default;
+  recursive_mutex(const recursive_mutex&) = delete;
+  recursive_mutex& operator=(const recursive_mutex&) = delete;
+  void lock() {}
+  bool try_lock() { return true; }
+  void unlock() {}
+};
+} // namespace std
+
+#endif
