@@ -364,6 +364,11 @@ extern "C" uint8_t neon_wifi_last_disconnect_reason(void) {
 
 extern "C" const char* neon_wifi_current_ssid(void) { return effective_ssid(); }
 
+extern "C" int8_t neon_wifi_rssi(void) {
+  wifi_ap_record_t info = {};
+  return esp_wifi_sta_get_ap_info(&info) == ESP_OK ? info.rssi : 0;
+}
+
 int neon_wifi_scan(NeonWifiScanEntry* out, int max_entries) {
   if (out == nullptr || max_entries <= 0) {
     return 0;
@@ -418,6 +423,7 @@ int neon_wifi_scan(NeonWifiScanEntry* out, int max_entries) {
       out[n].ssid[sizeof(out[n].ssid) - 1] = '\0';
       out[n].rssi = recs[i].rssi;
       out[n].open = recs[i].authmode == WIFI_AUTH_OPEN ? 1 : 0;
+      out[n].channel = recs[i].primary;
       ++n;
     }
   }
@@ -455,11 +461,12 @@ extern "C" int neon_wifi_scan_json(char* buf, int cap) {
       esc[e++] = *p;
     }
     esc[e] = '\0';
-    n += std::snprintf(buf + n, static_cast<size_t>(cap - n),
-                       "%s{\"ssid\":\"%s\",\"rssi\":%d,\"open\":%s}",
-                       i != 0 ? "," : "", esc,
-                       static_cast<int>(entries[i].rssi),
-                       entries[i].open ? "true" : "false");
+    n += std::snprintf(
+        buf + n, static_cast<size_t>(cap - n),
+        "%s{\"ssid\":\"%s\",\"rssi\":%d,\"open\":%s,\"channel\":%u}",
+        i != 0 ? "," : "", esc, static_cast<int>(entries[i].rssi),
+        entries[i].open ? "true" : "false",
+        static_cast<unsigned>(entries[i].channel));
   }
   free(entries);
   if (n >= cap - 1) {

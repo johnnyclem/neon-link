@@ -32,6 +32,8 @@ set(NEON_CORE_SRCS
   src/audio/jitter_buffer.cpp
   src/audio/lpf.cpp
   src/audio/synth_voice.cpp
+  src/telemetry/csv.cpp
+  src/telemetry/emitter.cpp
 )
 
 if(ESP_PLATFORM)

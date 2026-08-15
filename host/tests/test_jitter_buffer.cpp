@@ -491,3 +491,34 @@ TEST_CASE("JitterBuffer: the jitter setting is clamped to something sane") {
   // And the target never exceeds half the ring, whatever the user asks.
   CHECK(jb.target_frames() <= kRingFrames / 2);
 }
+
+// docs/STUDIO_MODE_TEST_PLAN.md P3/§C5: the ring-capacity clamp used to be
+// silent (the requested jitter_ms and the actually-applied target could
+// diverge with nothing to say so). effective_jitter_ms() exists so a test
+// run can tell the two apart instead of discovering the clamp by surprise.
+TEST_CASE("JitterBuffer: effective jitter reports the capacity clamp") {
+  // 48000, not kOutRate (44100): a rate that divides 1000 evenly keeps the
+  // ms<->frames round trip exact, so the "no clamp" case below asserts
+  // effective == requested rather than tripping over configure()'s own
+  // (rate/1000)*ms truncation — a separate, sub-millisecond rounding
+  // artifact this test is not about.
+  constexpr uint32_t kRate = 48000;
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kRate);
+
+  // A request well inside half the ring is honored exactly: requested and
+  // effective agree.
+  jb.configure(60);
+  CHECK(jb.jitter_ms() == 60);
+  CHECK(jb.effective_jitter_ms() == 60);
+
+  // A request past half the ring's capacity (in ms, at the output rate) is
+  // silently truncated at the frame level; effective_jitter_ms() must say
+  // so even though jitter_ms() still reports what was asked for.
+  const uint32_t half_ring_ms = (kRingFrames / 2) * 1000u / kRate;
+  jb.configure(half_ring_ms + 100);
+  CHECK(jb.jitter_ms() == half_ring_ms + 100);
+  CHECK(jb.effective_jitter_ms() < jb.jitter_ms());
+  CHECK(jb.target_frames() <= kRingFrames / 2);
+}

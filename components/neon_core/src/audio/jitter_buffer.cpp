@@ -44,6 +44,7 @@ void JitterBuffer::configure(uint32_t jitter_ms) {
     target = cap;
   }
   target_frames_ = target;
+  effective_jitter_ms_ = rate != 0 ? (target_frames_ * 1000u) / rate : 0;
 }
 
 void JitterBuffer::reset() {

@@ -64,7 +64,14 @@ class JitterBuffer {
   uint32_t dropped() const { return dropped_; }
   int32_t trim_ppm() const { return resampler_.trim_ppm(); }
   uint32_t sender_rate() const { return sender_rate_; }
+  // Requested target, after the kMinJitterMs..kMaxJitterMs sanity clamp
+  // but before configure()'s further clamp to half the ring's capacity.
   uint32_t jitter_ms() const { return jitter_ms_; }
+  // What target_frames() actually comes out to in milliseconds — differs
+  // from jitter_ms() exactly when the ring is too small to honor the
+  // request (docs/STUDIO_MODE_TEST_PLAN.md P3/§C5: that clamp used to be
+  // silent).
+  uint32_t effective_jitter_ms() const { return effective_jitter_ms_; }
 
   // Beat of the newest received frame, and of the frame the audio task is
   // about to play. Their difference is the buffered latency in beats.
@@ -111,6 +118,7 @@ class JitterBuffer {
   uint32_t sender_rate_ = 0;
   uint32_t jitter_ms_ = 60;
   uint32_t target_frames_ = 0;
+  uint32_t effective_jitter_ms_ = 0;
   uint32_t underruns_ = 0;
   uint32_t concealed_ = 0;
   uint32_t dropped_ = 0;

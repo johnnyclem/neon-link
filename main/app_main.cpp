@@ -5,9 +5,11 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include "ablink/priority.hpp"
 #include "app_state/config_store.h"
 #include "board_pins.h"
 #include "halesp/i2c_bus.hpp"
+#include "neon/config/model.hpp"
 #include "oledui/oled_ui.h"
 #include "tasks.h"
 
@@ -58,6 +60,16 @@ extern "C" void app_main(void) {
   }
 
   neon_config_load();
+
+  // Must land before any task that could touch Link's asio ServiceRunner
+  // singleton or start the pump is created (neon_start_link_service /
+  // neon_start_audio_service below) — see ablink/priority.hpp. Debug-only:
+  // normal boots always resolve to the kFixed defaults these tasks already
+  // carried as hardcoded constants.
+  ablink::set_link_asio_priority(
+      neon::link_asio_task_priority(neon_config().priority_profile));
+  ablink::set_link_pump_priority(
+      neon::link_pump_task_priority(neon_config().priority_profile));
 
   // Glass first, and nothing else on the bus yet. The old probe swept
   // every I2C address at a 30 ms timeout; on a cold rail that is 3 s+

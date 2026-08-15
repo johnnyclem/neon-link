@@ -2,7 +2,7 @@ get_filename_component(NEON_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../.. ABSOLUTE
 set(LINK_ROOT ${NEON_REPO_ROOT}/third_party/link)
 
 if(CONFIG_NEON_LINK_STUB)
-  set(ABLINK_SRCS src/link_stub.cpp src/atomic_shim.c)
+  set(ABLINK_SRCS src/link_stub.cpp src/atomic_shim.c src/priority.cpp)
 else()
   # asio is built in separate-compilation mode (like Espressif's asio port):
   # asio.cpp provides the non-inline implementation, except posix_event's
@@ -11,6 +11,7 @@ else()
     src/link_session_esp.cpp
     src/asio_compat.cpp
     src/atomic_shim.c
+    src/priority.cpp
     ${LINK_ROOT}/modules/asio-standalone/asio/src/asio.cpp)
   if(CONFIG_NEON_LINK_AUDIO)
     list(APPEND ABLINK_SRCS src/link_audio_esp.cpp)

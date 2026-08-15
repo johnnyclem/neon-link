@@ -51,6 +51,8 @@ add_executable(neon_tests
   tests/test_jitter_buffer.cpp
   tests/test_synth_voice.cpp
   tests/test_quadrature.cpp
+  tests/test_telemetry_csv.cpp
+  tests/test_telemetry_emitter.cpp
 )
 target_include_directories(neon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest

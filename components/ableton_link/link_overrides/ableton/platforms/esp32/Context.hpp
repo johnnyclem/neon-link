@@ -32,6 +32,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "ablink/priority.hpp"
+
 namespace ableton
 {
 namespace platforms
@@ -70,15 +72,19 @@ class Context
           mpService->get_executor()))
     {
       // Prio 2 lost to HTTP/OLED on core 0 and Link Audio packets
-      // arrived late enough that the play ring bled ~40 ms/s. 12 puts the
-      // timing protocol (discovery, ping/pong, tempo) above the Link Audio
-      // pump (9) and the timeline poll (10): when the network is busy,
-      // keeping the clock right must win over shipping audio.
+      // arrived late enough that the play ring bled ~40 ms/s. 12 (the
+      // ablink::link_asio_priority() default) puts the timing protocol
+      // (discovery, ping/pong, tempo) above the Link Audio pump (9) and
+      // the timeline poll (10): when the network is busy, keeping the
+      // clock right must win over shipping audio. The priority is read
+      // through ablink::link_asio_priority() rather than hardcoded so
+      // docs/STUDIO_MODE_TEST_PLAN.md Phase 2 can reproduce the pre-fix
+      // inversion (asio 8) on demand, without a separate build.
       xTaskCreatePinnedToCore(run,
                               "link",
                               16384,
                               this,
-                              12 | portPRIVILEGE_BIT,
+                              ablink::link_asio_priority() | portPRIVILEGE_BIT,
                               &mTaskHandle,
                               LINK_ESP_TASK_CORE_ID);
     }
