@@ -4,3 +4,6 @@
 [submodule "gpio_expansion_board"]
 	path = gpio_expansion_board
 	url = https://github.com/nulllaborg/gpio_expansion_board.git
+[submodule "third_party/libDaisy"]
+	path = third_party/libDaisy
+	url = https://github.com/electro-smith/libDaisy.git

@@ -163,6 +163,32 @@ jobs:
       - name: Build firmware
         run: pio run -d teensy41
 
+  daisy-build:
+    name: Daisy Seed build (Makefile + libDaisy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Build libDaisy
+        run: make -C third_party/libDaisy -j$(nproc)
+      # Compiles the same neon_core sources as the host, ESP-IDF, and
+      # Teensy jobs, but with the arm-none-eabi toolchain and the
+      # bare-metal glue in daisy/src — catches target-only breakage
+      # (docs/DAISY.md). Each image must keep fitting the STM32H750's
+      # single 128 KB internal-flash sector; the linker fails the job if
+      # one stops fitting.
+      - name: Build firmware (Seed OLED)
+        run: make -C daisy -j$(nproc)
+      - name: Build firmware (Pod headless)
+        run: make -C daisy/pod -j$(nproc)
+      - name: Build firmware (patch.init() headless)
+        run: make -C daisy/patch_init -j$(nproc)
+
   plugin-macos:
     name: Plugin (macOS VST3)
     runs-on: macos-latest
