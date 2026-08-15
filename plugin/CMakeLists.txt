@@ -6,7 +6,7 @@
 # idf.py never sees this directory.
 
 cmake_minimum_required(VERSION 3.22)
-project(neon_link_plugin VERSION 0.2.2 LANGUAGES C CXX)
+project(neon_link_plugin VERSION 0.2.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,7 +26,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/client neon_client)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Juce.cmake)
 
 juce_add_plugin(NeonLink
-  VERSION 0.2.2
+  VERSION 0.2.4
   COMPANY_NAME "Tulip"
   BUNDLE_ID com.tulipcc.neon-link
   PLUGIN_MANUFACTURER_CODE Neon

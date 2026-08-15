@@ -1297,7 +1297,7 @@ void AudioPage::load(const neon::Config& cfg, const Snapshot& snap) {
                              ? "Streaming is not in this firmware."
                              : ""),
                   juce::dontSendNotification);
-  enabled_.setLabel("Audio engine enabled (takes effect on reboot)");
+  enabled_.setLabel("Audio engine enabled");
   enabled_.setValue(a.enabled != 0);
   enabled_.onChange = [this](bool v) {
     host_.patch([v](neon::Config& d) { d.audio.enabled = v ? 1 : 0; });

@@ -159,6 +159,9 @@ Snapshot DeviceController::base_snapshot() const {
 }
 
 void DeviceController::publish(Snapshot s) {
+  // Must not be called while mu_ is already held — std::mutex is not
+  // recursive. Save / Scan / Refresh used to lock, then publish, which
+  // deadlocked the HTTP thread; the editor timer then froze Live.
   auto p = std::make_shared<const Snapshot>(std::move(s));
   const std::lock_guard<std::mutex> g(mu_);
   snap_ = std::move(p);
@@ -302,14 +305,15 @@ void DeviceController::run() {
           have_config_ = false;  // recall writes a new config
           break;
         case Kind::SaveConfig: {
+          Snapshot pre;
           {
             const std::lock_guard<std::mutex> g(mu_);
             saving_ = true;
             save_message_.clear();
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            pre = base_snapshot();
           }
+          pre.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(pre));
           const std::string body = neon::client::config_put_body(c.cfg);
           neon::client::JsonPatch patch;
           patch.mergeObject(body.c_str(), body.size());
@@ -341,6 +345,7 @@ void DeviceController::run() {
             // Live when the module was busy and looked like a crash.
             msg = put.error.empty() ? "Could not save." : put.error;
           }
+          Snapshot post;
           {
             const std::lock_guard<std::mutex> g(mu_);
             saving_ = false;
@@ -353,23 +358,25 @@ void DeviceController::run() {
               have_config_ = true;
               ++config_seq_;
             }
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            post = base_snapshot();
           }
+          post.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(post));
           last_poll = 0;
           break;
         }
         case Kind::Scan: {
+          Snapshot pre;
           {
             const std::lock_guard<std::mutex> g(mu_);
             scanning_ = true;
             scan_message_ = "Scanning…";
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            pre = base_snapshot();
           }
+          pre.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(pre));
           auto r = client_.scan();
+          Snapshot post;
           {
             const std::lock_guard<std::mutex> g(mu_);
             scanning_ = false;
@@ -383,29 +390,31 @@ void DeviceController::run() {
               scan_.clear();
               scan_message_ = "Scan failed.";
             }
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            post = base_snapshot();
           }
+          post.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(post));
           break;
         }
         case Kind::RefreshAudio: {
+          Snapshot pre;
           {
             const std::lock_guard<std::mutex> g(mu_);
             audio_refreshing_ = true;
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            pre = base_snapshot();
           }
+          pre.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(pre));
           auto r = client_.audioChannels();
+          Snapshot post;
           {
             const std::lock_guard<std::mutex> g(mu_);
             audio_refreshing_ = false;
             if (r.ok) audio_channels_ = r.value;
-            Snapshot s = base_snapshot();
-            s.reach = ever_online ? Reachability::Online : reach;
-            publish(std::move(s));
+            post = base_snapshot();
           }
+          post.reach = ever_online ? Reachability::Online : reach;
+          publish(std::move(post));
           break;
         }
         case Kind::Reboot:

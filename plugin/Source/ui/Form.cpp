@@ -141,7 +141,12 @@ void NumberField::textEditorReturnKeyPressed(juce::TextEditor&) { commit(); }
 void NumberField::textEditorFocusLost(juce::TextEditor&) { commit(); }
 
 void NumberField::commit() {
-  int v = edit_.getText().getIntValue();
+  const auto text = edit_.getText().trim();
+  if (text.isEmpty()) {
+    edit_.setText(juce::String(last_), juce::dontSendNotification);
+    return;
+  }
+  int v = text.getIntValue();
   v = juce::jlimit(min_, max_, v);
   edit_.setText(juce::String(v), juce::dontSendNotification);
   if (v != last_ && onChange) {
