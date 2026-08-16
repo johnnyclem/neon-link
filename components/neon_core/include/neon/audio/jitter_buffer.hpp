@@ -92,6 +92,13 @@ class JitterBuffer {
   // sender's audio is continuous, so it appends instead.
   static constexpr uint32_t kMaxReorderFrames = 2048;  // ~43 ms @ 48 k
   static constexpr uint32_t kFadeFrames = 64;          // ~1.3 ms @ 48 k
+  // A dropped-sender underrun mid-stream only has to refill to this
+  // fraction of the target before resuming — waiting for the full target
+  // again turns one lost packet into a multi-hundred-ms silence for no
+  // reason once the stream is already flowing. The very first fill (never
+  // having played yet) still waits for the full target: there is no
+  // steady state to resume, so there is nothing to save by rushing it.
+  static constexpr uint32_t kResumeDivisor = 4;  // ~25% of target
 
  private:
   void update_servo();
@@ -132,6 +139,11 @@ class JitterBuffer {
 
   // Output-side fade after a rebuffer (positive = fade in, used as count).
   uint32_t fade_in_left_ = 0;
+
+  // False until the stream has reached kPlaying at least once since the
+  // last full reset/idle. Gates the kResumeDivisor hysteresis in pull():
+  // the initial fill still waits for the whole target.
+  bool had_played_ = false;
 
   int16_t stage_[kStageFrames * 2] = {};
   uint32_t stage_have_ = 0;

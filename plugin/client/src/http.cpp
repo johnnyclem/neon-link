@@ -36,7 +36,8 @@ std::string to_lower(std::string s) {
 }  // namespace
 
 std::string format_request(const char* method, const char* host,
-                           const char* path, const char* body) {
+                           const char* path, const char* body,
+                           const char* extra_header) {
   const size_t n = body != nullptr ? std::strlen(body) : 0;
   std::ostringstream os;
   os << method << ' ' << (path != nullptr ? path : "/") << " HTTP/1.1\r\n"
@@ -45,6 +46,9 @@ std::string format_request(const char* method, const char* host,
      << "Connection: keep-alive\r\n";
   if (n > 0) {
     os << "Content-Type: application/json\r\n";
+  }
+  if (extra_header != nullptr && extra_header[0] != '\0') {
+    os << extra_header << "\r\n";
   }
   os << "\r\n";
   if (n > 0) {
@@ -279,7 +283,8 @@ void PosixHttpTransport::close() {
 
 HttpResponse PosixHttpTransport::request(const char* method, const char* host,
                                          int port, const char* path,
-                                         const char* body, int timeout_ms) {
+                                         const char* body, int timeout_ms,
+                                         const char* extra_header) {
   HttpResponse out;
   if (host == nullptr || host[0] == '\0') {
     out.connect_failed = true;
@@ -362,7 +367,8 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
     port_ = port;
   }
 
-  const std::string req = format_request(method, host, path, body);
+  const std::string req =
+      format_request(method, host, path, body, extra_header);
   size_t sent = 0;
   while (sent < req.size()) {
     if (!wait_fd(fd_, POLLOUT, remain_ms(deadline))) {
@@ -461,7 +467,8 @@ HttpResponse PosixHttpTransport::request(const char* method, const char* host,
 PosixHttpTransport::~PosixHttpTransport() = default;
 void PosixHttpTransport::close() {}
 HttpResponse PosixHttpTransport::request(const char*, const char*, int,
-                                         const char*, const char*, int) {
+                                         const char*, const char*, int,
+                                         const char*) {
   HttpResponse r;
   r.connect_failed = true;
   r.error = "POSIX sockets not available";

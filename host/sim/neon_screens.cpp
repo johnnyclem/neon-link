@@ -68,6 +68,10 @@ neon::UiStatus base_status() {
   s.quantum_beats = 4;
   s.phase_milli_beats = 1500;
   s.tempo_valid = true;
+  // Stand-in for esp_app_desc_t.version (a git describe string on real
+  // firmware) so the System screen's VERSION row has something to show in
+  // the style guide rather than a blank fixture.
+  std::snprintf(s.firmware, sizeof(s.firmware), "v1.4.0-12-gabc1234");
   return s;
 }
 
@@ -223,6 +227,11 @@ int main() {
     st.active_net = 2;
     st.ble_on = true;
     std::snprintf(st.ip, sizeof(st.ip), "10.0.0.42");
+    // Shows up as the Network screen's TOKEN row (8-char prefix); AP PASS
+    // stays hidden here since setup_ap is false — this unit has already
+    // joined a network.
+    std::snprintf(st.device_token, sizeof(st.device_token),
+                  "0123456789abcdef0123456789abcdef");
 
     neon::Config cfg;
     neon::MenuModel menu(&cfg);

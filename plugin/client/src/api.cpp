@@ -15,6 +15,27 @@ constexpr int kConfigTimeoutMs = 1500;
 constexpr int kCmdTimeoutMs = 800;
 constexpr int kScanTimeoutMs = 8000;
 
+// neon::config_from_json has no setter for "device_token" — it is the same
+// parser web_ui.cpp uses server-side on an incoming (untrusted) PUT body,
+// and accepting a client-supplied token there would undo the whole point
+// of check_device_token. Read it out here instead, the same way
+// parse_config_secrets (status.cpp) reads has_pass flags that also do not
+// round-trip through Config.
+std::string extract_device_token(const char* json, size_t len) {
+  cJSON* root = cJSON_ParseWithLength(json, len);
+  if (root == nullptr || !cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return {};
+  }
+  std::string token;
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(root, "device_token");
+  if (cJSON_IsString(v) && v->valuestring != nullptr) {
+    token = v->valuestring;
+  }
+  cJSON_Delete(root);
+  return token;
+}
+
 const char* transport_path(TransportOp op) {
   switch (op) {
     case TransportOp::Play:
@@ -113,6 +134,7 @@ Result<neon::Config> DeviceClient::getConfig(ConfigSecrets* secrets) {
   if (secrets != nullptr) {
     parse_config_secrets(r.body.c_str(), r.body.size(), secrets);
   }
+  device_token_ = extract_device_token(r.body.c_str(), r.body.size());
   out.value = cfg;
   out.ok = true;
   return out;
@@ -140,6 +162,7 @@ Result<neon::Config> DeviceClient::putConfig(const JsonPatch& patch,
     out.error = "config echo parse failed";
     return out;
   }
+  device_token_ = extract_device_token(r.body.c_str(), r.body.size());
   out.value = cfg;
   out.ok = true;
   return out;
@@ -254,9 +277,19 @@ Result<void> DeviceClient::reboot() {
 }
 
 Result<void> DeviceClient::factoryReset() {
-  const HttpResponse r =
-      http_.request("POST", host_.c_str(), port_,
-                    "/api/factory_reset?confirm=yes", nullptr, kCmdTimeoutMs);
+  // web_ui.cpp's check_device_token gates this endpoint on the same
+  // per-device secret the web editor reads back out of GET /api/config —
+  // getConfig() caches it here for exactly this call. No header at all
+  // (rather than a stale or empty one) when there is nothing cached yet:
+  // the device's 401 is a clearer signal than a guessed token that just
+  // happens to also be wrong.
+  std::string header;
+  if (!device_token_.empty()) {
+    header = "X-Neon-Token: " + device_token_;
+  }
+  const HttpResponse r = http_.request(
+      "POST", host_.c_str(), port_, "/api/factory_reset?confirm=yes",
+      nullptr, kCmdTimeoutMs, header.empty() ? nullptr : header.c_str());
   Result<void> out;
   out.ok = true;
   out.http_status = r.status;

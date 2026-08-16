@@ -234,7 +234,7 @@ void MenuModel::on_click() {
       if (cursor_ == kSystemRebootItem) {
         screen_ = Screen::kConfirm;
         confirm_yes_ = false;
-      } else {
+      } else if (cursor_ != kSystemVersionItem) {
         editing_ = !editing_;
       }
       break;
@@ -354,7 +354,8 @@ const char* MenuModel::item_label(int index) const {
       static const char* kItems[kSystemItems] = {
           "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
           "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
-          "SS SYNC",  "BRIGHT",   "BEAT",     "REBOOT"};
+          "SS SYNC",  "BRIGHT",   "BEAT",     "VERSION",
+          "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
     default:

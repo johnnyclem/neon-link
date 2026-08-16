@@ -69,9 +69,13 @@ or the rolling `amyboard` GitHub release.
 
 1. Power the module (USB-C or Eurorack +12 V).
 2. After ~10 s with no credentials (or ~60 s if credentials fail), it raises
-   the WPA2 setup AP `NEON-LINK-XXXX` (password `link1234` — change it on
-   the Network page; an open AP can be enabled there too, but it exposes
-   the whole HTTP API, OTA included, to anyone in radio range).
+   the WPA2 setup AP `NEON-LINK-XXXX`. The password is generated once per
+   unit from its own MAC address (not a shared default printed in a doc —
+   every unit in a batch gets a different key) and is shown on the OLED's
+   **NETWORK** screen for as long as the setup AP stays up; change it on
+   the web UI's Network page afterward if you like. An open AP can be
+   enabled there too, but it exposes the whole HTTP API, OTA included, to
+   anyone in radio range.
 3. Join the AP, open `http://192.168.4.1/` (also shown on the OLED).
 4. Enter home WiFi SSID/password → **SAVE** (STA joins live; **REBOOT**
    only if association sticks).
@@ -87,6 +91,20 @@ idf.py menuconfig   # NEON LINK configuration → WiFi SSID / password
 
 **API extras:** `GET /api/status` includes `hostname`, `ip`, `setup_ap`;
 `POST /api/reboot` soft-resets so WiFi changes take effect.
+
+### Updating firmware
+
+Join the module's network (the setup AP, or your home WiFi if it has
+already joined one), open its web page, and go to **System → Module**. Pick
+the new `.bin` file under **Firmware** and press **Install update** — the
+page uploads it, the module writes it to the spare flash slot, verifies it,
+and reboots into it on its own, in under a minute. Nothing else to do; if
+the new image turns out to be bad, the bootloader notices it never finished
+starting up cleanly and automatically falls back to the version that was
+running before, so there is no way to end up with a bricked unit from a bad
+update. The OLED's **SYSTEM** screen always shows which version is
+currently running (**VERSION** row), which is the first thing worth
+checking when reporting an issue.
 
 ## Timing notes
 

@@ -206,6 +206,40 @@ TEST_CASE("JitterBuffer: underrun falls back to buffering and recovers") {
   CHECK(jb.state() == neon::JitterBuffer::State::kPlaying);
 }
 
+TEST_CASE("JitterBuffer: a mid-stream underrun resumes on a partial refill, "
+          "not the full target") {
+  std::vector<int16_t> storage(kRingFrames * 2);
+  neon::JitterBuffer jb;
+  jb.init(storage.data(), kRingFrames, kOutRate);
+  jb.configure(60);  // target_frames() == 2880 @ 48 kHz
+
+  Sender tx;
+  std::vector<float> l(kOutBlock), r(kOutBlock);
+  for (int i = 0; i < 6; ++i) {
+    jb.push(tx.next(), tx.data.data());
+  }
+  while (jb.state() != neon::JitterBuffer::State::kPlaying) {
+    jb.pull(kOutBlock, l.data(), r.data());
+  }
+
+  // Drain it dry: a mid-stream underrun.
+  uint32_t drained = 0;
+  while (jb.state() == neon::JitterBuffer::State::kPlaying && drained < 100) {
+    jb.pull(kOutBlock, l.data(), r.data());
+    ++drained;
+  }
+  CHECK(jb.state() == neon::JitterBuffer::State::kBuffering);
+
+  // Two 512-frame blocks (1024 frames) clear the ~720-frame quarter of the
+  // 2880-frame target but are nowhere near the full target — the old "wait
+  // for the full target again" rule would still be buffering here.
+  jb.push(tx.next(), tx.data.data());
+  jb.push(tx.next(), tx.data.data());
+  CHECK(jb.fill_frames() < jb.target_frames());
+  CHECK(jb.pull(kOutBlock, l.data(), r.data()) == kOutBlock);
+  CHECK(jb.state() == neon::JitterBuffer::State::kPlaying);
+}
+
 TEST_CASE("JitterBuffer: an overrun sheds the oldest audio") {
   std::vector<int16_t> storage(2048 * 2);
   neon::JitterBuffer jb;

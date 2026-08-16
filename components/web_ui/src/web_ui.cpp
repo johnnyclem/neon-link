@@ -124,6 +124,44 @@ bool host_names_this_device(const char* host) {
   return std::strcmp(name, expected) == 0;
 }
 
+// --- device token ---------------------------------------------------------
+//
+// check_local_origin() closes CSRF and DNS rebinding for every mutating
+// endpoint, but it trusts the Host header, and Host is only unforgeable
+// from a *browser* (fetch/XHR refuse to let a page override it). A
+// non-browser client on the same LAN or AP — a phone app, a compromised
+// IoT device, curl — can set Host to whatever this device expects and walk
+// straight through that check. OTA and factory-reset are the two
+// operations where that gap actually matters (arbitrary firmware; total
+// data loss), so they additionally require a per-device secret that
+// config_store.cpp generates once at first boot and neither of those
+// clients can guess. The trusted first-party web editor reads it back out
+// of GET /api/config (config_json.cpp's device_token field) and resends it
+// here as a custom header — which a browser also cannot be tricked into
+// attaching from a cross-site request, so this doubles as another CSRF
+// close on top of check_local_origin's.
+constexpr char kTokenHeader[] = "X-Neon-Token";
+
+// True when the request carries this device's token; otherwise a 401 has
+// been sent and the handler must return without doing anything. An empty
+// stored token (should not happen past first boot; config_store.cpp always
+// provisions one) fails closed rather than accepting every request.
+bool check_device_token(httpd_req_t* req) {
+  const char* want = neon_config().device_token;
+  if (want[0] == '\0') {
+    httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "device not provisioned");
+    return false;
+  }
+  char got[sizeof(neon::Config::device_token)] = {};
+  if (httpd_req_get_hdr_value_str(req, kTokenHeader, got, sizeof(got)) !=
+          ESP_OK ||
+      std::strcmp(got, want) != 0) {
+    httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "missing or wrong token");
+    return false;
+  }
+  return true;
+}
+
 // True when the request may act on this device; otherwise a 403 has been
 // sent and the handler must return without doing anything.
 bool check_local_origin(httpd_req_t* req) {
@@ -415,7 +453,7 @@ void restart_task(void*) {
 
 // POST /api/factory_reset?confirm=yes — wipe config and presets, reboot.
 esp_err_t handle_factory_reset(httpd_req_t* req) {
-  if (!check_local_origin(req)) {
+  if (!check_local_origin(req) || !check_device_token(req)) {
     return ESP_OK;
   }
   char confirm[8] = {};
@@ -435,7 +473,7 @@ esp_err_t handle_factory_reset(httpd_req_t* req) {
 // POST /api/ota — raw firmware image in the body. Streams straight into
 // the inactive app slot; the module reboots into it on success.
 esp_err_t handle_ota(httpd_req_t* req) {
-  if (!check_local_origin(req)) {
+  if (!check_local_origin(req) || !check_device_token(req)) {
     return ESP_OK;
   }
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);

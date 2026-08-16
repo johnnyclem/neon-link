@@ -40,7 +40,8 @@ struct FakeHttp : neon::client::HttpTransport {
 
   neon::client::HttpResponse request(const char* method, const char* host,
                                      int port, const char* path,
-                                     const char* body, int) override {
+                                     const char* body, int,
+                                     const char* = nullptr) override {
     Call c;
     c.method = method ? method : "";
     c.host = host ? host : "";

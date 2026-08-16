@@ -72,6 +72,13 @@ class DeviceClient {
   std::string host_ = "neon-link.local";
   int port_ = 80;
   bool persist_lazy_ = false;
+  // Cached from the last successful getConfig()/putConfig(): the device
+  // secret factoryReset() has to send as X-Neon-Token (web_ui.cpp's
+  // check_device_token gates POST /api/factory_reset on it). Empty until
+  // the first successful config fetch, and factoryReset() sends no header
+  // at all in that case — the device answers 401 rather than the plugin
+  // guessing at a token it does not have yet.
+  std::string device_token_;
 
   template <typename T>
   Result<T> fill_error(const HttpResponse& r, const char* what) const;

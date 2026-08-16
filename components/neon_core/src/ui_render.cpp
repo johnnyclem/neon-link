@@ -117,8 +117,8 @@ void render_home(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
            lay.bar_h, lay.bar_tick_h);
 }
 
-void render_list(const MenuModel& menu, const char* title, Framebuffer& fb,
-                 const Layout& lay) {
+void render_list(const MenuModel& menu, const char* title,
+                 const UiStatus& status, Framebuffer& fb, const Layout& lay) {
   draw_header(fb, title);
 
   const int n = menu.item_count();
@@ -133,7 +133,20 @@ void render_list(const MenuModel& menu, const char* title, Framebuffer& fb,
     }
     const bool focused = idx == menu.cursor();
     char value[16];
-    menu.item_value(idx, value, sizeof(value));
+    // The one row MenuModel cannot fill in itself: it is pure host-tested
+    // logic with no way to read esp_app_desc_t, so the platform's firmware
+    // string comes in through UiStatus instead of item_value().
+    if (menu.screen() == MenuModel::Screen::kSystem &&
+        idx == MenuModel::kSystemVersionItem) {
+      // Explicit precision, not "%s": status.firmware can be longer than
+      // this row's value column, and an unbounded "%s" into a smaller
+      // buffer is exactly the truncation GCC's -Wformat-truncation (built
+      // as -Werror here) exists to catch.
+      std::snprintf(value, sizeof(value), "%.*s",
+                    static_cast<int>(sizeof(value) - 1), status.firmware);
+    } else {
+      menu.item_value(idx, value, sizeof(value));
+    }
     draw_list_row(fb, row, menu.item_label(idx), value, focused,
                   focused && menu.editing(), lay.list_top, lay.list_row_h);
   }
@@ -157,6 +170,30 @@ void render_network(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
   draw_list_row(fb, 3, "SOURCE", source_word(s), false, false, lay.list_top,
                 lay.list_row_h);
 
+  // Per-device secrets (G1 in the ship-gate review), each with no other
+  // display surface. The AP password only matters — and is only shown —
+  // while the setup AP the password protects is actually up; once the
+  // module has joined a home network it stops being the thing keeping
+  // anyone out. The device token stays visible: it is what a friend reads
+  // over the phone when the web UI's own automatic use of it is broken.
+  int row = 4;
+  if (s.setup_ap && s.ap_pass[0] != '\0') {
+    draw_list_row(fb, row++, "AP PASS", s.ap_pass, false, false, lay.list_top,
+                  lay.list_row_h);
+  }
+  if (s.device_token[0] != '\0') {
+    // The full 32-char token does not fit a list row's value column, and
+    // asking someone to read that many hex digits over the phone is not
+    // reasonable anyway — an 8-char prefix is enough to disambiguate a
+    // support call ("does the code on your panel start with...") without
+    // being the whole secret.
+    char short_token[9];
+    std::snprintf(short_token, sizeof(short_token), "%.*s",
+                  static_cast<int>(sizeof(short_token) - 1), s.device_token);
+    draw_list_row(fb, row++, "TOKEN", short_token, false, false,
+                  lay.list_top, lay.list_row_h);
+  }
+
   // The setup pointer rides below the identity band, which the compact
   // flow does not have; its four readout rows already fill that panel.
   if (lay.ident_y >= 0) {
@@ -166,11 +203,11 @@ void render_network(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
   }
 }
 
-void render_output_edit(const MenuModel& menu, Framebuffer& fb,
-                        const Layout& lay) {
+void render_output_edit(const MenuModel& menu, const UiStatus& status,
+                        Framebuffer& fb, const Layout& lay) {
   char title[16];
   std::snprintf(title, sizeof(title), "CLK %d", (menu.output_index() & 3) + 1);
-  render_list(menu, title, fb, lay);
+  render_list(menu, title, status, fb, lay);
 }
 
 }  // namespace
@@ -187,10 +224,10 @@ void render_ui(const MenuModel& menu, const UiStatus& status,
     case MenuModel::Screen::kMidi:
     case MenuModel::Screen::kAudio:
     case MenuModel::Screen::kSystem:
-      render_list(menu, menu.screen_title(), fb, layout);
+      render_list(menu, menu.screen_title(), status, fb, layout);
       break;
     case MenuModel::Screen::kOutputEdit:
-      render_output_edit(menu, fb, layout);
+      render_output_edit(menu, status, fb, layout);
       break;
     case MenuModel::Screen::kNetwork:
       render_network(status, fb, layout);

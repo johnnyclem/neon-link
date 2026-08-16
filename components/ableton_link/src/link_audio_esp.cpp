@@ -58,6 +58,10 @@ constexpr uint32_t kRxSlots = 128;
 constexpr uint32_t kTxSlots = 8;
 constexpr uint32_t kPumpPeriodMs = 4;
 
+// Pump task stack watermark (C9 in the ship-gate review): below this, a
+// warning line is cheap and a silent overflow later is not.
+constexpr size_t kStackWarnBytes = 512;
+
 // Scratch for pump(): only the pump task touches it, and keeping 2 KB off
 // that task's stack is what lets the stack stay small while commit() runs
 // lwIP's send path underneath it.
@@ -345,6 +349,22 @@ class LinkAudioEsp final : public hal::ILinkAudio {
                static_cast<unsigned long>(rx_ring_.dropped()));
       rx_high_water_ = 0;
     }
+
+    // Stack watermark for this task, same ~5 s cadence, independent of
+    // whether anything is subscribed: commit() runs lwIP's send path
+    // underneath this loop whenever a sink is publishing, and that is the
+    // deep-stack case a subscribe-only session would never exercise.
+    // g_pump_block moved 1 KB of scratch off this stack already (see its
+    // declaration); this is what confirms the remainder still has margin
+    // rather than trusting the arithmetic.
+    if (stack_log_countdown_-- == 0) {
+      stack_log_countdown_ = 5000 / kPumpPeriodMs;
+      const UBaseType_t words = uxTaskGetStackHighWaterMark(nullptr);
+      if (words * sizeof(StackType_t) < kStackWarnBytes) {
+        ESP_LOGW(kTag, "pump task stack high-water %lu bytes free",
+                 static_cast<unsigned long>(words * sizeof(StackType_t)));
+      }
+    }
   }
 
   void sink_write(int sink, const int16_t* interleaved, uint32_t frames,
@@ -507,6 +527,7 @@ class LinkAudioEsp final : public hal::ILinkAudio {
   uint8_t rx_geom_channels_ = 0;
   uint32_t rx_high_water_ = 0;
   uint32_t pump_log_countdown_ = 0;
+  uint32_t stack_log_countdown_ = 0;
 };
 
 LinkAudioEsp g_link_audio;

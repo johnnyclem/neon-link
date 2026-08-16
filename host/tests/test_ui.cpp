@@ -310,6 +310,40 @@ TEST_CASE("the live screen falls back to the setup address in AP mode") {
   CHECK(with_ap != render_home(joined));
 }
 
+TEST_CASE("the network screen shows the AP password only while the setup "
+          "AP is up, and the device token whenever it is set") {
+  neon::Config cfg;
+  neon::MenuModel menu(&cfg);
+  menu.on_click();    // Home -> Menu
+  menu.on_rotate(2);  // -> Network
+  menu.on_click();
+
+  neon::UiStatus bare;
+  neon::Framebuffer bare_fb;
+  neon::render_ui(menu, bare, bare_fb);
+
+  neon::UiStatus with_pass = bare;
+  with_pass.setup_ap = true;
+  std::strcpy(with_pass.ap_pass, "link-ABCDEF");
+  neon::Framebuffer pass_fb;
+  neon::render_ui(menu, with_pass, pass_fb);
+  CHECK(dump(bare_fb) != dump(pass_fb));
+
+  // Off the setup AP, the same password must not render: it stopped being
+  // the thing keeping anyone out the moment the module joined a network.
+  neon::UiStatus pass_off_ap = with_pass;
+  pass_off_ap.setup_ap = false;
+  neon::Framebuffer off_fb;
+  neon::render_ui(menu, pass_off_ap, off_fb);
+  CHECK(dump(off_fb) == dump(bare_fb));
+
+  neon::UiStatus with_token = bare;
+  std::strcpy(with_token.device_token, "0123456789abcdef0123456789abcdef");
+  neon::Framebuffer token_fb;
+  neon::render_ui(menu, with_token, token_fb);
+  CHECK(dump(token_fb) != dump(bare_fb));
+}
+
 // ---------------------------------------------------------------------------
 // navigation
 // ---------------------------------------------------------------------------
@@ -719,6 +753,40 @@ TEST_CASE("REBOOT stays the last system row after the parity additions") {
   CHECK(std::string(m.item_label(m.cursor())) == "REBOOT");
   m.on_click();
   CHECK(m.screen() == neon::MenuModel::Screen::kConfirm);
+}
+
+TEST_CASE("the VERSION row is read-only and shows the firmware string, "
+          "not a settable value") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  m.on_click();    // Menu
+  m.on_rotate(5);  // System
+  m.on_click();
+  m.on_rotate(neon::MenuModel::kSystemVersionItem);
+  CHECK(std::string(m.item_label(m.cursor())) == "VERSION");
+  CHECK(m.cursor() == neon::MenuModel::kSystemRebootItem - 1);
+
+  // MenuModel itself has no platform code to fill this in — item_value()
+  // reports it empty, and the renderer substitutes UiStatus.firmware.
+  char value[16];
+  m.item_value(m.cursor(), value, sizeof(value));
+  CHECK(value[0] == '\0');
+
+  // A click must not enter edit mode: there is nothing here to edit, and
+  // rotating while "editing" a read-only row should not look like it did
+  // something.
+  m.on_click();
+  CHECK_FALSE(m.editing());
+
+  neon::UiStatus st;
+  std::strcpy(st.firmware, "v1.2.3-4-gabc1234");
+  neon::Framebuffer fb;
+  neon::render_ui(m, st, fb);
+  neon::UiStatus other = st;
+  std::strcpy(other.firmware, "v9.9.9");
+  neon::Framebuffer other_fb;
+  neon::render_ui(m, other, other_fb);
+  CHECK(dump(fb) != dump(other_fb));
 }
 
 TEST_CASE("system menu can disable the big beat display") {
