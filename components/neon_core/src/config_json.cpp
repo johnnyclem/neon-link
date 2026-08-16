@@ -353,6 +353,14 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(ap, "hidden", cfg.ap_hidden != 0);
   cJSON_AddNumberToObject(ap, "channel", cfg.ap_channel);
 
+  // Server-generated, first-boot-only secret (G1 in the ship-gate review).
+  // Round-tripped in full, unlike the write-only wifi/ap passwords above:
+  // the web editor has to read it back out to attach it as the X-Neon-Token
+  // header on POST /api/ota and POST /api/factory_reset. There is no setter
+  // in config_from_json, so a PUT can never overwrite it — only the
+  // firmware itself sets this, once, at first boot.
+  cJSON_AddStringToObject(root, "device_token", cfg.device_token);
+
   // Debug-only test knobs (docs/STUDIO_MODE_TEST_PLAN.md); both default to
   // normal operation. Not surfaced in the editor UI.
   cJSON* debug = cJSON_AddObjectToObject(root, "debug");

@@ -3,6 +3,8 @@
 #include <cstring>
 
 #include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_random.h"
 #include "halesp/storage_nvs.hpp"
 
 #include "app_state/audio_bus.h"
@@ -36,18 +38,67 @@ bool persist(const neon::Config& cfg) {
   return n != 0 && g_storage.write_blob(kKey, buf, n);
 }
 
+// True first boot only (G1 in the ship-gate review): the setup AP's
+// password, derived from the MAC rather than left at the struct-literal
+// "link1234" — a shared, documented default is one Google search away
+// from an open AP on every unit this batch ships, in someone else's
+// house. Not re-derived on a config that already loaded: the owner may
+// have changed it since, and there is nothing here worth overwriting.
+void provision_ap_pass_from_mac(neon::Config* cfg) {
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  neon::derive_ap_pass_from_mac(mac, cfg->ap_pass, sizeof(cfg->ap_pass));
+}
+
+// The random token gating POST /api/ota and POST /api/factory_reset.
+// Generated whenever it is missing, not only on a true first boot: a unit
+// already in the field OTA-updating from a firmware that predates
+// device_token decodes its config successfully (config_decode zeroes the
+// field for it, the tail-padding trap the v3/v4 migrations hit too) and
+// would otherwise sit with an empty, always-matching token forever.
+void provision_device_token(neon::Config* cfg) {
+  uint8_t token_bytes[16];
+  esp_fill_random(token_bytes, sizeof(token_bytes));
+  static const char kHex[] = "0123456789abcdef";
+  for (size_t i = 0; i < sizeof(token_bytes); ++i) {
+    cfg->device_token[i * 2] = kHex[(token_bytes[i] >> 4) & 0xf];
+    cfg->device_token[i * 2 + 1] = kHex[token_bytes[i] & 0xf];
+  }
+  cfg->device_token[sizeof(token_bytes) * 2] = '\0';
+}
+
 }  // namespace
 
 void neon_config_load() {
   uint8_t buf[kConfigBlobBuf];
   size_t len = 0;
-  if (g_storage.read_blob(kKey, buf, sizeof(buf), &len) &&
-      neon::config_decode(buf, len, &g_config)) {
+  const bool loaded = g_storage.read_blob(kKey, buf, sizeof(buf), &len) &&
+                      neon::config_decode(buf, len, &g_config);
+  if (loaded) {
     ESP_LOGI(kTag, "config loaded (%u bytes)", static_cast<unsigned>(len));
   } else {
     g_config = neon::Config{};
     neon::config_sanitize(&g_config);
+    provision_ap_pass_from_mac(&g_config);
     ESP_LOGW(kTag, "no valid stored config; using defaults");
+  }
+  // Runs on a true first boot (device_token is still "") and on an
+  // OTA upgrade from a firmware old enough not to have had one — either
+  // way, the OTA/factory-reset gate needs a real token before it is safe
+  // to serve those endpoints at all.
+  const bool needed_token = g_config.device_token[0] == '\0';
+  if (needed_token) {
+    provision_device_token(&g_config);
+    neon::config_sanitize(&g_config);
+    ESP_LOGW(kTag, "generated a device token (see the OLED Network page) — "
+                   "the web editor needs it to install updates");
+  }
+  if ((!loaded || needed_token) && !persist(g_config)) {
+    // Not fatal — the secrets still apply for this boot from RAM — but
+    // worth shouting about: one that never reaches NVS will look
+    // identical to one that did until the next reboot generates another,
+    // and by then whatever read the old one off the OLED is stale.
+    ESP_LOGE(kTag, "first-boot secrets could not be saved to NVS");
   }
   publish_buses();
 }

@@ -20,14 +20,26 @@ class HttpTransport {
   // host is an IPv4 literal or a DNS name. POSIX impl uses getaddrinfo
   // and prefers AF_INET (macOS often returns AAAA first for *.local;
   // the module httpd is IPv4).
+  //
+  // extra_header, when non-null, is one complete "Name: value" line (no
+  // trailing CRLF) folded into the request. Currently only DeviceClient's
+  // factoryReset() uses it, to carry X-Neon-Token — the device-side gate
+  // added alongside Config::device_token so a non-browser client cannot
+  // hit /api/ota or /api/factory_reset just by setting Host to whatever
+  // the module expects (components/web_ui/src/web_ui.cpp's
+  // check_device_token). The plugin is exactly such a non-browser client,
+  // so it has to send the token like the web editor does.
   virtual HttpResponse request(const char* method, const char* host, int port,
                                const char* path, const char* body,
-                               int timeout_ms) = 0;
+                               int timeout_ms,
+                               const char* extra_header = nullptr) = 0;
 };
 
 // HTTP/1.1 subset used by PosixHttpTransport. Exposed for host tests.
+// extra_header: see HttpTransport::request.
 std::string format_request(const char* method, const char* host,
-                           const char* path, const char* body);
+                           const char* path, const char* body,
+                           const char* extra_header = nullptr);
 
 // Parse a complete response (status line + headers + Content-Length body).
 // No chunked encoding, no redirects, no TLS, no compression.
@@ -48,8 +60,8 @@ class PosixHttpTransport : public HttpTransport {
   PosixHttpTransport& operator=(const PosixHttpTransport&) = delete;
 
   HttpResponse request(const char* method, const char* host, int port,
-                       const char* path, const char* body,
-                       int timeout_ms) override;
+                       const char* path, const char* body, int timeout_ms,
+                       const char* extra_header = nullptr) override;
 
   void close();
 

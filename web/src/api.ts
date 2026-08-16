@@ -180,6 +180,12 @@ export interface Config {
     hidden: boolean;
     channel: number;
   };
+  /**
+   * Per-device secret generated at first boot, required (as the
+   * X-Neon-Token header) on /api/ota and /api/factory_reset. Read-only:
+   * the firmware never accepts a new value for it over PUT /api/config.
+   */
+  device_token: string;
 }
 
 export interface Status {
@@ -306,17 +312,29 @@ export const api = {
       "/api/audio/channels",
     ),
 
-  factoryReset: async () => {
+  /**
+   * `token` is `cfg.device_token`: both this and ota() below gate on it
+   * (a custom header a cross-site request cannot attach), on top of the
+   * Host/Origin check every other mutating endpoint already gets.
+   */
+  factoryReset: async (token: string) => {
     try {
-      await fetch("/api/factory_reset?confirm=yes", { method: "POST" });
+      await fetch("/api/factory_reset?confirm=yes", {
+        method: "POST",
+        headers: { "X-Neon-Token": token },
+      });
     } catch {
       /* the module reboots into defaults, which is the point */
     }
   },
 
   /** Streams a firmware image into the inactive slot; the module reboots. */
-  ota: async (image: File): Promise<void> => {
-    const res = await fetch("/api/ota", { method: "POST", body: image });
+  ota: async (image: File, token: string): Promise<void> => {
+    const res = await fetch("/api/ota", {
+      method: "POST",
+      headers: { "X-Neon-Token": token },
+      body: image,
+    });
     if (!res.ok) {
       throw new Error(`update failed (${res.status})`);
     }

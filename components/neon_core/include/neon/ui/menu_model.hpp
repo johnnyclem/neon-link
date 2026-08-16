@@ -27,6 +27,20 @@ struct UiStatus {
   bool ble_on = false;
   // Full-screen 1/2/3/4 while playing. Default on, matching Config.
   bool big_beat_display = true;
+  // Running firmware version (esp_app_desc_t.version — a git describe
+  // string, not hand-maintained), for the System screen's VERSION row
+  // (G5 in the ship-gate review: you cannot support a unit in another
+  // city without knowing what it is running). Empty on host builds.
+  char firmware[32] = {};
+  // This unit's setup AP password (Config::ap_pass) and the OTA/
+  // factory-reset device token (Config::device_token), both per-device
+  // secrets generated at first boot with no other display surface — the
+  // web UI never round-trips the AP password, and the token exists
+  // specifically because a non-browser client can forge the check the web
+  // UI passes. The Network screen shows the password only while the
+  // setup AP is actually up (render_ui, not this struct, enforces that).
+  char ap_pass[65] = {};
+  char device_token[33] = {};
   // Free-running counter at neon::ui::kIconTickHz, driving the icon loops
   // that have no musical time (a radio beaconing, a stack advertising).
   // It lives here rather than being read from a clock inside the renderer
@@ -86,8 +100,12 @@ class MenuModel {
   // naming one is the web editor's job, where there is a keyboard.
   static constexpr int kAudioItems = 9;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
-  // MIDI NDG, SS SYNC, BRIGHT, BEAT, REBOOT — REBOOT stays last.
-  static constexpr int kSystemItems = 12;
+  // MIDI NDG, SS SYNC, BRIGHT, BEAT, VERSION, REBOOT — REBOOT stays last.
+  static constexpr int kSystemItems = 13;
+  // Read-only: the firmware version string, filled in by the renderer from
+  // UiStatus rather than by item_value() (MenuModel has no platform code to
+  // read esp_app_desc_t from). on_click() must not toggle editing_ for it.
+  static constexpr int kSystemVersionItem = kSystemItems - 2;
   static constexpr int kSystemRebootItem = kSystemItems - 1;
 
   explicit MenuModel(Config* cfg) : cfg_(cfg) {}

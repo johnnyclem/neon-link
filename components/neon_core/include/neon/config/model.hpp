@@ -69,10 +69,14 @@ struct AudioConfig {
   char la_sub_channel_id[48] = "";
 };
 
-// The shipped AP key (also the Config::ap_pass member default). Not a
-// secret — it is printed in the setup docs — but WPA2 with a known key
-// still beats an open network: it keeps the casual RF neighbourhood off
-// the /api surface. Users should change it during setup.
+// The Config::ap_pass member's struct-literal default, and the fallback a
+// too-short/empty password sanitizes to. This is NOT what a shipping unit
+// actually boots with: first boot (no valid stored config) overwrites it
+// with derive_ap_pass_from_mac()'s per-device password before the AP ever
+// comes up (components/app_state/src/config_store.cpp). A shared,
+// documented default would put every unit's setup AP behind the same key;
+// this constant only exists as the safe fallback config_sanitize() falls
+// back to when the stored password fails the 8-char WPA2 minimum.
 inline constexpr char kDefaultApPass[] = "link1234";
 
 // When the module creates its own network.
@@ -165,10 +169,21 @@ struct Config {
   // stream the plan's P4 wants for offline analysis.
   PriorityProfile priority_profile = PriorityProfile::kFixed;
   uint8_t telemetry_uart_csv = 0;
+
+  // Appended in v6. A per-device secret, generated once at first boot
+  // (never a fleet-wide constant) and never accepted back from the web
+  // editor's PUT /api/config — config_from_json has no setter for it, so
+  // it can only be set here, in NVS, by the firmware itself. Sent as the
+  // X-Neon-Token header, it gates POST /api/ota and POST /api/factory_reset:
+  // check_local_origin's Host/Origin check already stops a browser from
+  // forging those requests cross-site, but it cannot stop a non-browser
+  // client on the same LAN or AP from setting an arbitrary Host header by
+  // hand. 32 hex chars (128 bits) plus NUL.
+  char device_token[33] = "";
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 5;
+inline constexpr uint16_t kConfigVersion = 6;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;
@@ -184,6 +199,14 @@ size_t sanitize_hostname(const char* in, char* out, size_t cap);
 // ap_ssid when set, otherwise "<DEVICE-NAME>-XXXX" from the MAC.
 size_t ap_ssid_for(const Config& cfg, const uint8_t mac[6], char* out,
                    size_t cap);
+
+// This unit's setup AP password, derived from its own MAC so a fleet of
+// units never shares one key (G1 in the ship-gate review: a printed,
+// fleet-wide default is one Google search away from an open AP). Always
+// >= 8 characters (WPA2's minimum), independent of `mac`'s contents.
+// Deterministic so config_store.cpp can call it again on every boot if it
+// ever needs to re-derive rather than only at first boot.
+size_t derive_ap_pass_from_mac(const uint8_t mac[6], char* out, size_t cap);
 
 // Wire size of an encoded config blob.
 size_t config_blob_size();

@@ -141,6 +141,22 @@ TEST_CASE("passwords are write-only: encode never leaks them") {
   CHECK(std::strcmp(b.ap_pass, "apsecret1") == 0);
 }
 
+TEST_CASE("device_token is readable in full but not settable via PUT") {
+  neon::Config a;
+  std::strcpy(a.device_token, "0123456789abcdef0123456789abcdef");
+  const std::string json = encode(a);
+  // Unlike wifi/ap passwords, the whole token round-trips: the web editor
+  // has to read it back out to attach it as a request header.
+  CHECK(json.find("0123456789abcdef0123456789abcdef") != std::string::npos);
+
+  // An attacker (or a stale client) supplying a different token in a PUT
+  // body must not be able to overwrite the one the firmware generated.
+  const char* doc = R"({"device_token":"ffffffffffffffffffffffffffffffff"})";
+  neon::Config b = a;
+  REQUIRE(neon::config_from_json(doc, std::strlen(doc), &b));
+  CHECK(std::string(b.device_token) == "0123456789abcdef0123456789abcdef");
+}
+
 TEST_CASE("changing a stored SSID clears that slot's password") {
   neon::Config cfg;
   std::strcpy(cfg.wifi[0].ssid, "studio");

@@ -3,8 +3,10 @@
 // encoder input. Display flushes stay on core 0 — irrelevant to the
 // pulse path on core 1.
 
+#include <cstdio>
 #include <cstdlib>
 
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -64,6 +66,15 @@ void assemble_status(neon::UiStatus* s) {
   s->big_beat_display = neon_config().big_beat_display != 0;
   s->ip[0] = '\0';
   netman::primary_ip(s->ip, sizeof(s->ip));
+
+  const esp_app_desc_t* desc = esp_app_get_description();
+  std::snprintf(s->firmware, sizeof(s->firmware), "%s",
+               desc != nullptr ? desc->version : "unknown");
+
+  const neon::Config& cfg = neon_config();
+  std::snprintf(s->ap_pass, sizeof(s->ap_pass), "%s", cfg.ap_pass);
+  std::snprintf(s->device_token, sizeof(s->device_token), "%s",
+               cfg.device_token);
 }
 
 // Expander E0 (10k pot): absolute tempo, soft-pickup so a parked slider

@@ -178,6 +178,8 @@ void config_sanitize(Config* cfg) {
     cfg->priority_profile = PriorityProfile::kFixed;
   }
   cfg->telemetry_uart_csv = cfg->telemetry_uart_csv ? 1 : 0;
+
+  cfg->device_token[sizeof(cfg->device_token) - 1] = '\0';
 }
 
 int link_asio_task_priority(PriorityProfile profile) {
@@ -295,6 +297,21 @@ size_t ap_ssid_for(const Config& cfg, const uint8_t mac[6], char* out,
   return std::strlen(out);
 }
 
+size_t derive_ap_pass_from_mac(const uint8_t mac[6], char* out, size_t cap) {
+  if (out == nullptr || cap == 0) {
+    return 0;
+  }
+  // "link-" plus 6 hex digits from the last 3 MAC bytes: 11 characters,
+  // comfortably past WPA2's 8-character floor, and in the same
+  // "<name>-XXXX" family as ap_ssid_for()'s derived SSID so the two read
+  // as one convention on the OLED setup screen.
+  const uint8_t a = mac != nullptr ? mac[3] : 0;
+  const uint8_t b = mac != nullptr ? mac[4] : 0;
+  const uint8_t c = mac != nullptr ? mac[5] : 0;
+  std::snprintf(out, cap, "link-%02X%02X%02X", a, b, c);
+  return std::strlen(out);
+}
+
 size_t config_blob_size() { return sizeof(BlobHeader) + sizeof(Config); }
 
 size_t config_encode(const Config& cfg, uint8_t* buf, size_t cap) {
@@ -341,6 +358,14 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
     // big_beat_display into its own tail padding, and that padding would
     // land on the audio block. None of it is configuration.
     out->audio = AudioConfig{};
+  }
+  if (h.version < 6) {
+    // Same trap again: device_token is new tail after telemetry_uart_csv,
+    // so a v5 payload's trailing alignment padding lands on its first
+    // bytes. None of it is a real token — a stale/garbage token would
+    // just lock the owner out of their own OTA and factory-reset until a
+    // web UI that happens to send it, which never existed, connects.
+    std::memset(out->device_token, 0, sizeof(out->device_token));
   }
   config_sanitize(out);
   return true;

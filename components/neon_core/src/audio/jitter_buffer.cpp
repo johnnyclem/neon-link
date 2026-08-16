@@ -64,6 +64,7 @@ void JitterBuffer::reset() {
   newest_beat_q32_ = 0;
   beat_per_frame_q32_ = 0;
   state_ = State::kIdle;
+  had_played_ = false;
 }
 
 // Drop the oldest frames so the span [rd_, end) fits the ring.
@@ -312,10 +313,21 @@ uint32_t JitterBuffer::pull(uint32_t frames, float* l, float* r) {
     return 0;
   }
   if (state_ == State::kBuffering) {
-    if (fill_frames() < target_frames_) {
+    // Resuming after a mid-stream underrun only needs a partial refill —
+    // the sender is still there and still stamping beats; waiting for the
+    // full target again turns one lost packet into a much longer silence
+    // than the loss itself. The very first fill has no steady state to
+    // resume, so it still waits for the whole target.
+    uint32_t need = target_frames_;
+    if (had_played_) {
+      const uint32_t partial = target_frames_ / kResumeDivisor;
+      need = partial > kFadeFrames ? partial : kFadeFrames;
+    }
+    if (fill_frames() < need) {
       return 0;
     }
     state_ = State::kPlaying;
+    had_played_ = true;
     resampler_.reset();
     fade_in_left_ = kFadeFrames;
   }

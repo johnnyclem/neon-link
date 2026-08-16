@@ -17,6 +17,7 @@ struct FakeHttp : neon::client::HttpTransport {
     int port = 0;
     std::string path;
     std::string body;
+    std::string extra_header;
   };
   std::vector<Call> calls;
   std::map<std::string, neon::client::HttpResponse> by_path;
@@ -24,13 +25,15 @@ struct FakeHttp : neon::client::HttpTransport {
 
   neon::client::HttpResponse request(const char* method, const char* host,
                                      int port, const char* path,
-                                     const char* body, int) override {
+                                     const char* body, int,
+                                     const char* extra_header) override {
     Call c;
     c.method = method ? method : "";
     c.host = host ? host : "";
     c.port = port;
     c.path = path ? path : "";
     c.body = body ? body : "";
+    c.extra_header = extra_header ? extra_header : "";
     calls.push_back(std::move(c));
     auto it = by_path.find(path ? path : "");
     if (it != by_path.end()) {
@@ -141,6 +144,29 @@ TEST_CASE("factoryReset treats a dropped connection as success") {
   CHECK(r.ok);
   REQUIRE_FALSE(http.calls.empty());
   CHECK(http.calls[0].path == "/api/factory_reset?confirm=yes");
+}
+
+TEST_CASE("factoryReset sends no token header before any config fetch") {
+  FakeHttp http;
+  http.fallback = ok("{}");
+  neon::client::DeviceClient c(http);
+  REQUIRE(c.factoryReset().ok);
+  REQUIRE_FALSE(http.calls.empty());
+  CHECK(http.calls[0].extra_header.empty());
+}
+
+TEST_CASE("factoryReset attaches the device token learned from getConfig") {
+  FakeHttp http;
+  http.by_path["/api/config"] =
+      ok("{\"device_token\":\"0123456789abcdef0123456789abcdef\"}");
+  http.fallback = ok("{}");
+  neon::client::DeviceClient c(http);
+  REQUIRE(c.getConfig().ok);
+  REQUIRE(c.factoryReset().ok);
+  REQUIRE(http.calls.size() == 2);
+  CHECK(http.calls[1].path == "/api/factory_reset?confirm=yes");
+  CHECK(http.calls[1].extra_header ==
+        "X-Neon-Token: 0123456789abcdef0123456789abcdef");
 }
 
 TEST_CASE("config_put_body writes typed wifi and ap passwords") {

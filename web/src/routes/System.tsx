@@ -34,7 +34,7 @@ export function System(props: PageProps) {
 
   const factoryReset = async () => {
     setResetting(false);
-    await api.factoryReset();
+    await api.factoryReset(cfg.device_token);
     setOtaMsg("");
   };
 
@@ -42,7 +42,7 @@ export function System(props: PageProps) {
     if (!image) return;
     setOtaMsg("Uploading…");
     try {
-      await api.ota(image);
+      await api.ota(image, cfg.device_token);
       setOtaMsg("Installed. The module is rebooting into the new image.");
     } catch (e) {
       setOtaMsg(e instanceof Error ? e.message : "Update failed.");

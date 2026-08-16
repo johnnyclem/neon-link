@@ -160,6 +160,69 @@ TEST_CASE("an AP password shorter than WPA2 allows fails closed") {
   CHECK(std::string(cfg.ap_pass) == "longenough");
 }
 
+TEST_CASE("the AP password is derived per-device from the MAC, not a "
+          "fleet-wide constant") {
+  char pass[33];
+  const uint8_t mac_a[6] = {0xde, 0xad, 0xbe, 0xef, 0x12, 0x34};
+  const uint8_t mac_b[6] = {0xde, 0xad, 0xbe, 0xaa, 0xbb, 0xcc};
+  neon::derive_ap_pass_from_mac(mac_a, pass, sizeof(pass));
+  // Long enough for WPA2 (8 chars) with room to spare.
+  CHECK(std::strlen(pass) >= 8);
+  CHECK(std::string(pass) == "link-EF1234");
+
+  char pass_b[33];
+  neon::derive_ap_pass_from_mac(mac_b, pass_b, sizeof(pass_b));
+  CHECK(std::string(pass) != std::string(pass_b));
+
+  // A device_name-only difference (mac_a vs mac_a again) reproduces the
+  // same password: it must be deterministic, not re-randomized per call.
+  char pass_again[33];
+  neon::derive_ap_pass_from_mac(mac_a, pass_again, sizeof(pass_again));
+  CHECK(std::string(pass) == std::string(pass_again));
+}
+
+TEST_CASE("device_token is never accepted from config_sanitize's caller "
+          "unset, but survives once set") {
+  neon::Config cfg;
+  CHECK(cfg.device_token[0] == '\0');
+  std::strcpy(cfg.device_token, "0123456789abcdef0123456789abcdef");
+  neon::config_sanitize(&cfg);
+  // Sanitize truncates to the field width; it does not clear a set token.
+  CHECK(cfg.device_token[0] != '\0');
+  CHECK(std::strlen(cfg.device_token) == sizeof(cfg.device_token) - 1);
+}
+
+TEST_CASE("a v5 config blob keeps its settings and defaults device_token") {
+  neon::Config a;
+  std::strcpy(a.wifi[0].ssid, "greenroom");
+  a.tempo_milli_bpm = 128000;
+  // A v5 firmware could never have written a real token here; whatever
+  // lands in this field from decoding a v5-sized payload is tail padding,
+  // not a secret worth honoring.
+  std::strcpy(a.device_token, "deadbeefdeadbeefdeadbeefdeadbeef");
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 5;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(std::string(b.wifi[0].ssid) == "greenroom");
+  CHECK(b.tempo_milli_bpm == 128000);
+  CHECK(b.device_token[0] == '\0');
+}
+
 TEST_CASE("priority_profile sanitizes to a known enumerator") {
   neon::Config cfg;
   CHECK(cfg.priority_profile == neon::PriorityProfile::kFixed);
