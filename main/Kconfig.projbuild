@@ -6,11 +6,14 @@ choice NEON_BOARD
     help
         Board profile selects the pin map, pulse path, and CV drivers.
         AMYboard is the FEATURES.md v1 platform (10HP Eurorack module).
+        P4-Module-DEV-KIT is the v2 R&D Waveshare board + I2C OLED.
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
 config NEON_BOARD_AMYBOARD
     bool "AMYboard (GP8413 CV outs, ADS1015 CV ins, TRS MIDI)"
+config NEON_BOARD_P4DEVKIT
+    bool "Waveshare ESP32-P4-Module-DEV-KIT (I2C OLED, no radio)"
 endchoice
 
 config NEON_AUDIO

@@ -1,0 +1,16 @@
+# A1 PSRAM stall — second P4 (rev v3.1 / eco6)
+# 2026-08-16  IDF 5.5.5  P4 rev v3.1  HEX PSRAM 32 MB @ 20 MHz  CPU 400 MHz
+# MAC e8:f6:0a:e3:a9:e4  flash GD 16 MB
+# 4 cycles × 5 s/phase. Observer core 1, stressors core 0.
+# IDF 5.3.2 cannot boot this silicon (max v1.99).
+
+RESULT,target,phase,n,dropped,p50_ns,p99_ns,max_ns,mean_ns,peak_us
+RESULT,esp32p4,IDLE,8192,12503,1807.0,2111.9,3279.0,1812.7,209.9
+RATE,esp32p4,IDLE,samples_per_s=409.6
+RESULT,esp32p4,FLASH,845,0,1807.1,1894.5,2106.7,1807.4,134.8
+RATE,esp32p4,FLASH,samples_per_s=42.2
+RESULT,esp32p4,PSRAM,8192,12078,4331.5,4858.2,5266.9,4320.3,341.1
+RATE,esp32p4,PSRAM,samples_per_s=409.6
+
+RATIO,esp32p4,FLASH,p99=0.90x,max=0.64x
+RATIO,esp32p4,PSRAM,p99=2.30x,max=1.61x

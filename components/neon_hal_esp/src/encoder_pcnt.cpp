@@ -82,6 +82,7 @@ bool setup_pcnt(int pin_a, int pin_b, int pin_sw) {
   }
 
   g_pin_sw = pin_sw;
+  ESP_LOGI(kTag, "GPIO encoder PCNT A=%d B=%d SW=%d", pin_a, pin_b, pin_sw);
   gpio_config_t io = {};
   io.pin_bit_mask = 1ull << pin_sw;
   io.mode = GPIO_MODE_INPUT;

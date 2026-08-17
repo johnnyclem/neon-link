@@ -1,0 +1,20 @@
+# A1 PSRAM stall — second P4 (rev v3.1 / eco6) @ 200 MHz HEX
+# 2026-08-16  IDF 5.5.5  P4 rev v3.1  HEX 32 MB @ 200 MHz  CPU 400 MHz
+# MAC e8:f6:0a:e3:a9:e4
+# GAP = wall-clock between consecutive observer wakeups (µs).
+# First gap after a phase change is dropped.
+
+target=esp32p4 cpu=400 MHz psram=200 MHz batch=64 buf=8 MB
+
+RESULT,esp32p4,IDLE,8192,12503,455.4,484.2,634.1,455.2,40.6
+RATE,esp32p4,IDLE,samples_per_s=409.6
+GAP,esp32p4,IDLE,n=8192,p50_us=1000,p99_us=1002,max_us=1005,n_gt_5ms=0,n_gt_20ms=0
+RESULT,esp32p4,FLASH,811,0,456.4,521.1,586.1,457.7,37.5
+RATE,esp32p4,FLASH,samples_per_s=40.5
+GAP,esp32p4,FLASH,n=807,p50_us=9708,p99_us=47345,max_us=51028,n_gt_5ms=783,n_gt_20ms=393
+RESULT,esp32p4,PSRAM,8192,11818,792.2,873.3,1944.5,780.5,124.4
+RATE,esp32p4,PSRAM,samples_per_s=409.6
+GAP,esp32p4,PSRAM,n=8192,p50_us=1000,p99_us=1030,max_us=1068,n_gt_5ms=0,n_gt_20ms=0
+
+RATIO,esp32p4,FLASH,p99=1.08x,max=0.92x
+RATIO,esp32p4,PSRAM,p99=1.80x,max=3.07x

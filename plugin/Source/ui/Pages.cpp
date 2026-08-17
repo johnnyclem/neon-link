@@ -400,7 +400,7 @@ juce::String OutputsPage::jackTag(Jack j, const neon::Config& cfg) {
     case LineIn:
       return cfg.audio.enabled ? "LINE" : "OFF";
     default:
-      return "SOON";
+      return "SPDIF";
   }
 }
 
@@ -833,7 +833,7 @@ void OutputsPage::resized() {
       break;
     default:
       hideClock(false);
-      jackCopy_.setText("S/PDIF is on the AMYboard but not driven in this firmware.",
+      jackCopy_.setText("S/PDIF is AC-coupled through the PCM9211. Not usable as clock, gate, or CV.",
                         juce::dontSendNotification);
       break;
   }

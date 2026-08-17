@@ -99,6 +99,11 @@ bool clkin_capture_init(int clk_gpio, int rst_gpio) {
   }
 #endif
 
+  if (clk_gpio < 0 || rst_gpio < 0) {
+    ESP_LOGI(kTag, "no CLK/RST IN pins on this board");
+    return false;
+  }
+
   const esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
     ESP_LOGE(kTag, "isr service install failed: %d", err);

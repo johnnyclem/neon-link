@@ -108,15 +108,15 @@ export function jackLive(id: JackId, cfg: Config): string {
     case "line-in":
       return cfg.audio.enabled ? "LINE" : "OFF";
     default:
-      // SPDIF is on the board but deliberately deferred — say so, rather
-      // than a dash that reads as a rendering fault.
-      return "SOON";
+      // SPDIF stays SPDIF: both tips are AC-coupled through the PCM9211
+      // (docs/SPDIF_BENCH_TEST.md). Not a coming clock/gate/CV jack.
+      return "SPDIF";
   }
 }
 
 export function jackWired(id: JackId): boolean {
-  // Everything but SPDIF is driven now that the audio engine exists; the
-  // line pair is the codec's I/O.
+  // SPDIF is wired to the PCM9211, not the pulse engine — dead as a
+  // clock/gate/CV hole. Line pair is the codec.
   return id !== "spdif-in" && id !== "spdif-out";
 }
 

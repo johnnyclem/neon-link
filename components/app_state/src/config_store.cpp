@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_random.h"
+#include "board_mac.h"
 #include "halesp/storage_nvs.hpp"
 
 #include "app_state/audio_bus.h"
@@ -46,7 +47,7 @@ bool persist(const neon::Config& cfg) {
 // have changed it since, and there is nothing here worth overwriting.
 void provision_ap_pass_from_mac(neon::Config* cfg) {
   uint8_t mac[6] = {};
-  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  neon_read_unit_mac(mac);
   neon::derive_ap_pass_from_mac(mac, cfg->ap_pass, sizeof(cfg->ap_pass));
 }
 

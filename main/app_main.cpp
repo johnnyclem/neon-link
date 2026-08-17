@@ -48,6 +48,9 @@ extern "C" void app_main(void) {
 #if CONFIG_NEON_BOARD_AMYBOARD
   ESP_LOGI(kTag, "NEON LINK firmware starting (AMYboard) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_P4DEVKIT
+  ESP_LOGI(kTag, "NEON LINK firmware starting (P4-Module-DEV-KIT) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
 #endif

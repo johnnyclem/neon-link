@@ -101,6 +101,10 @@ bool i2c_bus_init(int sda_gpio, int scl_gpio, uint32_t hz) {
   }
   ESP_LOGI(kTag, "I2C master on SDA=%d SCL=%d (mutexed)", sda_gpio, scl_gpio);
   unlock();
+  const bool oled_3d = i2c_probe(0x3d, 20);
+  const bool oled_3c = i2c_probe(0x3c, 20);
+  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s",
+           oled_3d ? "ACK" : "nack", oled_3c ? "ACK" : "nack");
   return true;
 }
 

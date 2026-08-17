@@ -34,7 +34,59 @@ inline constexpr int kPinI2sDout = -1;
 inline constexpr int kPinI2sDin = -1;
 #endif
 
-#if CONFIG_NEON_BOARD_AMYBOARD
+#if CONFIG_NEON_BOARD_P4DEVKIT
+
+// Waveshare ESP32-P4-Module-DEV-KIT. No Eurorack jacks on the stock
+// board: pulse channels are virtual (same word as AMYboard) so the
+// engine still runs. The 1.5" OLED is on the I2C header.
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = -1;
+inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+// Dedicated I2C Grove/header on the DEV-KIT (Waveshare examples +
+// Arduino pin map). 1.5" SSD1327 / SH1107 / SSD1306 live here.
+inline constexpr int kPinI2cSda = 7;
+inline constexpr int kPinI2cScl = 8;
+
+inline constexpr int kPinDispSck = -1;
+inline constexpr int kPinDispMosi = -1;
+inline constexpr int kPinDispCs = -1;
+inline constexpr int kPinDispDc = -1;
+inline constexpr int kPinDispRes = -1;
+
+// KY-040 on the 40-pin header. Touch-capable GPIOs, not SDIO / UART /
+// I2C / Ethernet. Wire: GPIO2=CLK, GPIO3=DT, GPIO4=SW, plus 3V3+GND.
+// Internal pull-ups on; encoder common to GND.
+inline constexpr int kPinEncA = 2;
+inline constexpr int kPinEncB = 3;
+inline constexpr int kPinEncSw = 4;
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
+#elif CONFIG_NEON_BOARD_AMYBOARD
 
 // Virtual pulse channels (not real GPIOs). Bits 0..5 in the pulse level
 // word map to CLK1..4 / RESET / RUN. The hardware only has two CV jacks:

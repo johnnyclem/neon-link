@@ -16,6 +16,7 @@ TRS MIDI, front-panel Grove I2C).
 | OLED 128×128       | Front Grove I2C (SDA 17 / SCL 18) | Same as `amyboard.init_display()` |
 | Encoder / LEDs     | NULLLAB GPIO expander @ 0x24 | E1/E2/E3 = KY-040 (CLK/DT/SW); E0 = 10k B pot → BPM when enabled; OLED stays on a Grove hub port |
 | Ethernet           | — | Not present; WiFi + setup AP only |
+| S/PDIF in / out    | PCM9211 (`RXIN0` / `MPO0`) | **AC-coupled, not GPIO.** 100 nF series on both tips. Not usable as clock / gate / CV — leave labeled SPDIF (`docs/SPDIF_BENCH_TEST.md`) |
 
 ### Display support (128×128)
 

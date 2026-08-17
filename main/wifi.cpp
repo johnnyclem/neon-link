@@ -4,14 +4,26 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "sdkconfig.h"
 #include "app_state/config_store.h"
-#include "esp_event.h"
 #include "esp_log.h"
+#include "netman/net_manager.h"
+
+#if CONFIG_ESP_WIFI_ENABLED || CONFIG_ESP_WIFI_REMOTE_ENABLED
+#include "esp_event.h"
 #include "esp_netif.h"
+#ifndef CONFIG_WIFI_RMT_CACHE_TX_BUFFER_NUM
+#define CONFIG_WIFI_RMT_CACHE_TX_BUFFER_NUM 32
+#endif
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "netman/net_manager.h"
+#define NEON_HAVE_WIFI 1
+#else
+#define NEON_HAVE_WIFI 0
+#endif
+
+#if NEON_HAVE_WIFI
 
 namespace {
 
@@ -228,14 +240,7 @@ void ensure_handlers() {
   g_handlers_registered = true;
 }
 
-bool ensure_wifi_driver() {
-  wifi_mode_t mode = WIFI_MODE_NULL;
-  if (esp_wifi_get_mode(&mode) == ESP_OK) {
-    return true;
-  }
-  wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-  return esp_wifi_init(&init) == ESP_OK;
-}
+bool ensure_wifi_driver() { return netman::wifi_driver_init(); }
 
 // Point g_slot at the first configured network (called before the first
 // connect and whenever the stored list is edited).
@@ -478,3 +483,36 @@ extern "C" int neon_wifi_scan_json(char* buf, int cap) {
   n += std::snprintf(buf + n, static_cast<size_t>(cap - n), "]");
   return n;
 }
+
+#else  // !NEON_HAVE_WIFI — ESP32-P4 has no on-chip radio.
+
+static const char* kTag = "wifi";
+
+bool neon_wifi_has_credentials() { return false; }
+
+void neon_wifi_start() {
+  ESP_LOGI(kTag, "no on-chip WiFi on this target; skipping STA");
+}
+
+void neon_wifi_hold_station() {}
+
+extern "C" void neon_wifi_apply_credentials(void) {}
+
+bool neon_wifi_wait_ip(uint32_t) { return false; }
+
+extern "C" uint8_t neon_wifi_last_disconnect_reason(void) { return 0; }
+
+extern "C" const char* neon_wifi_current_ssid(void) { return ""; }
+
+extern "C" int8_t neon_wifi_rssi(void) { return 0; }
+
+int neon_wifi_scan(NeonWifiScanEntry*, int) { return 0; }
+
+extern "C" int neon_wifi_scan_json(char* buf, int cap) {
+  if (buf == nullptr || cap < 3) {
+    return 0;
+  }
+  return std::snprintf(buf, static_cast<size_t>(cap), "[]");
+}
+
+#endif  // NEON_HAVE_WIFI

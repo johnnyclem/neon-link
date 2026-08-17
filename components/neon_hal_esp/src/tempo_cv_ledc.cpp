@@ -16,6 +16,7 @@ constexpr ledc_channel_t kChannel = LEDC_CHANNEL_0;
 constexpr ledc_mode_t kMode = LEDC_LOW_SPEED_MODE;
 constexpr uint32_t kResolutionBits = 12;
 bool g_use_gp8413 = false;
+bool g_ledc_ok = false;
 }  // namespace
 
 bool tempo_cv_init(int gpio) {
@@ -27,6 +28,7 @@ bool tempo_cv_init(int gpio) {
   return g_use_gp8413;
 #else
   g_use_gp8413 = false;
+  g_ledc_ok = false;
   if (gpio < 0) {
     return false;
   }
@@ -47,7 +49,8 @@ bool tempo_cv_init(int gpio) {
   ch.timer_sel = kTimer;
   ch.duty = 0;
   ch.hpoint = 0;
-  return ledc_channel_config(&ch) == ESP_OK;
+  g_ledc_ok = ledc_channel_config(&ch) == ESP_OK;
+  return g_ledc_ok;
 #endif
 }
 
@@ -59,6 +62,9 @@ void tempo_cv_set_ratio(uint16_t ratio_q16) {
     return;
   }
 #endif
+  if (!g_ledc_ok) {
+    return;
+  }
   const uint32_t max_duty = (1u << kResolutionBits) - 1;
   const uint32_t duty =
       static_cast<uint32_t>(static_cast<uint64_t>(ratio_q16) * max_duty / 65535);

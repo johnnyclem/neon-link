@@ -17,6 +17,7 @@
 #include "neon/tempo_cv.hpp"
 #include "neon/transport.hpp"
 
+#include "board_mac.h"
 #include "board_pins.h"
 #include "app_state/config_store.h"
 #include "netman/net_manager.h"
@@ -35,7 +36,7 @@ constexpr uint32_t kWifiWaitMs = 15000;
 // back to "<DEVICE-NAME>-XXXX" from the SoftAP MAC).
 netman::ApParams ap_params_from_config(char* ssid_buf, size_t cap) {
   uint8_t mac[6] = {};
-  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+  neon_read_unit_mac(mac);
   const auto& cfg = neon_config();
   neon::ap_ssid_for(cfg, mac, ssid_buf, cap);
   netman::ApParams p{};
@@ -91,6 +92,12 @@ void link_service_task(void*) {
         start_ap_from_config();
       }
     }
+  } else if (neon_config().ap_policy == neon::ApPolicy::kFallback) {
+    // First boot / no stored STA: bring the C6 up now. Waiting for the
+    // 10 s unconfigured grace just delays setup, and on Hosted a late
+    // get_mode probe used to crash before the slave was reset.
+    ESP_LOGI(kTag, "no STA credentials; starting setup AP");
+    start_ap_from_config();
   }
 
   auto& session = ablink::session();

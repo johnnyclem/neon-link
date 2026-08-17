@@ -1,0 +1,16 @@
+# A1 PSRAM stall — AMYboard ESP32-S3-WROOM-1
+# 2026-08-16  IDF 5.3.2  S3 rev v0.2  octal PSRAM 8 MB @ 80 MHz  CPU 240 MHz
+# MAC 14:c1:9f:5d:6b:a0
+# 4 cycles × 5 s/phase. Observer core 1, stressors core 0.
+# S3 only has 8 MB PSRAM, so buf=4 MB + 2×512 KB stress (still >> cache).
+
+RESULT,target,phase,n,dropped,p50_ns,p99_ns,max_ns,mean_ns,peak_us
+RESULT,esp32s3,IDLE,8192,12508,519.5,528.5,963.6,518.7,61.7
+RATE,esp32s3,IDLE,samples_per_s=409.6
+RESULT,esp32s3,FLASH,2803,0,519.5,83222.6,83814.1,1419.7,5364.1
+RATE,esp32s3,FLASH,samples_per_s=140.2
+RESULT,esp32s3,PSRAM,8192,11835,1260.4,1303.1,1342.2,1232.6,86.7
+RATE,esp32s3,PSRAM,samples_per_s=409.6
+
+RATIO,esp32s3,FLASH,p99=157.48x,max=86.98x
+RATIO,esp32s3,PSRAM,p99=2.47x,max=1.39x

@@ -413,8 +413,8 @@ PanelKind panel_init() {
 #endif
 
   ESP_LOGW(kTag,
-           "no 128x128 panel — need SSD1327@0x3d or SH1107@0x3c on FRONT "
-           "Grove I2C (not the back Tulip jack)");
+           "no 128x128 panel — need SSD1327@0x3d or SH1107@0x3c on I2C "
+           "(AMYboard front Grove, or P4-DEV-KIT header SDA=7 SCL=8)");
   return PanelKind::kNone;
 }
 

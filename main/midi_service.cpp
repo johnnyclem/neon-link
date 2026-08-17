@@ -174,9 +174,14 @@ void midi_task(void*) {
     // BLE kill switch transitions.
     const bool want_ble = neon_config().ble_enabled != 0;
     if (want_ble && !ble_running) {
-      ble_running = blemidi::start(&on_ble_packet);
-      if (!ble_running) {
-        ESP_LOGW(kTag, "BLE MIDI unavailable");
+      static int64_t next_try_us = 0;
+      const int64_t now = esp_timer_get_time();
+      if (now >= next_try_us) {
+        ble_running = blemidi::start(&on_ble_packet);
+        if (!ble_running) {
+          ESP_LOGW(kTag, "BLE MIDI unavailable (no radio on this chip)");
+          next_try_us = now + 30000000;  // 30 s; do not flood the console
+        }
       }
     } else if (!want_ble && ble_running) {
       blemidi::stop();

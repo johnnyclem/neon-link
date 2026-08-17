@@ -1,0 +1,16 @@
+# A1 PSRAM stall — ESP32-P4-Module-DEV-KIT
+# 2026-08-16  IDF 5.3.2  rev v1.3  HEX PSRAM 20 MHz  CPU 360 MHz
+# 4 cycles × 5 s/phase. Observer core 1, stressors core 0.
+
+RESULT,target,phase,n,dropped,p50_ns,p99_ns,max_ns,mean_ns,peak_us
+RESULT,esp32p4,IDLE,8192,12503,1822.7,2176.2,3585.3,1830.2,229.5
+RESULT,esp32p4,FLASH,820,0,1823.2,1927.3,1998.5,1825.5,127.9
+RESULT,esp32p4,PSRAM,8192,12176,4397.8,4922.9,5345.8,4389.9,342.1
+
+RATIO,esp32p4,FLASH,p99=0.89x,max=0.56x
+RATIO,esp32p4,PSRAM,p99=2.26x,max=1.49x
+
+# FLASH n=820 vs ~20000 expected (20 s × 1 kHz) means the observer
+# was scheduled ~4% of that phase — flash erase/write still blocks
+# the other core. Completed-sample RATIO≈1 is not "no stall".
+# PSRAM phase is real bus contention (observer kept filling).

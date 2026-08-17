@@ -1,0 +1,7 @@
+build/
+build-p4v31/
+sdkconfig
+sdkconfig.old
+sdkconfig.p4v31
+dependencies.lock
+managed_components/

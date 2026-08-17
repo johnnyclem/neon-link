@@ -12,10 +12,23 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
-#include "esp_wifi.h"
 #include "mdns.h"
+#include "sdkconfig.h"
 
+#include "board_mac.h"
 #include "board_pins.h"
+
+#if CONFIG_ESP_WIFI_ENABLED || CONFIG_ESP_WIFI_REMOTE_ENABLED
+// wifi_remote 0.14 on IDF 5.3 references this in WIFI_INIT_CONFIG_DEFAULT
+// even when Kconfig did not emit it (depends on SPIRAM is flaky).
+#ifndef CONFIG_WIFI_RMT_CACHE_TX_BUFFER_NUM
+#define CONFIG_WIFI_RMT_CACHE_TX_BUFFER_NUM 32
+#endif
+#include "esp_wifi.h"
+#define NEON_HAVE_WIFI 1
+#else
+#define NEON_HAVE_WIFI 0
+#endif
 
 namespace netman {
 
@@ -60,6 +73,27 @@ void init_common() {
     ESP_ERROR_CHECK(err);
   }
 }
+
+#if NEON_HAVE_WIFI
+bool g_wifi_driver = false;
+
+bool wifi_driver_init() {
+  if (g_wifi_driver) {
+    return true;
+  }
+  wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+  const esp_err_t err = esp_wifi_init(&init);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "esp_wifi_init: %s (C6/Hosted transport down?)",
+             esp_err_to_name(err));
+    return false;
+  }
+  g_wifi_driver = true;
+  return true;
+}
+#else
+bool wifi_driver_init() { return false; }
+#endif
 
 bool ethernet_start() {
   // AMYboard (and any board without a wired W5500) leaves eth pins at -1.
@@ -154,8 +188,10 @@ static void copy_str(char* dst, size_t cap, const char* src) {
     dst[0] = '\0';
     return;
   }
-  std::strncpy(dst, src, cap - 1);
-  dst[cap - 1] = '\0';
+  const size_t slen = std::strlen(src);
+  const size_t n = slen < cap - 1 ? slen : cap - 1;
+  std::memcpy(dst, src, n);
+  dst[n] = '\0';
 }
 
 
@@ -184,7 +220,7 @@ bool g_mdns_svc = false;
 
 void mdns_device_id(char* out, size_t cap) {
   uint8_t mac[6] = {};
-  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  neon_read_unit_mac(mac);
   std::snprintf(out, cap, "%02x%02x%02x", mac[3], mac[4], mac[5]);
 }
 
@@ -251,6 +287,7 @@ void mdns_start(const char* hostname) {
 char g_ap_ssid[33] = {};
 bool g_ap_handlers = false;
 
+#if NEON_HAVE_WIFI
 void on_ap_event(void*, esp_event_base_t, int32_t id, void* event_data) {
   if (id == WIFI_EVENT_AP_START) {
     g_ap_up = true;
@@ -273,13 +310,11 @@ void on_ap_event(void*, esp_event_base_t, int32_t id, void* event_data) {
 }
 
 bool ap_start(const ApParams& params) {
+  if (!wifi_driver_init()) {
+    return false;
+  }
   wifi_mode_t mode = WIFI_MODE_NULL;
-  const bool wifi_inited = esp_wifi_get_mode(&mode) == ESP_OK;
-  if (!wifi_inited) {
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    if (esp_wifi_init(&init) != ESP_OK) {
-      return false;
-    }
+  if (esp_wifi_get_mode(&mode) != ESP_OK) {
     mode = WIFI_MODE_NULL;
   }
   if (esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") == nullptr) {
@@ -321,7 +356,7 @@ bool ap_start(const ApParams& params) {
   const bool sta_was_on = mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA;
   const wifi_mode_t new_mode =
       (params.keep_sta && sta_was_on) ? WIFI_MODE_APSTA : WIFI_MODE_AP;
-  bool need_start = !wifi_inited || mode == WIFI_MODE_NULL;
+  bool need_start = mode == WIFI_MODE_NULL;
   if (!params.keep_sta && sta_was_on) {
     (void)esp_wifi_disconnect();
     const esp_err_t stop_err = esp_wifi_stop();
@@ -352,6 +387,15 @@ bool ap_start(const ApParams& params) {
            new_mode == WIFI_MODE_AP ? "AP-only" : "APSTA");
   return true;
 }
+
+#else  // !NEON_HAVE_WIFI
+
+bool ap_start(const ApParams&) {
+  ESP_LOGI(kTag, "no on-chip WiFi; setup AP skipped");
+  return false;
+}
+
+#endif  // NEON_HAVE_WIFI
 
 bool ap_is_up() { return g_ap_up; }
 

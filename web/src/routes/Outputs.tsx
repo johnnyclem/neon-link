@@ -481,8 +481,9 @@ function JackSettings({
     default:
       return (
         <p class="jack-copy">
-          S/PDIF is on the AMYboard but deliberately deferred — the firmware
-          does not drive it yet. Everything else on the block is live.
+          S/PDIF in and out are AC-coupled through the PCM9211 (100 nF
+          series caps). They cannot carry clock, gate, or CV. The holes
+          stay labeled SPDIF. Everything else on the block is live.
         </p>
       );
   }

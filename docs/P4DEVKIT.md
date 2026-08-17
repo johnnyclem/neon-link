@@ -1,0 +1,107 @@
+# NEON LINK on Waveshare ESP32-P4-Module-DEV-KIT
+
+v2 R&D target. Not the AMYboard friends-and-family batch.
+
+**Board:** Waveshare ESP32-P4-Module-DEV-KIT (ESP32-P4NRW32 + ESP32-C6 over
+SDIO, 16 MB flash, 32 MB HEX PSRAM).
+
+A second P4 (different vendor, **rev v3.1 / eco6**) uses the same pin map
+and OLED/C6/encoder bring-up, but **IDF 5.3.2 cannot boot it**. Build that
+unit with IDF 5.5.5 and `sdkconfig.defaults.p4v31`:
+
+```bash
+. ~/esp/esp-idf-v5.5.5/export.sh
+./scripts/flash_p4v31.sh          # or pass /dev/cu.usbmodemXXXX
+```  
+**Display:** 1.5" I2C OLED on the kit's I2C header — SSD1327 @ `0x3d`
+(Adafruit 128×128 STEMMA) or SH1107 / SSD1306 @ `0x3c`.
+
+## What works on this bring-up
+
+| Piece | Status |
+|---|---|
+| OLED UI (128×128) | Yes — same `panel128` probe as AMYboard |
+| Pulse engine / local timeline | Yes — virtual channels, no jacks |
+| Ableton Link session object | Yes — local session; peers once C6 has a netif |
+| WiFi / SoftAP | **Yes** — C6 via ESP-Hosted. Setup AP `NEON-LINK-XXXX` |
+| BLE | Not this pass (hosted HCI is a separate path) |
+| Ethernet (RJ45) | Hardware present, driver not wired yet |
+| Audio (ES8311) | Hardware present, not mapped yet |
+| Encoder | KY-040 on GPIO 2/3/4 (40-pin header) |
+
+## I2C header
+
+Schematic net `ESP_I2C_*` (4-pin SH1.0 next to the I3C port, also
+40-pin header 11/12):
+
+| Signal | GPIO | Also on this bus |
+|---|---|---|
+| SDA | 7 | ES8311 codec @ `0x18` |
+| SCL | 8 | |
+
+3.3 V, 2.2 kΩ board pull-ups plus internal pull-ups in `i2c_bus_init`.
+
+Confirmed on the bench: **SH1107 @ `0x3c`** (128×128 mono, page mode).
+`oled_ui` reports `panel kind=2`. The codec stays on the same bus at
+`0x18`. If a rescan shows only `0x18`, the OLED is unplugged or on the
+wrong header — check:
+
+1. The 4-pin I2C port, not the I3C port and not a random 40-pin pair.
+2. Pin order. Waveshare SH1.0 is not Grove (GND/VCC/SDA/SCL). A Grove
+   or STEMMA cable on that header will power the panel wrong or swap
+   the data lines.
+3. 3.3 V only. 5 V OLEDs do not belong here.
+
+## C6 radio (ESP-Hosted)
+
+The module's ESP32-C6 is already the coprocessor. Host firmware pulls
+`espressif/esp_hosted` 1.4 and `esp_wifi_remote` 0.14 (IDF 5.3), with
+the Function-EV SDIO pin map that Waveshare's Brookesia image also uses
+(CLK 18, CMD 19, D0–D3 14–17, reset GPIO 54).
+
+C6 slave firmware ships on the module. Do not reflash the C6 unless
+Hosted never prints `Received INIT event from ESP32 peripheral`.
+
+`esp_wifi_init()` is what resets the C6 and waits for SDIO. Do not call
+`esp_wifi_get_mode()` first — wifi_remote turns that into an RPC while
+the transport is still down.
+
+After boot with no stored STA credentials, SoftAP comes up as
+`NEON-LINK-XXXX` (password on the OLED NETWORK screen, default
+`link1234`). Join it and open `http://192.168.4.1/`.
+
+Bench on this kit: `NEON-LINK-DD05` WPA2, 192.168.4.1, AP-only.
+
+## Encoder
+
+KY-040 (or any EC11 with a switch) on the 40-pin header:
+
+| Encoder | P4 GPIO | Notes |
+|---|---|---|
+| CLK / A | 2 | Internal pull-up |
+| DT / B | 3 | Internal pull-up |
+| SW | 4 | Active-low, internal pull-up |
+| + | 3V3 | |
+| GND | GND | Commons for A/B/SW |
+
+If rotation is backwards, swap A/B.
+
+## Build & flash
+
+```bash
+git submodule update --init --recursive
+. ~/esp/esp-idf-v5.3.2/export.sh
+
+# First time, or after an S3/AMYboard sdkconfig:
+rm -f sdkconfig
+idf.py set-target esp32p4
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.p4devkit" build
+
+./scripts/flash_p4devkit.sh          # or pass /dev/cu.usbmodemXXXX
+```
+
+This kit's P4 is **rev v1.3**. The overlay pins `CONFIG_ESP32P4_REV_MIN_1`.
+Do not force-flash a v3.x image.
+
+USB Serial/JTAG on the Type-C port is the console. After flash, press
+**RST only** if the app does not print `[neon] app_main enter`.

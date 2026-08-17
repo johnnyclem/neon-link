@@ -11,6 +11,13 @@ namespace netman {
 // already existing. Call before any interface bring-up.
 void init_common();
 
+// One-shot esp_wifi_init(). On ESP-Hosted (P4+C6) this is what resets
+// the slave and waits for SDIO. Do not probe with esp_wifi_get_mode()
+// first — wifi_remote turns that into an RPC while transport is still
+// down, and Hosted then double-frees. Returns false if the driver
+// (or the C6) does not come up.
+bool wifi_driver_init();
+
 // Bring up the W5500 SPI Ethernet interface (SPI2, pins in
 // main/board_pins.h) with route priority above WiFi STA, so lwIP —
 // and therefore Ableton Link — prefers the cable whenever it has an
