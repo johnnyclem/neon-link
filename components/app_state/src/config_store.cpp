@@ -30,6 +30,7 @@ void publish_buses() {
 }
 
 bool g_save_pending = false;
+bool g_nvs_hold = false;
 int64_t g_last_change_us = 0;
 uint32_t g_rev = 0;
 
@@ -116,8 +117,15 @@ void neon_config_apply(const neon::Config& cfg) {
   ++g_rev;
 }
 
+void neon_config_hold_nvs(bool hold) {
+  g_nvs_hold = hold;
+}
+
 void neon_config_flush(int64_t now_us) {
   if (!g_save_pending) {
+    return;
+  }
+  if (g_nvs_hold) {
     return;
   }
   if (g_last_change_us == 0) {
@@ -153,6 +161,14 @@ bool neon_config_flush_now() {
 bool neon_config_save(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
+  if (g_nvs_hold) {
+    g_config = clean;
+    publish_buses();
+    g_save_pending = true;
+    g_last_change_us = 0;
+    ++g_rev;
+    return true;
+  }
   if (!persist(clean)) {
     return false;
   }

@@ -27,6 +27,7 @@ struct AudioStatus {
   uint32_t sub_dropped = 0;
   uint32_t fill_ms = 0;
   int32_t clock_ppm = 0;
+  int32_t clock_residual_us = 0;
   uint32_t rx_dropped = 0;
   uint32_t jit_underruns = 0;
   uint32_t tx_dropped = 0;

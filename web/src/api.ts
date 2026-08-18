@@ -131,6 +131,8 @@ export interface AudioStatus {
   fill_ms?: number;
   /** Sample-clock drift against the module's own timebase. */
   clock_ppm: number;
+  /** SampleClock residual, microseconds. Walks if G3 resync fails. */
+  clock_residual_us?: number;
 }
 
 export interface Config {

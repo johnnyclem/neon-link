@@ -1,0 +1,41 @@
+results_esp32p4_v31_rev2.txt
+# A1 rev2 — second P4 (rev v3.1 / eco6)
+# 2026-08-16  IDF 5.5.5  HEX 32 MB @ 200 MHz  CPU 400 MHz
+# MAC e8:f6:0a:e3:a9:e4  port /dev/cu.wchusbserial5B910565041
+# buf=4 MB  reservoir=4096  FREERTOS_HZ=1000
+# Stressors yield vTaskDelay(1) after each flash op / memcpy
+#   (without that, core-0 app_main never leaves FLASH).
+#
+# sdkconfig:
+#   CONFIG_SPIRAM_MODE_HEX=y
+#   CONFIG_SPIRAM_SPEED_200M=y
+#   CONFIG_SPIRAM_SPEED=200
+#   CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=400
+#
+# S3 not run: AMYboard not on USB this session.
+
+=== A1 rev2 PSRAM stall benchmark ===
+target=esp32p4 cpu=400 MHz psram=200 MHz batch=64 buf=4 MB reservoir=4096
+scratch partition: 1024 KB
+cycle 1/4 done
+cycle 2/4 done
+cycle 3/4 done
+cycle 4/4 done
+
+# n_total = every sample attempted. n_stored = reservoir size.
+# Latency percentiles are ns per read, from the reservoir.
+# gap_* is wall-clock between consecutive samples. Expected
+# ~1000 us (the vTaskDelay). Anything larger is suspension.
+RESULT,target,phase,n_total,n_stored,rate_hz,p50_ns,p99_ns,max_ns,gap_p99_us,gap_max_us
+RESULT,esp32p4,IDLE,20698,4096,1034.9,449.3,487.2,632.1,1000,1377
+RESULT,esp32p4,FLASH,805,805,40.2,450.2,522.2,591.3,46982,51035
+RESULT,esp32p4,PSRAM,20002,4096,1000.1,795.2,875.4,938.5,1012,9843
+
+# RATIO is clock-independent -- compare these across chips.
+# stall_max_us is the direct measure: how long the core stopped.
+RATIO,esp32p4,FLASH,p99=1.07x,stall_max_us=51035,stall_vs_idle=37.1x
+RATIO,esp32p4,PSRAM,p99=1.80x,stall_max_us=9843,stall_vs_idle=7.1x
+
+# SANITY: rate_hz should be ~1000 in EVERY phase. A phase well
+# below that means the observer was suspended -- read gap_max_us.
+done.

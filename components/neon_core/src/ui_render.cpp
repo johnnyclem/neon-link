@@ -106,9 +106,15 @@ void render_home(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
   draw_status_row(fb, lay.status_y, words, 4);
 
   // The identity row is one of the bands the compact flow drops.
+  // Setup AP: put the password on the live screen. NETWORK buries it
+  // below four readout rows and people miss it; joining this AP is
+  // how a friend gets on the box at all.
   if (lay.ident_y >= 0) {
     draw_label(fb, kAlignPanel, lay.ident_y, editor_address(s),
                Align::kCenter);
+    if (s.setup_ap && s.ap_pass[0] != '\0') {
+      draw_label(fb, kAlignPanel, lay.ident_y + 10, s.ap_pass, Align::kCenter);
+    }
   }
 
   // Deliberate empty band between the identity line and the phase bar. A
@@ -163,24 +169,17 @@ void render_network(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
 
   draw_list_row(fb, 0, "MODE", net_word(s), false, false, lay.list_top,
                 lay.list_row_h);
-  draw_list_row(fb, 1, "IP", editor_address(s), false, false, lay.list_top,
-                lay.list_row_h);
-  draw_list_row(fb, 2, "PEERS", peers, false, false, lay.list_top,
-                lay.list_row_h);
-  draw_list_row(fb, 3, "SOURCE", source_word(s), false, false, lay.list_top,
-                lay.list_row_h);
-
-  // Per-device secrets (G1 in the ship-gate review), each with no other
-  // display surface. The AP password only matters — and is only shown —
-  // while the setup AP the password protects is actually up; once the
-  // module has joined a home network it stops being the thing keeping
-  // anyone out. The device token stays visible: it is what a friend reads
-  // over the phone when the web UI's own automatic use of it is broken.
-  int row = 4;
+  int row = 1;
   if (s.setup_ap && s.ap_pass[0] != '\0') {
     draw_list_row(fb, row++, "AP PASS", s.ap_pass, false, false, lay.list_top,
                   lay.list_row_h);
   }
+  draw_list_row(fb, row++, "IP", editor_address(s), false, false, lay.list_top,
+                lay.list_row_h);
+  draw_list_row(fb, row++, "PEERS", peers, false, false, lay.list_top,
+                lay.list_row_h);
+  draw_list_row(fb, row++, "SOURCE", source_word(s), false, false, lay.list_top,
+                lay.list_row_h);
   if (s.device_token[0] != '\0') {
     // The full 32-char token does not fit a list row's value column, and
     // asking someone to read that many hex digits over the phone is not

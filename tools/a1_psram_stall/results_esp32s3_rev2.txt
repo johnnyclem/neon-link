@@ -1,0 +1,37 @@
+# A1 rev2 — AMYboard ESP32-S3
+# 2026-08-16  IDF 5.3.2  octal PSRAM 8 MB @ 80 MHz  CPU 240 MHz
+# MAC 14:c1:9f:5d:6b:a0  port /dev/cu.usbmodem1101 (USB-Serial/JTAG)
+# buf=4 MB  reservoir=4096  FREERTOS_HZ=1000
+# UART capture opened after flash reset; banner missed, all 4 cycles + CSV captured.
+#
+# sdkconfig:
+#   CONFIG_SPIRAM_MODE_OCT=y
+#   CONFIG_SPIRAM_SPEED_80M=y
+#   CONFIG_SPIRAM_SPEED=80
+#   CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+
+=== A1 rev2 PSRAM stall benchmark ===
+target=esp32s3 cpu=240 MHz psram=80 MHz batch=64 buf=4 MB reservoir=4096
+scratch partition: 1024 KB
+cycle 1/4 done
+cycle 2/4 done
+cycle 3/4 done
+cycle 4/4 done
+
+# n_total = every sample attempted. n_stored = reservoir size.
+# Latency percentiles are ns per read, from the reservoir.
+# gap_* is wall-clock between consecutive samples. Expected
+# ~1000 us (the vTaskDelay). Anything larger is suspension.
+RESULT,target,phase,n_total,n_stored,rate_hz,p50_ns,p99_ns,max_ns,gap_p99_us,gap_max_us
+RESULT,esp32s3,IDLE,20700,4096,1035.0,519.5,528.1,936.3,1000,1000
+RESULT,esp32s3,FLASH,2280,2280,114.0,519.7,83671.5,254244.1,18740,22384
+RESULT,esp32s3,PSRAM,20016,4096,1000.8,1260.7,1300.6,1345.1,1000,6072
+
+# RATIO is clock-independent -- compare these across chips.
+# stall_max_us is the direct measure: how long the core stopped.
+RATIO,esp32s3,FLASH,p99=158.43x,stall_max_us=22384,stall_vs_idle=22.4x
+RATIO,esp32s3,PSRAM,p99=2.46x,stall_max_us=6072,stall_vs_idle=6.1x
+
+# SANITY: rate_hz should be ~1000 in EVERY phase. A phase well
+# below that means the observer was suspended -- read gap_max_us.
+done.

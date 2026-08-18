@@ -44,26 +44,18 @@ local HTML file fails.
 production run, too much for this batch, and the token closes the remote
 path. Write it in the v2 list.
 
-### G2. I2S data width (review §C1)
+### G2. I2S data width (review §C1) — **landed in tree**
 
-**Symptom.** `i2s_audio.cpp` sets `data_bit_width` to
-`I2S_DATA_BIT_WIDTH_16BIT` while `write_block` hands the driver hand-packed
-`int32_t`. The hardware consumes 16-bit units from that buffer — alternating
-zero/sample, scrambled channel assignment. Separately,
-`I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG` leaves `bit_shift = true` while the
-comment claims left-justified; `left_align` controls in-slot alignment, not
-the WS-edge delay.
+`i2s_audio.cpp` packs stereo int16 into the top half of 32-bit slots and
+opens the driver with `I2S_DATA_BIT_WIDTH_32BIT`,
+`I2S_SLOT_BIT_WIDTH_32BIT`, Philips (`bit_shift = true`, one BCLK of WS
+delay). That matches the PCM3060 hardware-mode default.
 
-The metronome is the core feature of this product. This affects every unit.
+**Verify (still needed on the jack).** Scope BCLK/WS/DOUT. Full-scale
+1 kHz sine: no zero-alternation, no visible slew limiting. Do not
+troubleshoot this by ear.
 
-**Fix.** Either set `data_bit_width` to 32-bit and keep the manual packing,
-or drop the packing and pass `int16_t`. Match `bit_shift` to the PCM3060's
-actual strapping.
-
-**Verify.** Scope BCLK/WS/DOUT before listening. Full-scale 1 kHz sine: no
-zero-alternation, no visible slew limiting. Do not troubleshoot this by ear.
-
-### G3. SampleClock frame domain (review §C2)
+### G3. SampleClock frame domain (review §C2) — **landed in tree**
 
 **Symptom.** `audio_service.cpp` computes presentation time as
 `us_at_frame(io.frames_written())`, but `SampleClock` is fitted against
@@ -72,15 +64,31 @@ descriptor emits silence that increments `isr_frames_` with no matching
 write. The offset between the two counters permanently shrinks, and beat↔
 sample mapping shifts by up to 42 ms with no correction path — until reboot.
 
-Pulse placement against CLK is the product. This silently breaks it.
+**In tree.** `I2sAudio::write_block` resyncs on failure
+(`frames_written_ = consumed + ring_depth`) and on the first successful
+write after starvation (`frames_written_ < consumed`).
 
-**Fix.** On `write_block` failure, resynchronize:
-`frames_written_ = isr_frames_ + ring_depth_frames`. Or derive presentation
-frame from the driver's own queued count instead of maintaining two
-counters.
+**Verify.** `POST /api/debug/stall?ms=100` (token-gated; see
+`docs/BENCH_NO_SCOPE.md` T3). `forced_stalls` must increment (the audio
+task consumed the wait). `clock_ppm` / `clock_residual_us` return to
+baseline within 2 s. `i2s_write_failures` may stay 0: after a pre-write
+starve, `auto_clear` leaves the ring empty so `write_block` succeeds and
+G3's success-path resync (`frames_written_ < consumed`) is what runs.
 
-**Verify.** Force a 100 ms audio-task stall. Phase recovers to baseline
-within 2 s, measured at CLK on the scope.
+**Bench 2026-08-18 (no scope) — T3.** DUT `192.168.50.252`, image
+`0.0.1-18-g9841e15-dirty`, Link playing 120 BPM / 1 peer, I2S up.
+
+| | baseline | run 1 100 ms | run 2 100 ms | run 3 250 ms |
+|---|---|---|---|---|
+| `forced_stalls` | 0 | **1** | **2** | **3** |
+| `clock_ppm` | −3 | −3 | 3 | 3 |
+| `clock_residual_us` | 10–18 | 14 | 17 | 19 |
+| `i2s_write_failures` | 0 | 0 | 0 | 0 |
+| `late_max_us` | 5 | 5 | 5 | 5 |
+
+T3 **pass** (three consecutive recoveries; residual never parked 10–40 ms).
+Pulse only emitted 3 edges the whole session — `late_max` is not a G7
+reading on this run.
 
 ### G4. Unsubscribe use-after-free (review §C3)
 
@@ -120,6 +128,149 @@ You cannot support units in other cities without these.
 - **A way to read the counters remotely.** `jit_underruns`, `rx_dropped`,
   `i2s_write_failures`, uptime, reset reason — on the System page. Your
   first bug report is otherwise unactionable.
+
+### G6. Deferred NVS commit — **landed in tree**
+
+A1 rev2 (closed 2026-08-17) on this AMYboard: a flash erase/write suspends
+the other core for **`gap_max = 22.4 ms`**. The I2S DMA ring is
+`8 × 256` frames at 48 kHz = **42.6 ms**. One NVS commit during playback
+burns half the ring.
+
+22.4 ms is a lower bound twice. Rev1 reported 5.4 ms because the
+stressors never yielded and fewer erase cycles landed. Rev2 yields
+between operations, so the figure is **one** erase-write, not a real
+NVS commit (multiple sectors plus a page-table rewrite). Size anything
+against the stall at **2–3× measured** (45–67 ms), not 22.4 ms plus a
+hair. That band is the whole DMA ring.
+
+`neon_config_apply` already wrote RAM and published the buses. That was
+not enough: `neon_config_flush` committed 2 s after the last edit,
+which is mid-session if the user stops twiddling and starts playing —
+worse than committing immediately. Default `PUT /api/config` called
+`neon_config_save` and erased flash in the httpd task. `persist=lazy`
+was only the VST path.
+
+**In tree.** `PUT /api/config` always `neon_config_apply`. I2S starts
+only when `audio.enabled` or Link Audio pub/sub is on; the audio task
+calls `neon_config_hold_nvs(true)` for that whole window. `neon_config_flush`
+is a no-op while held and commits 2 s after I2S goes down (or after an
+idle edit that never started I2S). `flush_now` still writes on reboot/OTA.
+
+**Policy.** Apply to RAM instantly always.
+
+- **Transport running** (I2S up and/or Link Audio subscribed): queue the
+  blob. Flush on stop, on explicit reboot, and before OTA. A timer must
+  not fire while DMA is running.
+- **Transport stopped, including never started:** persist after the
+  existing 2 s quiet window (or immediately on leave-page / reboot).
+  First-boot secrets and factory reset stay immediate.
+
+**Power loss.** A change made while stopped persists — yanking USB
+after the web editor says saved, without ever hitting play, must
+reload the new blob. That is G5: a friend follows “join AP, change a
+setting, unplug.” A change made *during* playback that never sees a
+stop is allowed to evaporate; the disk keeps the last committed blob.
+Live RAM is what they heard. A silent evaporating *idle* edit is a
+support ticket you cannot debug remotely. A lost mid-play tweak is
+not.
+
+G6 and G7 are one pair. Deferred commit is what makes the refill
+horizon safe. Lengthening the horizon (G7, 67 ms) is what makes a
+missed commit survivable. Shipping one without the other leaves the
+hole open.
+
+**Verify.** Scope CLK1. `PUT /api/config` during playback must not move
+`pulse_stats.late_max_us` or `i2s_write_failures`, and UART must not
+print `config saved` until I2S is stopped. Change-while-stopped, wait
+2 s, pull power, reboot: new blob. Change-while-playing, pull power
+without stopping: previous blob, no clock glitch on the way down.
+
+**Bench 2026-08-17 (no scope) — T2a hold.** DUT `192.168.50.252`, image
+`0.0.1-18-g9841e15-dirty`, Link playing 122 BPM / 1 peer, I2S up
+(`audio.enabled=true`, roles `link_in`/`link_in`, no subscribe).
+
+| | before PUT | after PUT `big_beat_display: true` |
+|---|---|---|
+| `rev` | 2 | **3** |
+| `big_beat_display` | false | **true** (GET /api/config) |
+| `late_max_us` | 38–39 | **39** |
+| `late_avg_us` | 4 | **4** |
+| `i2s_write_failures` | 0 | **0** |
+| `clock_ppm` | 2–3 | **1** |
+| UART | — | `config updated from web editor (applied)` |
+| UART `config saved` in 15 s after PUT | — | **absent** |
+
+T2a **pass**. T2b (mute → `config saved` → power cycle) and T2c (yank
+during play) not run.
+
+**Bench 2026-08-18 — T2b flush.** Same DUT/image. First mute
+(`audio.enabled=false` only) did **not** drop I2S: leftover
+`la_sub_channel_id=78754242552f3441` keeps `i2s_needed=1`, so G6
+stayed held and a hard reset lost the RAM edit (`big_beat` reverted
+to true). Real stop is enabled-off **and** unsubscribe.
+
+Retry: PUT `big_beat_display:false` while I2S up (`late_max` 0→6,
+`i2s_write_failures` 0), then
+`{"audio":{"enabled":false,"sub_channel_id":""}}`, wait 4 s, esptool
+hard reset (no `flush_now`). After reboot:
+
+| | NVS after reset |
+|---|---|
+| `big_beat_display` | **false** |
+| `audio.enabled` | **false** |
+| `sub_channel_id` | **empty** |
+| `audio.running` | **false** |
+
+T2b **pass**. Settings restored afterwards via PUT + `/api/reboot`.
+T2c (yank mid-play, change must evaporate) not run.
+`GET /api/status` `audio.running` stays stale-true until reboot if
+I2S stops mid-session — do not use it as the mute tripwire.
+
+### G7. GPTimer alarm path stays in IRAM — **landed in tree**
+
+A flash stall in the pulse path is a missed beat on the clock output —
+worse than any audio artifact.
+
+`PulseHwGptimer::on_alarm` is `IRAM_ATTR`. Product `sdkconfig.defaults`
+already sets `CONFIG_GPTIMER_ISR_IRAM_SAFE` and
+`CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM`. `g_pulse_hw` is a global, so the
+ISR `user` pointer is in internal RAM. That is the callback.
+
+It is not the whole path. The core-1 refill task (`tasks_core1.cpp`)
+runs from flash every 5 ms. A 15 ms horizon lost to a stall at the
+sized number (45–67 ms, see G6) drained the edge ring and the ISR
+parked. An IRAM callback with an empty queue still misses the beat.
+
+**In tree.** `kHorizonUs` is 67 ms (3× A1 S3 `gap_max`). Callback was
+already `IRAM_ATTR` with `GPTIMER_ISR_IRAM_SAFE`. G6 is what keeps flash
+off this path.
+
+**Fix (remaining).** Audit every call from `on_alarm` (including
+`gptimer_set_alarm_action` error logs). Keep the object and `ring_` in
+internal RAM. Do not ship this without G6, and do not ship G6 with the
+horizon still at 15 ms.
+
+**Verify.**
+
+1. `objdump -d` on `on_alarm`: no fetch from `.flash.text`. Covers the
+   callback, not the refill task. **Done 2026-08-17** on the G7 image
+   (`build/neon_link.elf` S3, `build-p4v31/neon_link.elf` P4):
+   - S3 `on_alarm` at `4037b8f8` in `.iram0.text`. Live `l32r` targets
+     are the IRAM literal pool → DRAM atomics (`g_edges`, `g_levels`,
+     `g_late_*`) or GPIO MMIO. `gptimer_get_raw_count` /
+     `gptimer_set_alarm_action` / `__atomic_fetch_add_*` also
+     `.iram0.text`. `g_pulse_hw` at `3fca10d8` (DRAM).
+   - P4 `on_alarm` at `4ff21bec` in `.iram0.text`. `jal` helpers at
+     `4ff23948` / `4ff239a0` (same section). BSS/atomics at `4ff3e3xx`
+     (internal RAM). `g_pulse_hw` at `4ff34a90` (internal RAM). No
+     `0x400xxxxx` flash loads.
+2. With G6 held (I2S up): UART must not print `config saved` after a
+   `PUT /api/config`. That is the hole that used to be open. **T2a
+   passed** the same day.
+3. After G6 lands: a forced NVS commit *while stopped*, then
+   immediate transport start, must not show elevated `late_max_us` on
+   the first beats. Refill has to be full before the first alarm.
+   **Not run.**
 
 ---
 

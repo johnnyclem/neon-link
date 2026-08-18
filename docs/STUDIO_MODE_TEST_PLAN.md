@@ -20,8 +20,10 @@ because of three contention sources that are individually fixable:
   pump at 11. Audio TX preempts the timing protocol that the product exists to
   deliver.
 - **H3 (bus).** WiFi/lwIP buffers share the octal PSRAM bus (SPI0) with ~416 KB
-  of audio rings and with flash. This one is *not* addressed by either fix
-  above, and is the residual we're trying to size.
+  of audio rings and with flash. A1 rev2 sized the flash half: 22.4 ms stall
+  on this S3, 51 ms on the P4. That is a product constraint (HANDOFF G6),
+  not a Studio Mode variable. Residual H3 for this plan is PSRAM contention
+  from WiFi/lwIP (2.46× on S3), not the NVS erase.
 
 If H1 and H2 dominate, the feature ships in firmware. If H3 dominates, no
 amount of radio work helps and the feature gets cut or moves to wired

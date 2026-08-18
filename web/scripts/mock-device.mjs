@@ -156,6 +156,7 @@ const status = () => {
       sub_dropped: 0,
       fill_ms: config.audio.sub_channel_id ? 210 : 0,
       clock_ppm: 43,
+      clock_residual_us: 0,
     },
   };
 };

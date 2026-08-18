@@ -109,6 +109,8 @@ void neon_config_apply(const neon::Config& cfg) {
   ++g_rev;
 }
 
+void neon_config_hold_nvs(bool) {}
+
 void neon_config_flush(int64_t now_us) {
   if (!g_save_pending) {
     return;

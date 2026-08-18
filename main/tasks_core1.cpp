@@ -26,10 +26,13 @@ namespace {
 
 const char* kTag = "pulse_task";
 
-// Scheduling cadence: refill every 5 ms with a 15 ms horizon and a 2 ms
-// minimum lead. The hardware's parked-poll interval is 1 ms, so a freshly
-// submitted edge is always noticed with >= 1 ms to spare.
-constexpr int64_t kHorizonUs = 15000;
+// Scheduling cadence: refill every 5 ms with a 67 ms horizon and a 2 ms
+// minimum lead. 67 ms is 3× the A1 S3 flash stall (22.4 ms is one
+// erase-write; a real NVS commit is 2–3× that). G6 is what keeps flash
+// off this path; the horizon is what makes a missed commit survivable.
+// The ISR parks at 1 ms, so a freshly submitted edge is noticed with
+// >= 1 ms to spare.
+constexpr int64_t kHorizonUs = 67000;
 constexpr int64_t kLeadUs = 2000;
 constexpr TickType_t kRefillTicks = pdMS_TO_TICKS(5);
 

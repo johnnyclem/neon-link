@@ -2,6 +2,35 @@
 
 v2 R&D target. Not the AMYboard friends-and-family batch.
 
+## A1 closed — flash stall is a product constraint
+
+A1 rev2 ran on this kit's sibling (P4 rev v3.1, HEX @ 200 MHz, IDF 5.5.5)
+and on AMYboard S3 (octal 80 MHz, IDF 5.3.2), same observer, same 4 MB
+buffer. CSVs: `tools/a1_psram_stall/results_esp32s3_rev2.txt` and
+`results_esp32p4_v31_rev2.txt`.
+
+| | S3 | P4 @ 200 MHz |
+|---|---|---|
+| IDLE p50 | 519.5 ns | **449.3 ns** |
+| PSRAM contention | 2.46× | **1.80×** |
+| Flash stall (`gap_max`) | 22.4 ms | **51.0 ms** |
+| Observer scheduled during FLASH | 11% | 4% |
+
+The P4 wins the memory bus. It does not escape the flash stall, and
+51 ms is longer than the audio DMA ring (`8 × 256` frames = 42.6 ms).
+Both `gap_max` figures are one erase-write (the stressor yields between
+ops). A real NVS commit is 2–3× that. A1's output is not "which chip"
+— it is a constraint on any hardware this firmware ships on.
+
+**v2 board rule:** config persistence must not sit on the same SPI
+controller as the audio path. Rebuild this problem on P4 and you get
+51 ms instead of 22. Next unknown that can still disqualify the chip
+is A2 (ESP-Hosted SDIO jitter).
+
+Ship-gate fallout for the AMYboard batch (G6 deferred NVS, G7 IRAM
+pulse path) lives in `docs/FRIENDS_FAMILY_HANDOFF.md`. Those apply
+here too if this kit ever plays audio.
+
 **Board:** Waveshare ESP32-P4-Module-DEV-KIT (ESP32-P4NRW32 + ESP32-C6 over
 SDIO, 16 MB flash, 32 MB HEX PSRAM).
 

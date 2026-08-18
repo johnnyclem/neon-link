@@ -218,6 +218,11 @@ AudioEngineConfig audio_engine_config(const Config& cfg) {
   out.la_publish_mono = a.la_publish_mono;
   out.la_fullband = a.la_fullband;
   out.la_jitter_ms = a.la_jitter_ms;
+  out.i2s_needed =
+      (a.enabled != 0 || a.la_publish_mix != 0 || a.la_publish_linein != 0 ||
+       a.la_sub_channel_id[0] != '\0')
+          ? 1
+          : 0;
   out.quantum_beats = cfg.quantum_beats;
   out.priority_profile = static_cast<uint8_t>(cfg.priority_profile);
   return out;

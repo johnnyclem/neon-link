@@ -13,10 +13,15 @@
 //     samples are now a uniform random sample of ALL samples.
 //   * WALL-CLOCK GAP TRACKING. Measures suspension directly instead of
 //     inferring it from a missing sample count. gap_max_us is the headline:
-//     how long was this core stopped dead.
+//     how long this core was stopped dead.
 //   * rate_hz computed from total samples attempted, not stored samples.
 //   * BUF_BYTES fixed at 4 MB so S3 and P4 runs are directly comparable.
+//
+// Local delta vs the test_files drop: vTaskDelay(1) after each flash op and
+// each memcpy. Without it the prio-5 stressors starve app_main on core 0
+// and the 5 s phase timer never advances (reproduced on this hardware).
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -161,6 +166,8 @@ static void flash_stress_task(void *arg)
             esp_partition_erase_range(part, off, 4096);
             esp_partition_write(part, off, pattern, sizeof(pattern));
             off += 4096;
+            // Yield so app_main (same core, lower prio) can advance phases.
+            vTaskDelay(1);
         } else {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -174,6 +181,7 @@ static void psram_stress_task(void *arg)
     while (g_run) {
         if (g_phase == PHASE_PSRAM && g_stress_on) {
             memcpy(g_stress_dst, g_stress_src, STRESS_BYTES);
+            vTaskDelay(1);
         } else {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -206,8 +214,14 @@ void app_main(void)
 #endif
 
     printf("\n=== A1 rev2 PSRAM stall benchmark ===\n");
-    printf("target=%s cpu=%d MHz batch=%d buf=%d MB reservoir=%d\n",
-           target, CPU_MHZ, BATCH_READS, BUF_BYTES / (1024 * 1024), RESERVOIR);
+    printf("target=%s cpu=%d MHz psram=%d MHz batch=%d buf=%d MB reservoir=%d\n",
+           target, CPU_MHZ,
+#ifdef CONFIG_SPIRAM_SPEED
+           CONFIG_SPIRAM_SPEED,
+#else
+           0,
+#endif
+           BATCH_READS, BUF_BYTES / (1024 * 1024), RESERVOIR);
 
     g_buf        = heap_caps_malloc(BUF_BYTES, MALLOC_CAP_SPIRAM);
     g_stress_src = heap_caps_malloc(STRESS_BYTES, MALLOC_CAP_SPIRAM);
@@ -226,6 +240,7 @@ void app_main(void)
         return;
     }
     printf("scratch partition: %d KB\n", (int)(scratch->size / 1024));
+    fflush(stdout);
 
     xTaskCreatePinnedToCore(observer_task, "observer", 4096, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(flash_stress_task, "flash", 4096,
@@ -241,6 +256,7 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(PHASE_MS));
         }
         printf("cycle %d/%d done\n", c + 1, CYCLES);
+        fflush(stdout);
     }
 
     g_stress_on = false;
@@ -302,4 +318,5 @@ void app_main(void)
     printf("\n# SANITY: rate_hz should be ~1000 in EVERY phase. A phase well\n");
     printf("# below that means the observer was suspended -- read gap_max_us.\n");
     printf("done.\n");
+    fflush(stdout);
 }

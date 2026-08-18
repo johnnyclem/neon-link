@@ -62,6 +62,9 @@ struct AudioEngineConfig {
   uint8_t la_publish_mono = 0;
   uint8_t la_fullband = 0;  // 0 = apply the 120 Hz–5 kHz gist band on link-in
   uint16_t la_jitter_ms = 60;
+  // 1 when I2S DMA must run (engine on, or Link Audio pub/sub).
+  // G6: NVS is held for the whole time this is 1.
+  uint8_t i2s_needed = 0;
 
   uint32_t quantum_beats = 4;
 
@@ -112,6 +115,7 @@ struct AudioStatus {
   uint32_t rx_high_water = 0;      // receive ring high-water / kRxSlots
   uint32_t i2s_write_failures = 0; // I2S write() calls that found no room
                                     // (also folded into `underruns` above)
+  uint32_t forced_stalls = 0;      // T3: audio-task busy-waits consumed
   uint32_t heap_free_internal = 0; // bytes, MALLOC_CAP_INTERNAL
   uint32_t heap_free_psram = 0;    // bytes, MALLOC_CAP_SPIRAM
   int8_t rssi = 0;                 // associated STA AP RSSI, dBm; 0 if not

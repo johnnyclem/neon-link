@@ -67,6 +67,11 @@ constexpr int32_t kDacLatencyUs = 0;
 // tuning session thought it was running with was never actually applied.
 constexpr uint32_t kJitterRingFrames = 131072;
 
+// Armed by POST /api/debug/stall (docs/BENCH_NO_SCOPE.md T3). The render
+// task consumes it once, busy-waits, then continues. 0 = no stall.
+std::atomic<uint32_t> g_stall_ms{0};
+std::atomic<uint32_t> g_stalls_done{0};
+
 // Per-source render buffers. Static rather than stack: this task's stack
 // would have to be 8 KB bigger for no reason.
 float g_metro[kBlockFrames];
@@ -191,14 +196,9 @@ void audio_task(void*) {
   io_cfg.enable_input = true;
 #endif
 
-  if (!io.start(io_cfg)) {
-    ESP_LOGW(kTag, "I2S unavailable (check the I2S pin map); audio is off");
-    neon::AudioStatus status;
-    audio_status_bus().publish(status);
-    vTaskDelete(nullptr);
-    return;
-  }
-
+  // G6: do not start I2S until the engine or Link Audio actually needs
+  // it. Clock-only units never take the flash bus hostage. start()
+  // failure is not fatal here — we retry when i2s_needed stays set.
   neon::SampleClock clock;
   clock.reset(kSampleRate);
   g_click.reset(kSampleRate);
@@ -249,7 +249,38 @@ void audio_task(void*) {
            static_cast<unsigned>(kBlockFrames),
            cfg.la_fullband ? "bypass" : "120 Hz-5 kHz");
 
+  bool i2s_up = false;
+
   for (;;) {
+    // --- I2S lifetime (G6) --------------------------------------------
+    if (cfg.i2s_needed != 0 && !i2s_up) {
+      if (io.start(io_cfg)) {
+        i2s_up = true;
+        clock.reset(kSampleRate);
+        cfg_version = 0;  // re-apply click/jitter after a mute interval
+        have_timeline = false;
+        neon_config_hold_nvs(true);
+        ESP_LOGI(kTag, "I2S up; NVS held");
+      } else {
+        ESP_LOGW(kTag, "I2S unavailable (check the I2S pin map)");
+        vTaskDelay(pdMS_TO_TICKS(200));
+        continue;
+      }
+    } else if (cfg.i2s_needed == 0 && i2s_up) {
+      io.stop();
+      i2s_up = false;
+      neon_config_hold_nvs(false);
+      ESP_LOGI(kTag, "I2S down; NVS may flush");
+    }
+    if (!i2s_up) {
+      vTaskDelay(pdMS_TO_TICKS(6));
+      const uint32_t idle_cfg = audio_config_bus().version();
+      if (idle_cfg != cfg_version) {
+        cfg_version = audio_config_bus().read(cfg);
+      }
+      continue;
+    }
+
     // --- clocks and configuration -------------------------------------
     int64_t mark_us = 0;
     uint64_t mark_frames = 0;
@@ -418,6 +449,16 @@ void audio_task(void*) {
       }
     }
 
+    if (const uint32_t stall_ms =
+            g_stall_ms.exchange(0, std::memory_order_acq_rel)) {
+      ESP_LOGW(kTag, "forced stall %u ms", static_cast<unsigned>(stall_ms));
+      const int64_t until =
+          esp_timer_get_time() + static_cast<int64_t>(stall_ms) * 1000;
+      while (esp_timer_get_time() < until) {
+      }
+      g_stalls_done.fetch_add(1, std::memory_order_relaxed);
+    }
+
     if (!io.write_block(g_out_i16)) {
       ++underruns;
       // The driver is not taking blocks; yield rather than spin the core.
@@ -451,6 +492,7 @@ void audio_task(void*) {
       status.concealed = g_jitter.concealed();
       status.rx_high_water = link_audio.rx_high_water();
       status.i2s_write_failures = io.write_failures();
+      status.forced_stalls = g_stalls_done.load(std::memory_order_relaxed);
       status.heap_free_internal =
           static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
       status.heap_free_psram =
@@ -655,12 +697,11 @@ void audio_ctl_task(void*) {
 }  // namespace
 
 void neon_start_audio_service() {
-  // Always start I2S. `audio.enabled` used to be restart-scoped, so a
-  // saved "engine on" never reached the jack until a reboot — and a
-  // boot with enabled=0 left LINE OUT dead for every other setting.
-  // The render loop writes silence while the flag is off.
+  // I2S starts when audio.enabled or Link Audio pub/sub turns on
+  // (G6). A boot with enabled=0 leaves the codec idle so NVS can
+  // commit; turning the engine on from the editor brings I2S up.
   if (neon_config().audio.enabled == 0) {
-    ESP_LOGI(kTag, "audio starts muted (enabled=0); I2S is up so a save can unmute");
+    ESP_LOGI(kTag, "audio starts muted (enabled=0); I2S waits for enable");
   }
   // Below the pulse task (MAX-2) and the CV mirror (MAX-3): the I2S DMA
   // gives this loop ~11 ms of slack, and the clock outputs give none.
@@ -675,6 +716,10 @@ void neon_start_audio_service() {
 // not fit is dropped whole (with its partial write erased) and the
 // document still closes — a crowded network shortens the picker instead of
 // blanking it.
+extern "C" void neon_audio_request_stall_ms(uint32_t ms) {
+  g_stall_ms.store(ms, std::memory_order_release);
+}
+
 extern "C" int neon_audio_channels_json(char* buf, int cap) {
   hal::ILinkAudio& la = ablink::link_audio();
   hal::AudioChannelInfo channels[16];
@@ -712,6 +757,8 @@ extern "C" int neon_audio_channels_json(char* buf, int cap) {
 #else  // !CONFIG_NEON_AUDIO
 
 void neon_start_audio_service() {}
+
+extern "C" void neon_audio_request_stall_ms(uint32_t) {}
 
 extern "C" int neon_audio_channels_json(char* buf, int cap) {
   return std::snprintf(buf, static_cast<size_t>(cap),

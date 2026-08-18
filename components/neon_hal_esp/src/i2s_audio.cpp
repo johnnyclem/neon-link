@@ -248,6 +248,16 @@ bool I2sAudio::write_block(const int16_t* interleaved) {
                                           pdMS_TO_TICKS(timeout_ms));
   if (err != ESP_OK || written != bytes) {
     ++write_failures_;
+    // G3: auto_clear kept the DMA advancing through silence. Presentation
+    // time is fitted to isr_frames_, so pin frames_written_ a full ring
+    // ahead of what already played — the next successful write lands
+    // after that silence, not at the stale pre-underrun count.
+    const uint64_t consumed = mark_frames_snapshot();
+    const uint64_t ring =
+        static_cast<uint64_t>(cfg_.block_frames) * cfg_.dma_desc;
+    if (consumed != 0 || frames_written_ != 0) {
+      frames_written_ = consumed + ring;
+    }
     return false;
   }
   // Starvation resync. With auto_clear on, a late render block means the

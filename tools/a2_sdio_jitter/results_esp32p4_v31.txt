@@ -1,0 +1,29 @@
+# A2 — ESP-Hosted SDIO jitter
+# 2026-08-17  IDF 5.5.5  P4 rev v3.1  HEX 32 MB @ 200 MHz  CPU 400 MHz
+# MAC e8:f6:0a:e3:a9:e4  port /dev/cu.wchusbserial5B910565041
+# Hosted 1.4.7 / wifi_remote 0.14.5  SDIO 4-bit 40 MHz
+#   CLK18 CMD19 D0–D3 14–17 reset GPIO54
+# INIT event received. SoftAP A2-SDIO open 192.168.4.1
+# TRAFFIC is UDP broadcast with sta=0 (no client flood).
+# IDLE is not radio-dark: Hosted tasks start at boot (prio 23) before
+# esp_wifi_init. One 17 ms IDLE gap_max is a single outlier (gap_p99=1000).
+#
+# sdkconfig:
+#   CONFIG_SPIRAM_MODE_HEX=y
+#   CONFIG_SPIRAM_SPEED_200M=y
+#   CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=400
+
+=== A2 ESP-Hosted SDIO jitter ===
+target=esp32p4 cpu=400 MHz psram=200 MHz batch=64 buf=4 MB reservoir=4096
+
+# rpc_ok=1435 tx_ok=19991 sta_peak_or_now=0
+RESULT,target,phase,n_total,n_stored,rate_hz,p50_ns,p99_ns,max_ns,gap_p99_us,gap_max_us
+RESULT,esp32p4,IDLE,24235,4096,1211.8,449.6,466.0,3083.4,1000,17118
+RESULT,esp32p4,HOSTED,19999,4096,1000.0,449.8,466.1,493.0,1000,1000
+RESULT,esp32p4,RPC,20000,4096,1000.0,453.6,607.0,4348.0,1363,1489
+RESULT,esp32p4,TRAFFIC,20000,4096,1000.0,451.1,466.1,610.3,1000,1093
+
+RATIO,esp32p4,HOSTED,p99=1.00x,stall_max_us=1000,stall_vs_idle=0.1x
+RATIO,esp32p4,RPC,p99=1.30x,stall_max_us=1489,stall_vs_idle=0.1x
+RATIO,esp32p4,TRAFFIC,p99=1.00x,stall_max_us=1093,stall_vs_idle=0.1x
+done.

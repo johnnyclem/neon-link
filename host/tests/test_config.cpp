@@ -487,7 +487,18 @@ TEST_CASE("audio_engine_config carries only the live-applied fields") {
   CHECK(ec.role_r == neon::AudioRole::kReset);
   CHECK(ec.la_jitter_ms == 90);
   CHECK(ec.la_fullband == 1);
+  CHECK(ec.i2s_needed == 1);
   CHECK(ec.quantum_beats == 3);
+}
+
+TEST_CASE("i2s_needed follows engine on or Link Audio pub/sub") {
+  neon::Config cfg;
+  CHECK(neon::audio_engine_config(cfg).i2s_needed == 0);
+  cfg.audio.la_publish_mix = 1;
+  CHECK(neon::audio_engine_config(cfg).i2s_needed == 1);
+  cfg.audio.la_publish_mix = 0;
+  std::strcpy(cfg.audio.la_sub_channel_id, "peer-out");
+  CHECK(neon::audio_engine_config(cfg).i2s_needed == 1);
 }
 
 TEST_CASE("published channel names derive from the device name") {

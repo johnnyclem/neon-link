@@ -29,6 +29,7 @@ extern "C" const char* neon_wifi_current_ssid(void);
 extern "C" int neon_wifi_scan_json(char* buf, int cap);
 // Provided by main/audio_service.cpp.
 extern "C" int neon_audio_channels_json(char* buf, int cap);
+extern "C" void neon_audio_request_stall_ms(uint32_t ms);
 
 namespace {
 
@@ -286,18 +287,10 @@ esp_err_t handle_put_config(httpd_req_t* req) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
     return ESP_OK;
   }
-  char persist[12] = {};
-  const bool lazy = query_param(req, "persist", persist, sizeof(persist)) &&
-                    std::strcmp(persist, "lazy") == 0;
-  // Immediate NVS write — debounced apply alone lost WiFi on quick REBOOT.
-  // persist=lazy is the VST path: apply now, flush from link_svc later,
-  // so this handler does not block in flash while Link Audio owns the radio.
-  if (lazy) {
-    neon_config_apply(cfg);
-  } else if (!neon_config_save(cfg)) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS save failed");
-    return ESP_OK;
-  }
+  // G6: always apply to RAM. NVS is the 2 s idle flush in link_svc, or
+  // flush_now on reboot/OTA. persist=lazy is still accepted (VST) but
+  // no longer special — a mid-play PUT must not erase flash.
+  neon_config_apply(cfg);
   const neon::Config& after = neon_config();
   const bool bounce_wifi = wifi_identity_changed(before, after);
   const bool rename =
@@ -307,7 +300,7 @@ esp_err_t handle_put_config(httpd_req_t* req) {
     // the user is not stranded on a stale .local URL until the next reboot.
     netman::mdns_set_hostname(after.device_name);
   }
-  ESP_LOGI(kTag, "config updated from web editor (persisted)%s",
+  ESP_LOGI(kTag, "config updated from web editor (applied)%s",
            bounce_wifi ? ", will rejoin WiFi" : "");
   // Reply before any STA bounce. apply_credentials() disconnects the
   // station, which used to kill this response — the save landed, but the
@@ -623,7 +616,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1800];
+  char buf[1900];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -637,10 +630,12 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"audio\":{\"running\":%s,\"underruns\":%u,\"peak_l\":%u,"
       "\"peak_r\":%u,\"publishing\":%s,\"subscribers\":%u,"
       "\"sub_state\":\"%s\",\"sub_rate\":%u,\"sub_dropped\":%u,"
-      "\"fill_ms\":%u,\"clock_ppm\":%d,\"rx_dropped\":%u,"
+      "\"fill_ms\":%u,\"clock_ppm\":%d,\"clock_residual_us\":%d,"
+      "\"rx_dropped\":%u,"
       "\"jit_underruns\":%u,\"tx_dropped\":%u,\"trim_ppm\":%d,"
       "\"concealed\":%u,\"fill_frames\":%u,\"rx_high_water\":%u,"
-      "\"i2s_write_failures\":%u,\"heap_free_internal\":%u,"
+      "\"i2s_write_failures\":%u,\"forced_stalls\":%u,"
+      "\"heap_free_internal\":%u,"
       "\"heap_free_psram\":%u,\"rssi\":%d,\"priority_profile\":\"%s\","
       "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
@@ -669,6 +664,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.sub_dropped),
       static_cast<unsigned>(audio.fill_ms),
       static_cast<int>(audio.clock_ppm),
+      static_cast<int>(audio.clock_residual_us),
       static_cast<unsigned>(audio.rx_dropped),
       static_cast<unsigned>(audio.jit_underruns),
       static_cast<unsigned>(audio.tx_dropped),
@@ -677,6 +673,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       static_cast<unsigned>(audio.fill_frames),
       static_cast<unsigned>(audio.rx_high_water),
       static_cast<unsigned>(audio.i2s_write_failures),
+      static_cast<unsigned>(audio.forced_stalls),
       static_cast<unsigned>(audio.heap_free_internal),
       static_cast<unsigned>(audio.heap_free_psram),
       static_cast<int>(audio.rssi),
@@ -733,6 +730,31 @@ esp_err_t handle_preset(httpd_req_t* req) {
     return ESP_OK;
   }
   return send_ok(req);
+}
+
+// POST /api/debug/stall?ms=100 — T3 / G3: starve the I2S DMA ring so
+// write_block's frames_written_ resync can be observed in /api/status.
+// Token-gated: a 100 ms glitch is not OTA, but it is audible.
+esp_err_t handle_debug_stall(httpd_req_t* req) {
+  if (!check_local_origin(req) || !check_device_token(req)) {
+    return ESP_OK;
+  }
+  char ms_s[8] = {};
+  unsigned ms = 100;
+  if (query_param(req, "ms", ms_s, sizeof(ms_s))) {
+    ms = static_cast<unsigned>(std::strtoul(ms_s, nullptr, 10));
+  }
+  if (ms < 20) {
+    ms = 20;
+  }
+  if (ms > 250) {
+    ms = 250;
+  }
+  neon_audio_request_stall_ms(ms);
+  char json[64];
+  std::snprintf(json, sizeof(json), "{\"ok\":true,\"stall_ms\":%u}", ms);
+  ESP_LOGW(kTag, "debug stall requested %u ms", ms);
+  return send_json(req, json);
 }
 
 }  // namespace
@@ -805,6 +827,10 @@ void webui_start() {
                                .method = HTTP_POST,
                                .handler = handle_ota,
                                .user_ctx = nullptr};
+  const httpd_uri_t stall_uri = {.uri = "/api/debug/stall",
+                                 .method = HTTP_POST,
+                                 .handler = handle_debug_stall,
+                                 .user_ctx = nullptr};
   httpd_register_uri_handler(server, &index_uri);
   httpd_register_uri_handler(server, &get_cfg);
   httpd_register_uri_handler(server, &put_cfg);
@@ -818,6 +844,7 @@ void webui_start() {
   httpd_register_uri_handler(server, &reset_uri);
   httpd_register_uri_handler(server, &channels_uri);
   httpd_register_uri_handler(server, &ota_uri);
+  httpd_register_uri_handler(server, &stall_uri);
 
   // Mark this image good once the editor is serving: a bad OTA that never
   // gets this far is rolled back to the previous slot on the next boot.

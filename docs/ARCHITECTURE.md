@@ -87,10 +87,11 @@ domain with zero drift between stages.
 ### Producer/consumer contract
 
 The core-1 pulse task refills a lock-free SPSC ring every 5 ms with all
-edges inside a 15 ms horizon, at least 2 ms ahead of real time. When the
-ring empties the ISR parks at a 1 ms poll, so a freshly submitted edge is
-always noticed within 1 ms — inside the 2 ms lead. No locks are shared
-with the ISR.
+edges inside a 67 ms horizon (3× the measured S3 flash stall; see
+`docs/FRIENDS_FAMILY_HANDOFF.md` G7), at least 2 ms ahead of real time.
+When the ring empties the ISR parks at a 1 ms poll, so a freshly
+submitted edge is always noticed within 1 ms — inside the 2 ms lead. No
+locks are shared with the ISR.
 
 ### Integer beat math
 

@@ -22,14 +22,20 @@ const neon::Config& neon_config();
 // core 1 via the config bus, and schedule a debounced NVS write.
 void neon_config_apply(const neon::Config& cfg);
 
+// G6: while held, neon_config_flush will not touch flash. The audio
+// task holds this for the whole time I2S DMA is running. Idle (I2S
+// down, including never started) still commits after 2 s of quiet.
+void neon_config_hold_nvs(bool hold);
+
 // Call periodically (any core-0 service loop): persists to NVS once the
-// config has been quiet for 2 s after a change.
+// config has been quiet for 2 s after a change, unless NVS is held.
 void neon_config_flush(int64_t now_us);
 
-// Write any debounced pending config to NVS immediately (e.g. before reboot).
+// Write any debounced pending config to NVS immediately (reboot / OTA).
+// Ignores the hold — caller must accept a flash stall or stop I2S first.
 bool neon_config_flush_now();
 
-// Immediate persist + adopt (used at explicit save points).
+// Adopt + persist if NVS is not held; otherwise adopt and queue (G6).
 bool neon_config_save(const neon::Config& cfg);
 
 // Generation counter. Increments on neon_config_apply and

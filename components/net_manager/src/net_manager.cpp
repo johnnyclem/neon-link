@@ -12,6 +12,8 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mdns.h"
 #include "sdkconfig.h"
 
@@ -175,7 +177,7 @@ bool ethernet_start() {
   return true;
 }
 
-bool g_ap_up = false;
+volatile bool g_ap_up = false;
 
 // Truncating copy into a fixed field. Deliberately not snprintf("%s"):
 // with an unbounded source GCC's -Wformat-truncation cannot prove the
@@ -332,7 +334,10 @@ bool ap_start(const ApParams& params) {
                          ? params.ssid
                          : "NEON-LINK";
   copy_str(reinterpret_cast<char*>(cfg.ap.ssid), sizeof(cfg.ap.ssid), ssid);
-  cfg.ap.ssid_len = 0;  // derive from string
+  // Hosted 1.x on the factory C6 treats ssid_len=0 as a zero-length SSID
+  // (no beacons). Native IDF would strlen() it. Always send the length.
+  cfg.ap.ssid_len = static_cast<uint8_t>(std::strlen(
+      reinterpret_cast<char*>(cfg.ap.ssid)));
   cfg.ap.channel = params.channel != 0 ? params.channel : 1;
   cfg.ap.max_connection = 4;
   cfg.ap.ssid_hidden = params.hidden ? 1 : 0;
@@ -345,25 +350,26 @@ bool ap_start(const ApParams& params) {
     copy_str(reinterpret_cast<char*>(cfg.ap.password),
              sizeof(cfg.ap.password), params.pass);
     cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    cfg.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
   } else {
     cfg.ap.authmode = WIFI_AUTH_OPEN;
   }
-
   copy_str(g_ap_ssid, sizeof(g_ap_ssid), ssid);
+  ESP_LOGI(kTag, "SoftAP config SSID=%s auth=%s pass=%s", g_ap_ssid,
+           secured ? "WPA2" : "open",
+           secured ? reinterpret_cast<char*>(cfg.ap.password) : "(none)");
 
   // Setup AP must be AP-only. APSTA plus a scanning/retrying STA hops
   // the beacon channel and phones lose the network after a brief join.
   const bool sta_was_on = mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA;
   const wifi_mode_t new_mode =
       (params.keep_sta && sta_was_on) ? WIFI_MODE_APSTA : WIFI_MODE_AP;
-  bool need_start = mode == WIFI_MODE_NULL;
   if (!params.keep_sta && sta_was_on) {
     (void)esp_wifi_disconnect();
     const esp_err_t stop_err = esp_wifi_stop();
     if (stop_err != ESP_OK && stop_err != ESP_ERR_WIFI_NOT_STARTED) {
       ESP_LOGW(kTag, "esp_wifi_stop: %s", esp_err_to_name(stop_err));
     }
-    need_start = true;
   }
 
   // Modem sleep + SoftAP = missed beacons. Link also wants the radio awake.
@@ -373,14 +379,27 @@ bool ap_start(const ApParams& params) {
       esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK) {
     return false;
   }
-  if (need_start) {
-    const esp_err_t start_err = esp_wifi_start();
-    if (start_err != ESP_OK && start_err != ESP_ERR_INVALID_STATE) {
-      ESP_LOGW(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));
-      return false;
-    }
+  // Always start. Hosted get_mode() can return AP/STA after init even
+  // when the C6 is not beaconing; skipping start left the OLED in AP
+  // mode with nothing on the air (no WIFI_EVENT_AP_START, no DHCP).
+  g_ap_up = false;
+  const esp_err_t start_err = esp_wifi_start();
+  ESP_LOGI(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));
+  if (start_err != ESP_OK && start_err != ESP_ERR_INVALID_STATE &&
+      start_err != ESP_ERR_WIFI_NOT_STARTED) {
+    ESP_LOGW(kTag, "esp_wifi_start failed; C6 not beaconing");
+    return false;
   }
-  g_ap_up = true;
+  for (int i = 0; i < 50 && !g_ap_up; ++i) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  if (!g_ap_up) {
+    ESP_LOGE(kTag,
+             "no WIFI_EVENT_AP_START after 5 s — Hosted accepted start "
+             "but the C6 is not beaconing (%s, ch %u)",
+             g_ap_ssid, static_cast<unsigned>(cfg.ap.channel));
+    return false;
+  }
   ESP_LOGI(kTag, "setup AP up: %s (%s%s, ch %u, %s) at 192.168.4.1", g_ap_ssid,
            secured ? "WPA2" : "open", params.hidden ? ", hidden" : "",
            static_cast<unsigned>(cfg.ap.channel),

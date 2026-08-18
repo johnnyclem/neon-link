@@ -20,3 +20,7 @@ void neon_start_audio_service();
 // Link Audio channel discovery for the editor. Always defined; reports
 // available:false when the build has no Link Audio behind it.
 extern "C" int neon_audio_channels_json(char* buf, int cap);
+
+// T3 / G3: busy-wait the I2S render task for `ms` before the next
+// write_block so the DMA ring starves. No-op if audio is not running.
+extern "C" void neon_audio_request_stall_ms(uint32_t ms);

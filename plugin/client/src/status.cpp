@@ -134,6 +134,7 @@ bool parse_status(const char* json, size_t len, Status* out) {
     get_u32(audio, "sub_dropped", &s.audio.sub_dropped);
     get_u32(audio, "fill_ms", &s.audio.fill_ms);
     get_i32(audio, "clock_ppm", &s.audio.clock_ppm);
+    get_i32(audio, "clock_residual_us", &s.audio.clock_residual_us);
     get_u32(audio, "rx_dropped", &s.audio.rx_dropped);
     get_u32(audio, "jit_underruns", &s.audio.jit_underruns);
     get_u32(audio, "tx_dropped", &s.audio.tx_dropped);
