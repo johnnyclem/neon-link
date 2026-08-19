@@ -5,7 +5,7 @@ core-0 priority inversion fixed, make the feature shippable without new
 hardware?
 
 **Owner:** JC · **Time box:** 4 working days, hard stop · **Status:** in
-progress — Phase 0 PASS, B-STA session-hold recorded, P5 not run.
+progress — Phase 0 PASS, B-STA + B-AP session-hold recorded, P5 not run.
 Results: `docs/STUDIO_MODE_RESULTS.md`.
 
 ---

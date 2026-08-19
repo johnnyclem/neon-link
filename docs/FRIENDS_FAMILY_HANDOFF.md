@@ -355,7 +355,12 @@ subscribe cleared, I2S down (status counters frozen). **peers=1 for
 ≥37 min**, no flap. Live tempo 115 → 91 → 77 (operator: two changes
 during the watch). Pulse edges advancing, `late_avg_us` 436.
 `late_max_us` 4.025 s is boot residue (already set at uptime 144 s).
-**P5 CLK1-vs-Ref not recorded.** B-AP not run.
+**P5 CLK1-vs-Ref not recorded.**
+
+**Phase 1 B-AP (2026-08-19, `0.0.1-20-gc2229dd`).** SoftAP
+`NEON-LINK-6BA0`, audio off. **peers=1 for 30:02**, no flap, macOS
+stayed on `192.168.4.2` (HTTP poll 10 s). 100-ping idle RTT
+**3.3 / 16.1 / 105.6 ms**, 0% loss, 32× spread. P5 not recorded.
 
 Full write-up for the plan author: `docs/STUDIO_MODE_RESULTS.md`.
 The four-day plan is still worth running. Remaining product notes:

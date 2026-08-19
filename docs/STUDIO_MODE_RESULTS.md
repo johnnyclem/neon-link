@@ -17,7 +17,7 @@ baseline and **not** a Link Audio ship decision.
 |---|---|
 | Phase 0 — does Link multicast traverse SoftAP → one associated station? | **PASS.** Peer appeared immediately, held 10:00, no flap. Tempo had already crossed (Live 111 vs module `set_bpm` 120). |
 | Phase 1 B-STA — Link-only on infrastructure, audio off, ≥30 min | **Session hold PASS (partial vs plan).** Peer 1, no flap, ≥37 min with I2S down. Two Live tempo changes observed (91 → 77; 115 was pre-mute). **P5 CLK1-vs-Ref WAV was not recorded.** `late_max_us` 4.025 s is a boot leftover, not this cell. |
-| Phase 1 B-AP | **Not run.** |
+| Phase 1 B-AP — SoftAP, audio off, 30 min + 100 pings | **Session hold PASS (partial vs plan).** Peer 1, no flap, 30:02. macOS **did not hop** (HTTP poll every 10 s). **P5 not recorded.** Idle-AP ping is the finding: 100/100, 0% loss, **3.3 / 16.1 / 105.6 ms**, stdev 19.9, **32× spread**. |
 | Phase 2 / 3 | **Not run.** No jitter staircase, no fullband audio, no 60 min soak. |
 
 **Decision-matrix row:** Phase 0 did **not** fail. Studio Mode is not
@@ -57,7 +57,7 @@ Agreed: Phase 0 is the answer we came in for. Three extras, all taken.
 **B-AP tonight** even without the P5 rig, for the macOS question:
 Phase 0 held 10 min, but a dry-join hopped back in seconds. If macOS
 will not stay on a no-internet AP for 30 min, that is a Studio Mode
-blocker independent of Link.
+blocker independent of Link. **Ran. See Phase 1 B-AP below.**
 
 ---
 
@@ -152,6 +152,63 @@ reference.** Next B-STA (or a continuation) needs the P5 rig.
 
 ---
 
+## Phase 1 B-AP — SoftAP, audio off, 30 min
+
+**When:** 2026-08-19 01:11–01:43 UTC. DUT reflashed after Little Mac
+overwrite: `0.0.1-20-gc2229dd` (G6 network persist + late_max catch-up
+in the image). NVS kept `clemhaus` / fallback; we PUT `ap.policy=always`
+and rebooted.
+
+**Setup**
+
+- SoftAP `NEON-LINK-6BA0` open, ch 1, `192.168.4.1`. Mac DHCP
+  `192.168.4.2` on first join try.
+- Audio off (`enabled=false`, empty subscribe) from the prior persist.
+- Live 12 still on, Link enabled. One station.
+- HTTP `/api/status` every 10 s (same confound as B-STA; no UART CSV,
+  no `GET /api/scan`).
+
+**100-ping idle RTT** (architect follow-up #1)
+
+| | |
+|---|---|
+| n / got / loss | 100 / 100 / **0%** |
+| min / avg / max | **3.279 / 16.114 / 105.573 ms** |
+| stdev | 19.945 ms |
+| max/min | **32.2×** |
+
+Not association settling. Phase 0's 3-packet 24× was the same
+distribution with a smaller n. **105 ms idle one-way ICMP is already
+past a 60 ms jitter target.** This will look like Link Audio later if
+we do not treat AP duty + this tail as a first-class variable.
+
+**Watch** (`01:13:28Z` → `01:43:30Z`)
+
+| | |
+|---|---|
+| Module peers | **1** every sample (`peer_min = peer_max = 1`) |
+| HTTP drops | 0 |
+| bpm | 109.0 the whole watch (Live). No mid-run tempo move. |
+| playing | false |
+| Mac ifaddr | `192.168.4.2` every sample |
+| `macos_dropped` | **false** |
+
+**macOS:** with an HTTP poll every 10 s, the Mac **stayed on the
+no-internet AP for 30 minutes.** The earlier dry-join hop (seconds,
+no traffic) is still real. Studio Mode is not blocked by a 30 min
+hold *if something is talking to the module*. An unattended join with
+no traffic may still wander. Captive-portal answer still not fixed.
+
+**Restore:** PUT fallback + reboot from the AP, then
+`networksetup` back to `clemhaus` (`192.168.50.148`). Module is back
+on LAN at `192.168.50.252`, `setup_ap=false`, peers=1.
+
+**B-AP call:** session hold on SoftAP matches B-STA. macOS hold is
+OK under load. The idle ping tail is the new constraint. P5 still
+missing for both baselines.
+
+---
+
 ## What this does not answer
 
 - Phase error stddev / p99 / drift vs Ref (plan P5, §5).
@@ -181,10 +238,10 @@ reference.** Next B-STA (or a continuation) needs the P5 rig.
 
 ## Recommended next (plan order)
 
-1. **B-AP** — same Link-only, audio-off, 30 min, on `NEON-LINK-6BA0`
-   (one station). Watch peers + tempo. Expect macOS hop; plan for it.
-2. **P5 rig** — then repeat B-STA and B-AP as the actual baselines
-   (impulse on bar 1, CLK1 divider, 96 kHz dual capture).
+1. **P5 rig** — repeat B-STA and B-AP as the actual phase-error
+   baselines (impulse on bar 1, CLK1 divider, 96 kHz dual capture).
+2. Treat **idle SoftAP RTT tail (~100 ms)** as a Phase 2 variable,
+   not a surprise when Link Audio fails at `la_jitter_ms ≤ 60`.
 3. Only then Phase 2 staircase.
 
 Do not start Phase 2 on HTTP peer-count alone.
