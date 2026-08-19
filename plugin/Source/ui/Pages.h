@@ -262,6 +262,7 @@ class SystemPage : public juce::Component {
   neon::ui::TextField name_;
   neon::ui::NumberField bright_;
   neon::ui::Toggle bigBeat_;
+  neon::ui::SelectField beatStyle_;
   neon::ui::Readout fw_;
   neon::ui::Readout hostname_;
   neon::ui::Readout ip_;

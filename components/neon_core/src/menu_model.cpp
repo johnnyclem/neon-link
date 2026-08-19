@@ -66,6 +66,19 @@ const char* clock_source_name(ClockSource s) {
   }
 }
 
+const char* beat_style_name(BeatStyle s) {
+  switch (s) {
+    case BeatStyle::kPie:
+      return "PIE";
+    case BeatStyle::kPendulum:
+      return "PEND";
+    case BeatStyle::kPulse:
+      return "PULSE";
+    default:
+      return "NUM";
+  }
+}
+
 const char* audio_role_name(AudioRole r) {
   switch (r) {
     case AudioRole::kMetronome:
@@ -354,8 +367,8 @@ const char* MenuModel::item_label(int index) const {
       static const char* kItems[kSystemItems] = {
           "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
           "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
-          "SS SYNC",  "BRIGHT",   "BEAT",     "VERSION",
-          "REBOOT"};
+          "SS SYNC",  "BRIGHT",   "BEAT",     "STYLE",
+          "VERSION",  "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
     default:
@@ -488,6 +501,9 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         break;
       case 10:
         std::snprintf(buf, cap, "%s", cfg_->big_beat_display ? "ON" : "OFF");
+        break;
+      case 11:
+        std::snprintf(buf, cap, "%s", beat_style_name(cfg_->beat_style));
         break;
       default:
         break;
@@ -742,6 +758,12 @@ void MenuModel::adjust_system(int index, int delta) {
     case 10:
       cfg_->big_beat_display = delta > 0 ? 1 : 0;
       break;
+    case 11: {
+      const int n = static_cast<int>(BeatStyle::kCount);
+      cfg_->beat_style = static_cast<BeatStyle>(
+          wrap_int(static_cast<int>(cfg_->beat_style) + delta, n));
+      break;
+    }
     default:
       return;
   }

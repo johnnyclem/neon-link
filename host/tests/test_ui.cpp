@@ -91,6 +91,46 @@ TEST_CASE("framebuffer pixel ops and page layout") {
   CHECK(lit_pixels(fb) == 2 + 16);
   fb.fill_rect(10, 10, 4, 4, false);
   CHECK(lit_pixels(fb) == 2);
+
+  neon::Framebuffer line;
+  line.draw_line(0, 0, 10, 0, true);
+  CHECK(lit_pixels(line) == 11);
+  CHECK(line.pixel(0, 0));
+  CHECK(line.pixel(5, 0));
+  CHECK(line.pixel(10, 0));
+}
+
+TEST_CASE("framebuffer diff_pixels and the 30 percent big-redraw threshold") {
+  neon::Framebuffer a;
+  neon::Framebuffer b;
+  CHECK(a.diff_pixels(b) == 0);
+  CHECK_FALSE(neon::Framebuffer::is_big_redraw(0));
+
+  a.fill_rect(0, 0, 128, 128, true);
+  CHECK(a.diff_pixels(b) == 128 * 128);
+  CHECK(neon::Framebuffer::is_big_redraw(a.diff_pixels(b)));
+
+  // 30% of 16384 is 4915.2, so 4916 is the first integer that qualifies.
+  CHECK_FALSE(neon::Framebuffer::is_big_redraw(4915));
+  CHECK(neon::Framebuffer::is_big_redraw(4916));
+
+  neon::Framebuffer copy;
+  copy.copy_from(a);
+  CHECK(copy.diff_pixels(a) == 0);
+}
+
+TEST_CASE("giant 1 vs 2 is under 30 percent of pixels; beat-stage still leads") {
+  neon::Framebuffer one;
+  neon::ui::draw_giant_beat(one, 1);
+  neon::Framebuffer two;
+  neon::ui::draw_giant_beat(two, 2);
+  const int changed = one.diff_pixels(two);
+  CHECK(changed > 200);
+  CHECK_FALSE(neon::Framebuffer::is_big_redraw(changed));
+  // Discrete beat-stage frames still anticipate: the scan rewrites every
+  // page even when the XOR is only the glyph.
+  CHECK(neon::ui::anticipate_beat_flush(true, changed));
+  CHECK_FALSE(neon::ui::anticipate_beat_flush(false, changed));
 }
 
 TEST_CASE("dither patterns light the documented fraction of a region") {
@@ -803,7 +843,30 @@ TEST_CASE("system menu can disable the big beat display") {
   CHECK(cfg.big_beat_display == 0);
 }
 
-TEST_CASE("giant beat fills the panel and flips ink on 2 and 4") {
+TEST_CASE("system menu cycles beat styles") {
+  neon::Config cfg;
+  CHECK(cfg.beat_style == neon::BeatStyle::kNumber);
+  neon::MenuModel m(&cfg);
+  m.on_click();
+  m.on_rotate(5);
+  m.on_click();
+  m.on_rotate(11);  // STYLE
+  CHECK(std::string(m.item_label(m.cursor())) == "STYLE");
+  char buf[16];
+  m.item_value(m.cursor(), buf, sizeof(buf));
+  CHECK(std::string(buf) == "NUM");
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.beat_style == neon::BeatStyle::kPie);
+  m.on_rotate(1);
+  CHECK(cfg.beat_style == neon::BeatStyle::kPendulum);
+  m.on_rotate(1);
+  CHECK(cfg.beat_style == neon::BeatStyle::kPulse);
+  m.on_rotate(1);
+  CHECK(cfg.beat_style == neon::BeatStyle::kNumber);
+}
+
+TEST_CASE("giant beat fills the panel with white numerals on black") {
   auto render_beat = [](uint32_t phase) {
     neon::UiStatus st;
     st.playing = true;
@@ -827,7 +890,7 @@ TEST_CASE("giant beat fills the panel and flips ink on 2 and 4") {
   CHECK(dump(three) != dump(four));
   CHECK(dump(one) != dump(three));
 
-  // 2 px black safe zone on every beat, including the inverted ones.
+  // 2 px black safe zone on every beat.
   CHECK_FALSE(one.pixel(0, 0));
   CHECK_FALSE(one.pixel(127, 127));
   CHECK_FALSE(two.pixel(0, 0));
@@ -839,14 +902,52 @@ TEST_CASE("giant beat fills the panel and flips ink on 2 and 4") {
 
   const int ink1 = lit_pixels(one);
   const int ink2 = lit_pixels(two);
-  // 1 is white-on-black; 2 is black-on-white, so far more pixels are lit.
   CHECK(ink1 > 400);
-  CHECK(ink2 > ink1);
+  CHECK(ink2 > 400);
 
-  // Corners of the inner field: beat 2's white background reaches just
-  // inside the border.
-  CHECK(two.pixel(2, 2));
+  // Inner field stays black; only the glyph is lit.
   CHECK_FALSE(one.pixel(2, 2));
+  CHECK_FALSE(two.pixel(2, 2));
+}
+
+TEST_CASE("pie, pendulum and pulse beat styles draw distinct frames") {
+  auto render = [](neon::BeatStyle style, uint32_t phase) {
+    neon::UiStatus st;
+    st.playing = true;
+    st.big_beat_display = true;
+    st.beat_style = static_cast<uint8_t>(style);
+    st.quantum_beats = 4;
+    st.phase_milli_beats = phase;
+    neon::Config cfg;
+    neon::MenuModel menu(&cfg);
+    neon::Framebuffer fb;
+    neon::render_ui(menu, st, fb);
+    return fb;
+  };
+
+  neon::Framebuffer pie1 = render(neon::BeatStyle::kPie, 0);
+  neon::Framebuffer pie4 = render(neon::BeatStyle::kPie, 3000);
+  neon::Framebuffer num1 = render(neon::BeatStyle::kNumber, 0);
+  neon::Framebuffer pend1 = render(neon::BeatStyle::kPendulum, 0);
+  neon::Framebuffer pend2 = render(neon::BeatStyle::kPendulum, 1000);
+  neon::Framebuffer pulse0 = render(neon::BeatStyle::kPulse, 0);
+  neon::Framebuffer pulse5 = render(neon::BeatStyle::kPulse, 500);
+
+  CHECK(dump(pie1) != dump(pie4));
+  CHECK(lit_pixels(pie4) > lit_pixels(pie1));
+  CHECK(dump(pie1) != dump(num1));
+  CHECK(dump(pend1) != dump(pend2));
+  CHECK(dump(pulse0) != dump(pulse5));
+  CHECK(dump(pie1) != dump(pend1));
+  CHECK(dump(pend1) != dump(pulse0));
+
+  CHECK_FALSE(pie1.pixel(0, 0));
+  CHECK_FALSE(pie4.pixel(127, 127));
+  CHECK_FALSE(pend1.pixel(0, 0));
+  CHECK_FALSE(pulse0.pixel(0, 0));
+  CHECK(lit_pixels(pie1) > 200);
+  CHECK(lit_pixels(pend1) > 80);
+  CHECK(lit_pixels(pulse0) > 80);
 }
 
 TEST_CASE("giant beat is only the live screen while playing") {
@@ -1177,7 +1278,15 @@ TEST_CASE("every screen stays inside the compact panel") {
   beats.big_beat_display = true;
   for (uint32_t phase : {0u, 1000u, 2000u, 3000u}) {
     beats.phase_milli_beats = phase;
-    check_current(beats);  // giant beat 1..4, both ink polarities
+    check_current(beats);  // giant beat 1..4, white on black
+  }
+  for (uint8_t style = 1; style < static_cast<uint8_t>(neon::BeatStyle::kCount);
+       ++style) {
+    beats.beat_style = style;
+    beats.phase_milli_beats = 0;
+    check_current(beats);
+    beats.phase_milli_beats = 2500;
+    check_current(beats);
   }
 
   m.on_click();

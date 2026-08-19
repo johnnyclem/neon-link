@@ -35,6 +35,13 @@ inline constexpr int kPinI2sDin = -1;
 #endif
 
 #if CONFIG_NEON_BOARD_P4DEVKIT
+// NS4150B enable on the onboard 3.5 mm jack. Active high.
+inline constexpr int kPinI2sPa = 53;
+#else
+inline constexpr int kPinI2sPa = -1;
+#endif
+
+#if CONFIG_NEON_BOARD_P4DEVKIT
 
 // Waveshare ESP32-P4-Module-DEV-KIT. No Eurorack jacks on the stock
 // board: pulse channels are virtual (same word as AMYboard) so the

@@ -21,6 +21,7 @@
 #include "neon/net/preference.hpp"
 #include "neon/transport.hpp"
 #include "netman/net_manager.h"
+#include "oledui/oled_ui.h"
 
 // Provided by main/wifi.cpp (linked into the final app image).
 extern "C" void neon_wifi_apply_credentials(void);
@@ -63,14 +64,7 @@ bool wifi_identity_changed(const neon::Config& a, const neon::Config& b) {
   if (a.wifi_retries != b.wifi_retries) {
     return true;
   }
-  for (int i = 0; i < neon::kWifiSlots; ++i) {
-    if (std::strcmp(a.wifi[i].ssid, b.wifi[i].ssid) != 0 ||
-        std::strcmp(a.wifi[i].pass, b.wifi[i].pass) != 0 ||
-        a.wifi[i].hidden != b.wifi[i].hidden) {
-      return true;
-    }
-  }
-  return false;
+  return neon::network_identity_changed(a, b);
 }
 
 esp_err_t send_ok(httpd_req_t* req) { return send_json(req, "{\"ok\":true}"); }
@@ -637,7 +631,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"i2s_write_failures\":%u,\"forced_stalls\":%u,"
       "\"heap_free_internal\":%u,"
       "\"heap_free_psram\":%u,\"rssi\":%d,\"priority_profile\":\"%s\","
-      "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u}}",
+      "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u,\"oled\":\"%s\"}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -680,7 +674,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       neon::priority_profile_str(
           static_cast<neon::PriorityProfile>(audio.priority_profile)),
       static_cast<unsigned>(audio.req_jitter_ms),
-      static_cast<unsigned>(audio.eff_jitter_ms));
+      static_cast<unsigned>(audio.eff_jitter_ms), oledui_kind_str());
   if (n < 0) {
     return httpd_resp_send_500(req);
   }
@@ -757,13 +751,86 @@ esp_err_t handle_debug_stall(httpd_req_t* req) {
   return send_json(req, json);
 }
 
+// POST /api/debug/note?n=83&vel=100&on=1 — T1 / G2: hold a synth voice
+// so a phone tuner can read the pitch. Default is MIDI 83 (B5, ~988 Hz).
+// on=0 releases that note; all=1 panics.
+esp_err_t handle_debug_note(httpd_req_t* req) {
+  if (!check_local_origin(req) || !check_device_token(req)) {
+    return ESP_OK;
+  }
+  char n_s[8] = {};
+  char vel_s[8] = {};
+  char on_s[8] = {};
+  char all_s[8] = {};
+  unsigned note = 83;
+  unsigned vel = 100;
+  bool on = true;
+  bool all_off = query_param(req, "all", all_s, sizeof(all_s)) &&
+                 all_s[0] != '0';
+  if (query_param(req, "n", n_s, sizeof(n_s))) {
+    note = static_cast<unsigned>(std::strtoul(n_s, nullptr, 10));
+  }
+  if (query_param(req, "vel", vel_s, sizeof(vel_s))) {
+    vel = static_cast<unsigned>(std::strtoul(vel_s, nullptr, 10));
+  }
+  if (query_param(req, "on", on_s, sizeof(on_s))) {
+    on = on_s[0] != '0';
+  }
+  if (note > 127) {
+    note = 127;
+  }
+  if (vel > 127) {
+    vel = 127;
+  }
+  SynthEvent ev{};
+  if (all_off) {
+    ev.all_off = 1;
+  } else {
+    ev.note = static_cast<uint8_t>(note);
+    ev.velocity = static_cast<uint8_t>(vel);
+    ev.on = on ? 1 : 0;
+  }
+  if (!synth_queue_push(ev)) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "synth queue");
+    return ESP_OK;
+  }
+  char json[80];
+  std::snprintf(json, sizeof(json),
+                "{\"ok\":true,\"note\":%u,\"vel\":%u,\"on\":%s,\"all\":%s}",
+                note, vel, on ? "true" : "false", all_off ? "true" : "false");
+  ESP_LOGI(kTag, "debug note n=%u vel=%u on=%d all=%d", note, vel, on ? 1 : 0,
+           all_off ? 1 : 0);
+  return send_json(req, json);
+}
+
+// POST /api/debug/oled?op=reinit — warm-reset the Grove panel without
+// rebooting. Token-gated. The SH1107 has no reset pin; this re-sends
+// the init list after an ESP RST left the glass powered.
+esp_err_t handle_debug_oled(httpd_req_t* req) {
+  if (!check_local_origin(req) || !check_device_token(req)) {
+    return ESP_OK;
+  }
+  char op[12] = {};
+  query_param(req, "op", op, sizeof(op));
+  if (op[0] == '\0' || std::strcmp(op, "reinit") == 0) {
+    const bool ok = oledui_reinit();
+    char json[64];
+    std::snprintf(json, sizeof(json), "{\"ok\":%s,\"oled\":\"%s\"}",
+                  ok ? "true" : "false", oledui_kind_str());
+    ESP_LOGW(kTag, "oled reinit kind=%s", oledui_kind_str());
+    return send_json(req, json);
+  }
+  httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "op=reinit");
+  return ESP_OK;
+}
+
 }  // namespace
 
 void webui_start() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.stack_size = 8192;
   cfg.lru_purge_enable = true;
-  cfg.max_uri_handlers = 16;
+  cfg.max_uri_handlers = 18;
   // Default prio 5 loses to the Link asio task (8). Saves and status
   // then sit in httpd while Link Audio floods core 0 — the VST save hang.
   cfg.task_priority = 9;
@@ -831,6 +898,14 @@ void webui_start() {
                                  .method = HTTP_POST,
                                  .handler = handle_debug_stall,
                                  .user_ctx = nullptr};
+  const httpd_uri_t note_uri = {.uri = "/api/debug/note",
+                                .method = HTTP_POST,
+                                .handler = handle_debug_note,
+                                .user_ctx = nullptr};
+  const httpd_uri_t oled_uri = {.uri = "/api/debug/oled",
+                                .method = HTTP_POST,
+                                .handler = handle_debug_oled,
+                                .user_ctx = nullptr};
   httpd_register_uri_handler(server, &index_uri);
   httpd_register_uri_handler(server, &get_cfg);
   httpd_register_uri_handler(server, &put_cfg);
@@ -845,6 +920,8 @@ void webui_start() {
   httpd_register_uri_handler(server, &channels_uri);
   httpd_register_uri_handler(server, &ota_uri);
   httpd_register_uri_handler(server, &stall_uri);
+  httpd_register_uri_handler(server, &note_uri);
+  httpd_register_uri_handler(server, &oled_uri);
 
   // Mark this image good once the editor is serving: a bad OTA that never
   // gets this far is rolled back to the previous slot on the next boot.

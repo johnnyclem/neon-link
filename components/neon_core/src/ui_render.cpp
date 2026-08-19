@@ -74,7 +74,7 @@ IconClocks icon_clocks(const UiStatus& s) {
 
 void render_home(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
   if (s.playing && s.big_beat_display) {
-    draw_giant_beat(fb, neon::beat_number(s.phase_milli_beats, s.quantum_beats),
+    draw_beat_stage(fb, s.phase_milli_beats, s.quantum_beats, s.beat_style,
                     lay.height);
     return;
   }

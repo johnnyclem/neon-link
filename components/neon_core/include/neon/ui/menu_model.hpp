@@ -27,6 +27,8 @@ struct UiStatus {
   bool ble_on = false;
   // Full-screen 1/2/3/4 while playing. Default on, matching Config.
   bool big_beat_display = true;
+  // Which beat animation the live screen draws. Default number.
+  uint8_t beat_style = 0;
   // Running firmware version (esp_app_desc_t.version — a git describe
   // string, not hand-maintained), for the System screen's VERSION row
   // (G5 in the ship-gate review: you cannot support a unit in another
@@ -100,8 +102,8 @@ class MenuModel {
   // naming one is the web editor's job, where there is a keyboard.
   static constexpr int kAudioItems = 9;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
-  // MIDI NDG, SS SYNC, BRIGHT, BEAT, VERSION, REBOOT — REBOOT stays last.
-  static constexpr int kSystemItems = 13;
+  // MIDI NDG, SS SYNC, BRIGHT, BEAT, STYLE, VERSION, REBOOT — REBOOT last.
+  static constexpr int kSystemItems = 14;
   // Read-only: the firmware version string, filled in by the renderer from
   // UiStatus rather than by item_value() (MenuModel has no platform code to
   // read esp_app_desc_t from). on_click() must not toggle editing_ for it.

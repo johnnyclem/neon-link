@@ -111,6 +111,20 @@ int scale_of(Framebuffer::Font f) { return static_cast<int>(f); }
 
 }  // namespace
 
+void Framebuffer::copy_from(const Framebuffer& other) {
+  if (this != &other) {
+    std::memcpy(buf_, other.buf_, kSize);
+  }
+}
+
+int Framebuffer::diff_pixels(const Framebuffer& other) const {
+  int n = 0;
+  for (size_t i = 0; i < kSize; ++i) {
+    n += __builtin_popcount(static_cast<unsigned>(buf_[i] ^ other.buf_[i]));
+  }
+  return n;
+}
+
 void Framebuffer::clear() { std::memset(buf_, 0, sizeof(buf_)); }
 
 void Framebuffer::set_pixel(int x, int y, bool on) {
@@ -190,6 +204,36 @@ void Framebuffer::rect(int x, int y, int w, int h, bool on) {
   fill_rect(x, y + h - 1, w, 1, on);
   fill_rect(x, y, 1, h, on);
   fill_rect(x + w - 1, y, 1, h, on);
+}
+
+void Framebuffer::draw_line(int x0, int y0, int x1, int y1, bool on) {
+  int dx = x1 - x0;
+  if (dx < 0) {
+    dx = -dx;
+  }
+  int dy = y0 - y1;
+  if (dy < 0) {
+    dy = -dy;
+  }
+  dy = -dy;
+  const int sx = x0 < x1 ? 1 : -1;
+  const int sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+  for (;;) {
+    set_pixel(x0, y0, on);
+    if (x0 == x1 && y0 == y1) {
+      break;
+    }
+    const int e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
 }
 
 int Framebuffer::glyph_height(Font font) { return 7 * scale_of(font); }

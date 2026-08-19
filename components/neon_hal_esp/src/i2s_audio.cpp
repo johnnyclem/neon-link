@@ -8,6 +8,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "halesp/es8311.hpp"
+#include "sdkconfig.h"
 
 namespace halesp {
 
@@ -185,6 +187,11 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
       (static_cast<int64_t>(cfg.block_frames) * cfg.dma_desc * 1000000) /
       cfg.sample_rate);
   running_ = true;
+#if CONFIG_NEON_BOARD_P4DEVKIT
+  if (!es8311_start()) {
+    ESP_LOGW(kTag, "ES8311 init failed; I2S is up but the 3.5 mm jack may be silent");
+  }
+#endif
   ESP_LOGI(kTag, "I2S up: %lu Hz, %u frames x %u desc, in=%d, latency=%ld us",
            static_cast<unsigned long>(cfg.sample_rate),
            static_cast<unsigned>(cfg.block_frames),
@@ -194,6 +201,9 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
 }
 
 void I2sAudio::stop() {
+#if CONFIG_NEON_BOARD_P4DEVKIT
+  es8311_stop();
+#endif
   if (g_tx != nullptr) {
     i2s_channel_disable(g_tx);
     i2s_del_channel(g_tx);

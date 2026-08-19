@@ -1,7 +1,10 @@
 #include "neon/ui/widgets.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+
+#include "neon/config/model.hpp"
 
 namespace neon::ui {
 
@@ -266,19 +269,140 @@ void paint_border(Framebuffer& fb, int height) {
   fb.fill_rect(kWidth - kBeatInset, 0, kBeatInset, height, false);
 }
 
+uint32_t beat_of(uint32_t phase_milli, uint32_t quantum) {
+  const uint32_t q = quantum != 0 ? quantum : 4;
+  return (phase_milli / 1000u) % q + 1u;
+}
+
+int min_int(int a, int b) { return a < b ? a : b; }
+
+void fill_disc(Framebuffer& fb, int cx, int cy, int r, bool on) {
+  if (r < 1) {
+    return;
+  }
+  const int r2 = r * r;
+  for (int y = -r; y <= r; ++y) {
+    for (int x = -r; x <= r; ++x) {
+      if (x * x + y * y <= r2) {
+        fb.set_pixel(cx + x, cy + y, on);
+      }
+    }
+  }
+}
+
+void stroke_circle(Framebuffer& fb, int cx, int cy, int r, bool on) {
+  if (r < 1) {
+    return;
+  }
+  const int r2 = r * r;
+  const int inner = r > 1 ? (r - 1) * (r - 1) : 0;
+  for (int y = -r; y <= r; ++y) {
+    for (int x = -r; x <= r; ++x) {
+      const int d2 = x * x + y * y;
+      if (d2 <= r2 && d2 >= inner) {
+        fb.set_pixel(cx + x, cy + y, on);
+      }
+    }
+  }
+}
+
+void thick_line(Framebuffer& fb, int x0, int y0, int x1, int y1) {
+  fb.draw_line(x0, y0, x1, y1, true);
+  fb.draw_line(x0 + 1, y0, x1 + 1, y1, true);
+  fb.draw_line(x0, y0 + 1, x1, y1 + 1, true);
+}
+
+void draw_pie_beat(Framebuffer& fb, uint32_t phase_milli, uint32_t quantum,
+                   int height) {
+  const uint32_t q = quantum != 0 ? quantum : 4;
+  const uint32_t beat = beat_of(phase_milli, q);
+  const int cx = kWidth / 2;
+  const int cy = height / 2;
+  const int r = min_int(kWidth, height) / 2 - kBeatInset - 2;
+  if (r < 4) {
+    return;
+  }
+
+  // 12 o'clock, clockwise. Beat 1 is the first slice, so a 4/4 bar
+  // fills a quarter at a time and is full on 4.
+  const float sweep = (static_cast<float>(beat) / static_cast<float>(q)) *
+                      (2.0f * 3.14159265f);
+  const int r2 = r * r;
+  for (int y = -r; y <= r; ++y) {
+    for (int x = -r; x <= r; ++x) {
+      if (x * x + y * y > r2) {
+        continue;
+      }
+      float a = std::atan2(static_cast<float>(x), static_cast<float>(-y));
+      if (a < 0.0f) {
+        a += 2.0f * 3.14159265f;
+      }
+      if (a <= sweep) {
+        fb.set_pixel(cx + x, cy + y, true);
+      }
+    }
+  }
+
+  stroke_circle(fb, cx, cy, r, true);
+  for (uint32_t i = 0; i < q; ++i) {
+    const float a = (static_cast<float>(i) / static_cast<float>(q)) *
+                    (2.0f * 3.14159265f);
+    const int x1 = cx + static_cast<int>(std::sin(a) * static_cast<float>(r));
+    const int y1 = cy - static_cast<int>(std::cos(a) * static_cast<float>(r));
+    fb.draw_line(cx, cy, x1, y1, true);
+  }
+}
+
+void draw_pendulum_beat(Framebuffer& fb, uint32_t phase_milli, int height) {
+  const int cx = kWidth / 2;
+  const int py = kBeatInset + 8;
+  const int length = height - py - kBeatInset - 14;
+  if (length < 16) {
+    return;
+  }
+  // Cosine swing: tick at each extreme. Beat 1 start is left, beat 2
+  // start is right, same as a mechanical metronome.
+  const float beats = static_cast<float>(phase_milli) / 1000.0f;
+  const float theta = -0.55f * std::cos(3.14159265f * beats);
+  const int bx =
+      cx + static_cast<int>(std::sin(theta) * static_cast<float>(length));
+  const int by =
+      py + static_cast<int>(std::cos(theta) * static_cast<float>(length));
+  thick_line(fb, cx, py, bx, by);
+  fb.fill_rect(cx - 4, py - 4, 8, 8, true);
+  fill_disc(fb, bx, by, 7, true);
+}
+
+void draw_pulse_beat(Framebuffer& fb, uint32_t phase_milli, uint32_t quantum,
+                     int height) {
+  const uint32_t q = quantum != 0 ? quantum : 4;
+  const uint32_t beat = beat_of(phase_milli, q);
+  const int cx = kWidth / 2;
+  const int cy = height / 2;
+  const int r_max = min_int(kWidth, height) / 2 - kBeatInset - 2;
+  const float frac = static_cast<float>(phase_milli % 1000u) / 1000.0f;
+  const int r = 6 + static_cast<int>(frac * static_cast<float>(r_max - 6));
+  stroke_circle(fb, cx, cy, r_max, true);
+  stroke_circle(fb, cx, cy, r, true);
+  if (r > 2) {
+    stroke_circle(fb, cx, cy, r - 2, true);
+  }
+  // The click: a filled disc on the attack, larger on the downbeat.
+  if (frac < 0.22f) {
+    fill_disc(fb, cx, cy, beat == 1 ? 10 : 6, true);
+  }
+}
+
 }  // namespace
 
 void draw_giant_beat(Framebuffer& fb, uint32_t beat, int height) {
   if (beat == 0) {
     beat = 1;
   }
-  const bool invert = (beat % 2u) == 0u;
-  if (invert) {
-    fb.fill_rect(0, 0, kWidth, height, true);
-  } else {
-    fb.clear();
-  }
-  const bool ink = !invert;
+  // All four beats are white on black. Full-panel invert on 2/4 did not
+  // refresh cleanly on the Grove SH1107 (ghosted field, few pixels).
+  fb.clear();
+  const bool ink = true;
 
   char digits[8];
   const int n = std::snprintf(digits, sizeof(digits), "%u",
@@ -302,6 +426,26 @@ void draw_giant_beat(Framebuffer& fb, uint32_t beat, int height) {
   for (int i = 0; i < n; ++i) {
     paint_digit(fb, x, y0, cell, digits[i] - '0', ink);
     x += (kDigitW + gap) * cell;
+  }
+  paint_border(fb, height);
+}
+
+void draw_beat_stage(Framebuffer& fb, uint32_t phase_milli, uint32_t quantum,
+                     uint8_t style, int height) {
+  fb.clear();
+  switch (static_cast<BeatStyle>(style)) {
+    case BeatStyle::kPie:
+      draw_pie_beat(fb, phase_milli, quantum, height);
+      break;
+    case BeatStyle::kPendulum:
+      draw_pendulum_beat(fb, phase_milli, height);
+      break;
+    case BeatStyle::kPulse:
+      draw_pulse_beat(fb, phase_milli, quantum, height);
+      break;
+    default:
+      draw_giant_beat(fb, beat_of(phase_milli, quantum), height);
+      return;
   }
   paint_border(fb, height);
 }

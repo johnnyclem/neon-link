@@ -21,6 +21,10 @@ enum class PanelKind : uint8_t {
 // I2C bus; SPI is only attempted when pins are configured (>= 0).
 PanelKind panel_init();
 
+// Forget a previous probe so the next panel_init() talks to the glass
+// again. Used after a warm reset left the SH1107 powered but unusable.
+void panel_reset();
+
 // Push the monochrome framebuffer to the active panel. No-op if none.
 bool panel_flush(const neon::Framebuffer& fb);
 

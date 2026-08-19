@@ -97,6 +97,16 @@ enum class PriorityProfile : uint8_t {
   kLegacy = 1,
 };
 
+// Full-screen beat animation on the live panel (and its web echo) while
+// the transport is running. Number is the original giant 1/2/3/4.
+enum class BeatStyle : uint8_t {
+  kNumber = 0,
+  kPie = 1,
+  kPendulum = 2,
+  kPulse = 3,
+  kCount = 4,
+};
+
 struct Config {
   EngineConfig engine;
 
@@ -180,10 +190,15 @@ struct Config {
   // client on the same LAN or AP from setting an arbitrary Host header by
   // hand. 32 hex chars (128 bits) plus NUL.
   char device_token[33] = "";
+
+  // Appended in v7. Which beat animation the live screen draws. Independent
+  // of big_beat_display, which remains the on/off. A v6 blob decodes with
+  // this back at kNumber — see config_decode.
+  BeatStyle beat_style = BeatStyle::kNumber;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 6;
+inline constexpr uint16_t kConfigVersion = 7;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;
@@ -199,6 +214,11 @@ size_t sanitize_hostname(const char* in, char* out, size_t cap);
 // ap_ssid when set, otherwise "<DEVICE-NAME>-XXXX" from the MAC.
 size_t ap_ssid_for(const Config& cfg, const uint8_t mac[6], char* out,
                    size_t cap);
+
+// SSID/password/policy/SoftAP identity. Used to bounce STA and to
+// exempt those fields from the G6 NVS hold — a network Save that only
+// lives in RAM reboots back to the old AP policy.
+bool network_identity_changed(const Config& a, const Config& b);
 
 // This unit's setup AP password, derived from its own MAC so a fleet of
 // units never shares one key (G1 in the ship-gate review: a printed,

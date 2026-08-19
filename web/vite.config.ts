@@ -57,6 +57,7 @@ const MOCK_CONFIG = {
   device_name: "neon-link",
   display_brightness: 200,
   big_beat_display: true,
+  beat_style: "number",
   tempo_milli_bpm: 120000,
   wifi: { networks: [], retries: 3, ssid: "", pass: "" },
   ap: {
@@ -113,7 +114,19 @@ function mockApi(): Plugin {
           return;
         }
         if (req.url?.startsWith("/status")) {
-          res.end(JSON.stringify(MOCK_STATUS));
+          const elapsed = Date.now() / 1000;
+          const bpm = 120;
+          const quantum = 4;
+          const beats = (elapsed * bpm) / 60;
+          res.end(
+            JSON.stringify({
+              ...MOCK_STATUS,
+              playing: true,
+              bpm,
+              quantum,
+              phase_milli: Math.floor((beats % quantum) * 1000),
+            }),
+          );
           return;
         }
         res.statusCode = 404;

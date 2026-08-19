@@ -68,6 +68,7 @@ let config = {
   device_name: "neon-link",
   display_brightness: 255,
   big_beat_display: true,
+  beat_style: "number",
   audio: {
     enabled: true,
     role_l: "mix",

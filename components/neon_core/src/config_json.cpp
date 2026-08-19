@@ -114,6 +114,19 @@ const char* policy_str(MidiRouteConfig::ClockPolicy p) {
   }
 }
 
+const char* beat_style_str(BeatStyle s) {
+  switch (s) {
+    case BeatStyle::kPie:
+      return "pie";
+    case BeatStyle::kPendulum:
+      return "pendulum";
+    case BeatStyle::kPulse:
+      return "pulse";
+    default:
+      return "number";
+  }
+}
+
 void get_u32(const cJSON* obj, const char* key, uint32_t* out) {
   const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
   if (cJSON_IsNumber(v)) {
@@ -290,6 +303,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddStringToObject(root, "device_name", cfg.device_name);
   cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
   cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
+  cJSON_AddStringToObject(root, "beat_style", beat_style_str(cfg.beat_style));
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -482,6 +496,18 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
   get_str(root, "device_name", cfg->device_name, sizeof(cfg->device_name));
   get_u8(root, "display_brightness", &cfg->display_brightness);
   get_bool_u8(root, "big_beat_display", &cfg->big_beat_display);
+  {
+    const cJSON* style = cJSON_GetObjectItemCaseSensitive(root, "beat_style");
+    if (str_eq(style, "pie")) {
+      cfg->beat_style = BeatStyle::kPie;
+    } else if (str_eq(style, "pendulum")) {
+      cfg->beat_style = BeatStyle::kPendulum;
+    } else if (str_eq(style, "pulse")) {
+      cfg->beat_style = BeatStyle::kPulse;
+    } else if (str_eq(style, "number")) {
+      cfg->beat_style = BeatStyle::kNumber;
+    }
+  }
 
   const cJSON* ble = cJSON_GetObjectItemCaseSensitive(root, "ble");
   if (cJSON_IsObject(ble)) {

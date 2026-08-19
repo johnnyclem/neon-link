@@ -50,32 +50,37 @@ config NEON_AUDIO_AMY
 menu "I2S pin map"
     depends on NEON_AUDIO
 
-comment "-1 disables a pin. AMYBOARD defaults are the PCM3060 LINE map."
+comment "-1 disables a pin. AMYBOARD = PCM3060 LINE; P4DEVKIT = ES8311 jack."
 comment "Audio stays silent (and says so) until DOUT/BCLK/LRCLK are set."
 
 config NEON_I2S_MCLK
-    int "MCLK (master clock, 256fs — the PCM3060 needs it)"
+    int "MCLK (master clock, 256fs)"
     default 3 if NEON_BOARD_AMYBOARD
+    default 13 if NEON_BOARD_P4DEVKIT
     default -1
 
 config NEON_I2S_BCLK
     int "BCLK (bit clock)"
     default 8 if NEON_BOARD_AMYBOARD
+    default 12 if NEON_BOARD_P4DEVKIT
     default -1
 
 config NEON_I2S_LRCLK
     int "LRCLK / WS (word select)"
     default 2 if NEON_BOARD_AMYBOARD
+    default 10 if NEON_BOARD_P4DEVKIT
     default -1
 
 config NEON_I2S_DOUT
-    int "DOUT (ESP → PCM3060 DAC)"
+    int "DOUT (ESP → DAC)"
     default 6 if NEON_BOARD_AMYBOARD
+    default 9 if NEON_BOARD_P4DEVKIT
     default -1
 
 config NEON_I2S_DIN
-    int "DIN (PCM3060 ADC → ESP; unused unless NEON_AUDIO_INPUT)"
+    int "DIN (ADC → ESP; unused unless NEON_AUDIO_INPUT)"
     default 9 if NEON_BOARD_AMYBOARD
+    default 11 if NEON_BOARD_P4DEVKIT
     default -1
 
 endmenu

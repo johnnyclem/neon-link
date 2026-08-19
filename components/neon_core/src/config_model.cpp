@@ -145,6 +145,9 @@ void config_sanitize(Config* cfg) {
   std::memcpy(cfg->device_name, host, sizeof(host));
 
   cfg->big_beat_display = cfg->big_beat_display ? 1 : 0;
+  if (cfg->beat_style >= BeatStyle::kCount) {
+    cfg->beat_style = BeatStyle::kNumber;
+  }
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -274,6 +277,25 @@ size_t sanitize_hostname(const char* in, char* out, size_t cap) {
   return n;
 }
 
+bool network_identity_changed(const Config& a, const Config& b) {
+  if (a.ap_policy != b.ap_policy || a.ap_require_pass != b.ap_require_pass ||
+      a.ap_hidden != b.ap_hidden || a.ap_channel != b.ap_channel) {
+    return true;
+  }
+  if (std::strcmp(a.ap_ssid, b.ap_ssid) != 0 ||
+      std::strcmp(a.ap_pass, b.ap_pass) != 0) {
+    return true;
+  }
+  for (int i = 0; i < kWifiSlots; ++i) {
+    if (std::strcmp(a.wifi[i].ssid, b.wifi[i].ssid) != 0 ||
+        std::strcmp(a.wifi[i].pass, b.wifi[i].pass) != 0 ||
+        a.wifi[i].hidden != b.wifi[i].hidden) {
+      return true;
+    }
+  }
+  return false;
+}
+
 size_t ap_ssid_for(const Config& cfg, const uint8_t mac[6], char* out,
                    size_t cap) {
   if (out == nullptr || cap == 0) {
@@ -371,6 +393,10 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
     // just lock the owner out of their own OTA and factory-reset until a
     // web UI that happens to send it, which never existed, connects.
     std::memset(out->device_token, 0, sizeof(out->device_token));
+  }
+  if (h.version < 7) {
+    // beat_style sits in what was v6 tail padding after device_token.
+    out->beat_style = BeatStyle::kNumber;
   }
   config_sanitize(out);
   return true;

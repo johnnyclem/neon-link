@@ -57,6 +57,18 @@ T0's analyzer. T1 closes the more damaging half of G2.
    `docs/AMYBOARD.md`, the polarity is documented inconsistently upstream).
 2. Command a **1 kHz tone** from the synth voice. Sustained, not a click —
    a transient will not give a tuner anything to lock onto.
+
+   ```
+   TOKEN=$(curl -s http://$DUT/api/config | python3 -c 'import json,sys; print(json.load(sys.stdin)["device_token"])')
+   curl -s -X PUT http://$DUT/api/config \
+     -H 'Content-Type: application/json' \
+     -d '{"audio":{"amy_enabled":true,"amy_patch":2,"amy_gain":200,"role_l":"mix","role_r":"mix"}}'
+   curl -s -X POST "http://$DUT/api/debug/note?n=83&vel=100&on=1" \
+     -H "X-Neon-Token: $TOKEN"
+   ```
+
+   MIDI 83 is B5 ≈ 988 Hz. `amy_patch` 2 is the sine. `on=0` or `all=1`
+   stops it.
 3. Open any tuner app on your phone. Hold it to the speaker.
 
 ### Read
@@ -130,7 +142,8 @@ needs to say "saves when you stop" somewhere visible. Write the result into
 `HANDOFF.md` §1 G6 either way.
 
 (Decided in firmware already: mid-play yank **may lose** the change; idle
-edits persist. T2c confirms that on this image.)
+edits persist. **T2c 2026-08-18:** yank after PUT `big_beat=false` while
+playing; reboot had `big_beat=true`. Pass.)
 
 ---
 
@@ -189,8 +202,9 @@ recovery could be luck; three consecutive clean recoveries is evidence.
 
 Append to `docs/FRIENDS_FAMILY_HANDOFF.md` §1 under each gate:
 
-- **G2** — T1 tuner reading in Hz, T1b pan result. Note explicitly that
-  `bit_shift` / slot format remains **open** pending the analyzer.
+- **G2** — T1 tuner **988 Hz (B5)** 2026-08-18. T1b pan: left 128/0,
+  right 0/128. `bit_shift` / slot format remains **open** pending the
+  analyzer.
 - **G6** — T2a/T2b pass or fail, and the **T2c decision** with the UI
   consequence if changes are lost.
 - **G3** — three stall runs: ppm and residual before, after, recovery time.

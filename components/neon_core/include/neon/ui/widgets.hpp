@@ -54,10 +54,30 @@ void draw_bar(Framebuffer& fb, int y, uint32_t phase_milli_beats,
               uint32_t quantum_beats, bool running, int h = kBarH,
               int tick_h = kBarTickH);
 
-// Full-panel beat number for a playing transport. 1-based `beat`. Odd
-// beats (1, 3, …) are the largest white glyph that fits inside a 2 px
-// black border; even beats invert the panel (black glyph, white field).
+// Full-panel beat number for a playing transport. 1-based `beat`.
+// White glyph on a black field, 2 px black border, all four beats.
 void draw_giant_beat(Framebuffer& fb, uint32_t beat, int height = kHeight);
+
+// Full-panel beat animation. `style` is neon::BeatStyle as a byte
+// (widgets stay free of the config header). `phase_milli` is the same
+// milli-beat figure the phase bar uses, so the pie, the pendulum and
+// the pulse sit on the identical grid as the number.
+void draw_beat_stage(Framebuffer& fb, uint32_t phase_milli,
+                     uint32_t quantum, uint8_t style, int height = kHeight);
+
+// I2C/SPI page writes scan top-to-bottom. A full-panel beat frame that
+// is composed at the audible downbeat still paints its last rows late
+// unless the flush starts a couple of milliseconds early. Link phase is
+// already correct; this is display transport, not the timeline.
+inline constexpr int64_t kBeatFlushLeadUs = 3000;
+
+// True when the next flush should start `kBeatFlushLeadUs` before the
+// beat: either ≥30% of pixels change, or the live beat stage is about
+// to jump to a new discrete frame (number / pie / pulse). Pendulum is
+// continuous, so it only leads when the pixel test fires.
+inline bool anticipate_beat_flush(bool beat_stage_jumps, int changed_pixels) {
+  return Framebuffer::is_big_redraw(changed_pixels) || beat_stage_jumps;
+}
 
 // ---- lists --------------------------------------------------------------
 

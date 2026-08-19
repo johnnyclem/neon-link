@@ -250,10 +250,15 @@ void audio_task(void*) {
            cfg.la_fullband ? "bypass" : "120 Hz-5 kHz");
 
   bool i2s_up = false;
+  bool software_pace = false;
+  uint64_t soft_frames = 0;
+  int64_t soft_next_us = 0;
+  const bool i2s_pins =
+      kPinI2sBclk >= 0 && kPinI2sLrclk >= 0 && kPinI2sDout >= 0;
 
   for (;;) {
     // --- I2S lifetime (G6) --------------------------------------------
-    if (cfg.i2s_needed != 0 && !i2s_up) {
+    if (cfg.i2s_needed != 0 && !i2s_up && !software_pace) {
       if (io.start(io_cfg)) {
         i2s_up = true;
         clock.reset(kSampleRate);
@@ -261,18 +266,31 @@ void audio_task(void*) {
         have_timeline = false;
         neon_config_hold_nvs(true);
         ESP_LOGI(kTag, "I2S up; NVS held");
+      } else if (!i2s_pins) {
+        // No I2S pin map (or pins still -1). Keep the render loop so
+        // Link Audio can still stream over Wi-Fi / RJ45.
+        software_pace = true;
+        clock.reset(kSampleRate);
+        cfg_version = 0;
+        have_timeline = false;
+        soft_frames = 0;
+        soft_next_us = 0;
+        ESP_LOGW(kTag, "no I2S pins; Link Audio paced in software");
       } else {
         ESP_LOGW(kTag, "I2S unavailable (check the I2S pin map)");
         vTaskDelay(pdMS_TO_TICKS(200));
         continue;
       }
-    } else if (cfg.i2s_needed == 0 && i2s_up) {
-      io.stop();
-      i2s_up = false;
-      neon_config_hold_nvs(false);
-      ESP_LOGI(kTag, "I2S down; NVS may flush");
+    } else if (cfg.i2s_needed == 0 && (i2s_up || software_pace)) {
+      if (i2s_up) {
+        io.stop();
+        i2s_up = false;
+        neon_config_hold_nvs(false);
+        ESP_LOGI(kTag, "I2S down; NVS may flush");
+      }
+      software_pace = false;
     }
-    if (!i2s_up) {
+    if (!i2s_up && !software_pace) {
       vTaskDelay(pdMS_TO_TICKS(6));
       const uint32_t idle_cfg = audio_config_bus().version();
       if (idle_cfg != cfg_version) {
@@ -284,8 +302,12 @@ void audio_task(void*) {
     // --- clocks and configuration -------------------------------------
     int64_t mark_us = 0;
     uint64_t mark_frames = 0;
-    while (io.dma_mark(mark_us, mark_frames)) {
-      clock.update(mark_us, mark_frames);
+    if (i2s_up) {
+      while (io.dma_mark(mark_us, mark_frames)) {
+        clock.update(mark_us, mark_frames);
+      }
+    } else {
+      clock.update(esp_timer_get_time(), soft_frames);
     }
 
     const uint32_t new_cfg_version = audio_config_bus().version();
@@ -316,7 +338,8 @@ void audio_task(void*) {
     drain_link_audio(link_audio);
 
     // --- where this block lands on the session grid --------------------
-    const uint64_t first_frame = io.frames_written();
+    const uint64_t first_frame =
+        i2s_up ? io.frames_written() : soft_frames;
     const int64_t t0 = clock.us_at_frame(first_frame) + kDacLatencyUs;
     const int64_t t1 =
         clock.us_at_frame(first_frame + kBlockFrames) + kDacLatencyUs;
@@ -459,10 +482,24 @@ void audio_task(void*) {
       g_stalls_done.fetch_add(1, std::memory_order_relaxed);
     }
 
-    if (!io.write_block(g_out_i16)) {
-      ++underruns;
-      // The driver is not taking blocks; yield rather than spin the core.
-      vTaskDelay(1);
+    if (i2s_up) {
+      if (!io.write_block(g_out_i16)) {
+        ++underruns;
+        vTaskDelay(1);
+      }
+    } else {
+      constexpr int64_t kBlockUs =
+          (static_cast<int64_t>(kBlockFrames) * 1000000) / kSampleRate;
+      const int64_t now = esp_timer_get_time();
+      if (soft_next_us == 0) {
+        soft_next_us = now + kBlockUs;
+      }
+      const int64_t sleep_us = soft_next_us - now;
+      if (sleep_us > 1000) {
+        vTaskDelay(pdMS_TO_TICKS(static_cast<uint32_t>(sleep_us / 1000)));
+      }
+      soft_next_us += kBlockUs;
+      soft_frames += kBlockFrames;
     }
 
     // --- status ---------------------------------------------------------

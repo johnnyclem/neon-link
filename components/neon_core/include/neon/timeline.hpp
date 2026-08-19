@@ -51,6 +51,19 @@ inline uint32_t beat_number(uint32_t phase_milli_beats, uint32_t quantum_beats) 
   return (phase_milli_beats / 1000u) % q + 1u;
 }
 
+// Microseconds from `now_us` until the next whole-beat boundary.
+// 0 when there is no tempo yet. At the exact boundary this is one full
+// beat away — the current beat has already begun.
+inline int64_t us_until_next_beat(const TimelineSnapshot& tl, int64_t now_us) {
+  if (tl.tempo_mpb_q32 == 0) {
+    return 0;
+  }
+  const uint32_t phase = phase_milli_beats(tl, now_us);
+  const uint32_t remaining_milli = 1000u - (phase % 1000u);
+  const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
+  return static_cast<int64_t>(mpb_us * remaining_milli / 1000u);
+}
+
 // Single-writer / single-reader seqlock. The payload is stored as relaxed
 // atomic words (data-race-free by construction) and the protocol is fenced
 // with seq_cst barriers on both sides — conservative and cheap at the call

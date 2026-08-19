@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "neon/timeline.hpp"
+#include "neon/ui/widgets.hpp"
 
 namespace {
 
@@ -25,6 +26,26 @@ TEST_CASE("beat_number is 1-based inside the bar") {
   CHECK(neon::beat_number(3000, 4) == 4);
   CHECK(neon::beat_number(3999, 4) == 4);
   CHECK(neon::beat_number(0, 0) == 1);  // quantum 0 → 4
+}
+
+TEST_CASE("us_until_next_beat and a 3 ms display lead cross the boundary") {
+  neon::TimelineSnapshot tl;
+  tl.tempo_mpb_q32 = 500000ull << 32;  // 120 BPM, 500 ms/beat
+  tl.origin_us = 0;
+  tl.beat_at_origin_q32 = 0;
+  tl.quantum_beats = 4;
+
+  CHECK(neon::us_until_next_beat(tl, 0) == 500000);
+  CHECK(neon::us_until_next_beat(tl, 499000) == 1000);
+  CHECK(neon::us_until_next_beat({}, 0) == 0);
+
+  // 3 ms before the downbeat: still beat 1. Compose as of now+lead and
+  // the panel is already drawing beat 2 when the click lands.
+  const int64_t now = 500000 - neon::ui::kBeatFlushLeadUs;
+  CHECK(neon::beat_number(neon::phase_milli_beats(tl, now), 4) == 1);
+  CHECK(neon::beat_number(
+            neon::phase_milli_beats(tl, now + neon::ui::kBeatFlushLeadUs), 4) ==
+        2);
 }
 
 TEST_CASE("SeqLock: single-threaded round trip and versioning") {

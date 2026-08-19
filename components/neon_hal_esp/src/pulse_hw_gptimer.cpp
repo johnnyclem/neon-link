@@ -139,9 +139,15 @@ bool IRAM_ATTR PulseHwGptimer::on_alarm(gptimer_handle_t timer,
     }
     const uint32_t late = static_cast<uint32_t>(now - due);
     g_edges.fetch_add(1, std::memory_order_relaxed);
-    g_late_sum_us.fetch_add(late, std::memory_order_relaxed);
-    if (late > g_late_max_us.load(std::memory_order_relaxed)) {
-      g_late_max_us.store(late, std::memory_order_relaxed);
+    // Catch-up of a past-due backlog (first timeline / ext-clock
+    // retime) is not a scheduling miss. 200 ms is well above the 67 ms
+    // G7 horizon, so a real stall still lands in late_max.
+    constexpr uint32_t kCatchUpUs = 200000;
+    if (late <= kCatchUpUs) {
+      g_late_sum_us.fetch_add(late, std::memory_order_relaxed);
+      if (late > g_late_max_us.load(std::memory_order_relaxed)) {
+        g_late_max_us.store(late, std::memory_order_relaxed);
+      }
     }
     ++tail;
   }

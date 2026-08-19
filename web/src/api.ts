@@ -170,6 +170,8 @@ export interface Config {
   display_brightness: number;
   /** Full-screen 1/2/3/4 on the panel while the transport is running. */
   big_beat_display: boolean;
+  /** Which beat animation the live screen (and this page) draw. */
+  beat_style?: "number" | "pie" | "pendulum" | "pulse";
   audio: AudioConfig;
   tempo_milli_bpm: number;
   wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };

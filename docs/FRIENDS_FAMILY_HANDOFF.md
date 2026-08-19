@@ -55,6 +55,13 @@ delay). That matches the PCM3060 hardware-mode default.
 1 kHz sine: no zero-alternation, no visible slew limiting. Do not
 troubleshoot this by ear.
 
+**Bench 2026-08-18 — T1 (no scope).** DUT `192.168.50.252`, image
+`0.0.1-19-gc590035-dirty`. Sine patch 2, MIDI 83 held via
+`POST /api/debug/note`. Phone tuner: **988 Hz (B5)**. Not 494 Hz.
+T1b meters: left solo peak 128/0, right solo 0/128. T1c mix peaks
+128/128 (were 0). Packing and L/R assignment **pass**. `bit_shift` /
+slot format still **open** (needs analyzer).
+
 ### G3. SampleClock frame domain (review §C2) — **landed in tree**
 
 **Symptom.** `audio_service.cpp` computes presentation time as
@@ -174,6 +181,12 @@ Live RAM is what they heard. A silent evaporating *idle* edit is a
 support ticket you cannot debug remotely. A lost mid-play tweak is
 not.
 
+**Exception — network identity.** SSID/password/`ap_policy`/SoftAP
+fields persist even while G6 is held. Bench 2026-08-18: Save of
+`clemhaus` started STA, reboot reloaded Always. A friend changing
+WiFi networks would hit that. One NVS stall on a network Save is
+better than a silent revert. Other mid-play edits still queue.
+
 G6 and G7 are one pair. Deferred commit is what makes the refill
 horizon safe. Lengthening the horizon (G7, 67 ms) is what makes a
 missed commit survivable. Shipping one without the other leaves the
@@ -222,9 +235,20 @@ hard reset (no `flush_now`). After reboot:
 | `audio.running` | **false** |
 
 T2b **pass**. Settings restored afterwards via PUT + `/api/reboot`.
-T2c (yank mid-play, change must evaporate) not run.
 `GET /api/status` `audio.running` stays stale-true until reboot if
 I2S stops mid-session — do not use it as the mute tripwire.
+
+**Bench 2026-08-18 — T2c yank.** Same DUT/image. I2S up, Link playing,
+PUT `big_beat_display:false` (`rev` 4→5, `late_max` stayed 49,
+`i2s_write_failures` 0). USB yanked 8 s later, no mute/stop. After
+replug (`uptime` 7):
+
+| | RAM before yank | NVS after yank |
+|---|---|---|
+| `big_beat_display` | false | **true** |
+
+T2c **pass**. Mid-play edit evaporated. G6 hold + persist policy is
+closed on this image.
 
 ### G7. GPTimer alarm path stays in IRAM — **landed in tree**
 
@@ -270,7 +294,11 @@ horizon still at 15 ms.
 3. After G6 lands: a forced NVS commit *while stopped*, then
    immediate transport start, must not show elevated `late_max_us` on
    the first beats. Refill has to be full before the first alarm.
-   **Not run.**
+   **Not run.** Bench Phase 0 saw `late_max_us = 4.025 s` at uptime
+   144 s — a real `now-due`, not a zero-init. Boot that morning
+   acquired then lost CLK IN (~1.3 s to 3.3 s). Catch-up edges
+   `> 200 ms` are now excluded from `late_max` (in tree). G7.3
+   (first beats after idle commit) still not run.
 
 ---
 
@@ -291,8 +319,50 @@ horizon still at 15 ms.
 
 ### D1. Does Link Audio ship, and in what state?
 
-Blocked on the Studio Mode plan (`studio-mode-test-plan.md`). Three
-outcomes:
+**Phase 0 (SoftAP multicast gate) — 2026-08-18, AMYboard.**
+Raw observations, not a ship verdict.
+
+- DUT: AMYboard, `0.0.1-19-gc590035-dirty`, `ap_policy=always`, SoftAP
+  `NEON-LINK-6BA0` **open** (not `link1234`), channel 1, AP-only at
+  `192.168.4.1`. I2S already up (leftover subscribe idle).
+- Step 4: after associate, ping 3/3 (3.6–87 ms), `GET /api/status` 200.
+  First `networksetup` join failed (`Could not find network` / `tmpErr`);
+  second attempt got DHCP `192.168.4.2`. UART: `station … join, AID=1`.
+- Peer: module saw **1 peer immediately**. Held **peers=1 for the full
+  10:00**, no flap (`peer_min=peer_max=1`, 0 status drops).
+- Tempo: module `set_bpm` 120, Live dictated **111.0** from the first
+  sample and it stayed 111.0. So Live → module tempo already matched at
+  join. No mid-run tempo change (nobody moved Live's tempo).
+- Transport: `playing=false` the whole watch. Clock output not scored.
+- Module `/api/status` peer count = 1 the whole time (second witness).
+- macOS: **did not hop off during the 10 min watch**. Earlier dry-join
+  did hop back to the house LAN within seconds (captive / no-internet).
+  End-of-run restore to `clemhaus` failed (`networksetup -3900`); Mac
+  stayed on `192.168.4.2` until a manual rejoin. Chat path is house Wi-Fi
+  (`192.168.50.148`).
+- Saving a LAN SSID from the editor **did start STA** (RAM apply). It
+  did not stick across reboot: I2S was up, G6 held NVS, so the three
+  Saves never printed `config saved`. Boot then reloaded `ap_policy=always`
+  from flash. Editor Save vs Always-AP is still a real UX hole
+  (`wifi_identity_changed` ignored policy until the follow-up patch).
+
+Phase 0 multicast question: **peer discovery over this SoftAP works and
+holds ten minutes.** Studio Mode is not killed by multicast.
+
+**Phase 1 B-STA (same day, same DUT).** After leaving Always-AP:
+STA `clemhaus` 192.168.50.252, OLED STA, audio `enabled=false` and
+subscribe cleared, I2S down (status counters frozen). **peers=1 for
+≥37 min**, no flap. Live tempo 115 → 91 → 77 (operator: two changes
+during the watch). Pulse edges advancing, `late_avg_us` 436.
+`late_max_us` 4.025 s is boot residue (already set at uptime 144 s).
+**P5 CLK1-vs-Ref not recorded.** B-AP not run.
+
+Full write-up for the plan author: `docs/STUDIO_MODE_RESULTS.md`.
+The four-day plan is still worth running. Remaining product notes:
+open AP (G1), macOS no-internet hop, editor Save vs Always-AP / G6.
+
+Blocked on the rest of the Studio Mode plan (`studio-mode-test-plan.md`).
+Three outcomes:
 
 - **Passes** → ships, with the Stage/Studio mode split in the UI.
 - **Marginal** → ships **off by default**, documented as experimental. G4

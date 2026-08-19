@@ -1,0 +1,709 @@
+{
+  "started_utc": "2026-08-18T21:07:27.993954+00:00",
+  "ap_ssid": "NEON-LINK-6BA0",
+  "ap_pass": "(none / open)",
+  "module_ip": "192.168.4.1",
+  "minutes": 10.0,
+  "pre_ip": "192.168.50.148",
+  "samples": [
+    {
+      "t": "2026-08-18T21:08:03.809887+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:08:13.945200+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:08:23.976025+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:08:34.007595+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:08:44.042162+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:08:54.087674+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:04.130584+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:14.176957+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:24.260876+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:34.294123+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:44.326045+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:09:54.368049+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:04.423852+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:14.570782+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:24.628571+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:34.690197+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:44.723865+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:10:54.757327+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:04.876460+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:14.934682+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:24.992636+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:35.046124+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:45.099109+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:11:55.215726+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:05.252990+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:15.322142+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:25.372106+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:35.435465+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:45.556840+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:12:55.614046+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:05.651961+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:15.697092+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:25.757899+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:35.884120+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:45.914794+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:13:55.954222+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:06.012233+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:16.042609+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:26.092647+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:36.126219+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:46.158599+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:14:56.199890+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:06.240315+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:16.320314+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:26.380952+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:36.469929+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:46.509077+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:15:56.561603+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:06.624677+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:16.692594+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:26.838156+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:36.902204+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:46.961136+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:16:57.019240+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:07.061619+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:17.181064+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:27.216488+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:37.295936+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:47.356859+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    },
+    {
+      "t": "2026-08-18T21:17:57.426662+00:00",
+      "http": 200,
+      "peers": 1,
+      "bpm": 111.0,
+      "playing": false,
+      "ip": "192.168.4.1",
+      "setup_ap": true,
+      "ap_ssid": "NEON-LINK-6BA0"
+    }
+  ],
+  "macos_dropped": false,
+  "association_ok": true,
+  "unicast_ok": true,
+  "join_msg": [
+    "Could not find network NEON-LINK-6BA0.",
+    ""
+  ],
+  "sta_ip": "192.168.4.2",
+  "ping_ok": true,
+  "ping": "PING 192.168.4.1 (192.168.4.1): 56 data bytes\n64 bytes from 192.168.4.1: icmp_seq=0 ttl=64 time=86.807 ms\n64 bytes from 192.168.4.1: icmp_seq=1 ttl=64 time=63.489 ms\n64 bytes from 192.168.4.1: icmp_seq=2 ttl=64 time=3.571 ms\n\n--- 192.168.4.1 ping statistics ---\n3 packets transmitted, 3 packets received, 0.0% packet loss\nround-trip min/avg/max/stddev = 3.571/51.289/86.807/35.059 ms",
+  "status_http": 200,
+  "status0": {
+    "bpm": 111.0,
+    "peers": 1,
+    "playing": false,
+    "network": "none",
+    "ext_clock": false,
+    "uptime_s": 35,
+    "phase_milli": 1438,
+    "quantum": 4,
+    "tempo_valid": true,
+    "hostname": "neon-link.local",
+    "device_name": "neon-link",
+    "ip": "192.168.4.1",
+    "setup_ap": true,
+    "ap_ssid": "NEON-LINK-6BA0",
+    "wifi_ssid": "clemhaus",
+    "wifi_pass_len": 12,
+    "wifi_fail_reason": 0,
+    "firmware": "0.0.1-19-gc590035-dirty",
+    "rev": 0,
+    "persist_lazy": true,
+    "set_bpm": 120.0,
+    "pulse": {
+      "edges": 552,
+      "late_max_us": 16977,
+      "late_avg_us": 57
+    },
+    "audio": {
+      "running": true,
+      "underruns": 0,
+      "peak_l": 0,
+      "peak_r": 0,
+      "publishing": false,
+      "subscribers": 0,
+      "sub_state": "idle",
+      "sub_rate": 0,
+      "sub_dropped": 0,
+      "fill_ms": 0,
+      "clock_ppm": 3,
+      "clock_residual_us": 13,
+      "rx_dropped": 0,
+      "jit_underruns": 0,
+      "tx_dropped": 0,
+      "trim_ppm": 0,
+      "concealed": 0,
+      "fill_frames": 0,
+      "rx_high_water": 0,
+      "i2s_write_failures": 0,
+      "forced_stalls": 0,
+      "heap_free_internal": 29219,
+      "heap_free_psram": 7497244,
+      "rssi": 0,
+      "priority_profile": "fixed",
+      "req_jitter_ms": 777,
+      "eff_jitter_ms": 777,
+      "oled": "sh1107"
+    }
+  },
+  "peer_min": 1,
+  "peer_max": 1,
+  "peer_last": 1,
+  "peer_unique": [
+    1
+  ],
+  "tempo_min": 111.0,
+  "tempo_max": 111.0,
+  "tempo_changed": false,
+  "status_drops": 0,
+  "ended_utc": "2026-08-18T21:18:07.433974+00:00",
+  "restore": {
+    "attempts": [
+      {
+        "ssid": "clemhaus",
+        "msg": "Failed to join network clemhaus.\nError: -3900  The operation couldn\u2019t be completed. tmpErrFailed to join network clemhaus.\nError: -3900  The operation couldn\u2019t be completed. tmpErr",
+        "ip": "192.168.4.2"
+      },
+      {
+        "ssid": "clemhaus_IoT",
+        "msg": "Failed to join network clemhaus_IoT.\nError: -3900  The operation couldn\u2019t be completed. tmpErrFailed to join network clemhaus_IoT.\nError: -3900  The operation couldn\u2019t be completed. tmpErr",
+        "ip": "192.168.4.2"
+      },
+      {
+        "ssid": "(toggle)",
+        "ip": "192.168.4.2"
+      }
+    ],
+    "restored_ip": "192.168.4.2"
+  }
+}

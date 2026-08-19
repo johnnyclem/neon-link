@@ -8,6 +8,8 @@
 #include "driver/spi_master.h"
 #include "esp_app_desc.h"
 #include "esp_eth.h"
+#include "esp_eth_mac.h"
+#include "esp_eth_phy.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -97,8 +99,69 @@ bool wifi_driver_init() {
 bool wifi_driver_init() { return false; }
 #endif
 
+bool attach_eth_netif(esp_eth_handle_t handle) {
+  uint8_t mac_addr[6] = {};
+  esp_read_mac(mac_addr, ESP_MAC_ETH);
+  esp_eth_ioctl(handle, ETH_CMD_S_MAC_ADDR, mac_addr);
+
+  esp_netif_inherent_config_t base = ESP_NETIF_INHERENT_DEFAULT_ETH();
+  base.route_prio = 128;
+  esp_netif_config_t netif_cfg = {
+      .base = &base,
+      .driver = nullptr,
+      .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH,
+  };
+  g_eth_netif = esp_netif_new(&netif_cfg);
+  if (g_eth_netif == nullptr) {
+    return false;
+  }
+  if (esp_netif_attach(g_eth_netif, esp_eth_new_netif_glue(handle)) != ESP_OK) {
+    return false;
+  }
+  ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
+                                             &on_eth_event, nullptr));
+  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                             &on_ip_event, nullptr));
+  return esp_eth_start(handle) == ESP_OK;
+}
+
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ETH_USE_ESP32_EMAC
+// Waveshare P4-Module-DEV-KIT / Function-EV: on-chip EMAC + IP101 RMII.
+// Pins are IDF's ESP32-P4 EMAC defaults (MDC 31, MDIO 52, CLKIN 50,
+// TX_EN 49, TXD 34/35, CRS/RX 28/29/30). PHY reset GPIO51, addr 1.
+bool ethernet_start_emac_ip101() {
+  eth_esp32_emac_config_t emac = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+  eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
+  eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
+  phy_cfg.phy_addr = 1;
+  phy_cfg.reset_gpio_num = 51;
+
+  esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&emac, &mac_cfg);
+  esp_eth_phy_t* phy = esp_eth_phy_new_ip101(&phy_cfg);
+  if (mac == nullptr || phy == nullptr) {
+    ESP_LOGW(kTag, "EMAC/IP101 alloc failed");
+    return false;
+  }
+  esp_eth_config_t eth_cfg = ETH_DEFAULT_CONFIG(mac, phy);
+  esp_eth_handle_t handle = nullptr;
+  if (esp_eth_driver_install(&eth_cfg, &handle) != ESP_OK) {
+    ESP_LOGW(kTag, "EMAC driver install failed");
+    return false;
+  }
+  if (!attach_eth_netif(handle)) {
+    ESP_LOGW(kTag, "EMAC netif/start failed");
+    return false;
+  }
+  ESP_LOGI(kTag, "EMAC+IP101 Ethernet started (RJ45)");
+  return true;
+}
+#endif
+
 bool ethernet_start() {
-  // AMYboard (and any board without a wired W5500) leaves eth pins at -1.
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ETH_USE_ESP32_EMAC
+  return ethernet_start_emac_ip101();
+#endif
+  // Custom PCB: SPI W5500. AMYboard leaves CS at -1.
   if (kPinEthCs < 0 || kPinEthSclk < 0) {
     ESP_LOGI(kTag, "no Ethernet pins; WiFi-only");
     return false;
@@ -146,31 +209,8 @@ bool ethernet_start() {
     return false;
   }
 
-  // The W5500 has no burned-in MAC; derive one from the SoC.
-  uint8_t mac_addr[6] = {};
-  esp_read_mac(mac_addr, ESP_MAC_ETH);
-  esp_eth_ioctl(handle, ETH_CMD_S_MAC_ADDR, mac_addr);
-
-  // Route priority above WiFi STA (100) so the cable wins when present.
-  esp_netif_inherent_config_t base = ESP_NETIF_INHERENT_DEFAULT_ETH();
-  base.route_prio = 128;
-  esp_netif_config_t netif_cfg = {
-      .base = &base,
-      .driver = nullptr,
-      .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH,
-  };
-  g_eth_netif = esp_netif_new(&netif_cfg);
-  ESP_ERROR_CHECK(
-      esp_netif_attach(g_eth_netif, esp_eth_new_netif_glue(handle)));
-
-  ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
-                                             &on_eth_event, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
-                                             &on_ip_event, nullptr));
-
-  err = esp_eth_start(handle);
-  if (err != ESP_OK) {
-    ESP_LOGW(kTag, "esp_eth_start failed: %d", err);
+  if (!attach_eth_netif(handle)) {
+    ESP_LOGW(kTag, "esp_eth_start failed");
     return false;
   }
   ESP_LOGI(kTag, "W5500 Ethernet started");

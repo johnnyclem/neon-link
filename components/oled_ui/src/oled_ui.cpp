@@ -24,6 +24,7 @@
 #include "neon/ui/icons_gen.hpp"
 #include "neon/ui/menu_model.hpp"
 #include "neon/ui/render.hpp"
+#include "neon/ui/widgets.hpp"
 #include "netman/net_manager.h"
 #include "oledui/oled_ui.h"
 #include "oledui/panel128.hpp"
@@ -36,7 +37,7 @@ const char* kTag = "oled_ui";
 // bus free for GP8413 / ADS1015.
 constexpr TickType_t kFrameTicks = pdMS_TO_TICKS(100);
 
-void assemble_status(neon::UiStatus* s) {
+void assemble_status(neon::UiStatus* s, int64_t now_us, int64_t phase_us) {
   neon::TimelineSnapshot tl;
   timeline_bus().read(tl);
   const uint64_t mpb_us = (tl.tempo_mpb_q32 + (1ull << 31)) >> 32;
@@ -49,8 +50,7 @@ void assemble_status(neon::UiStatus* s) {
   s->playing = tl.playing != 0;
   s->quantum_beats = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
 
-  const int64_t now_us = esp_timer_get_time();
-  s->phase_milli_beats = neon::phase_milli_beats(tl, now_us);
+  s->phase_milli_beats = neon::phase_milli_beats(tl, phase_us);
   // The fixed-rate icon clock, derived from the timebase rather than counted
   // per frame so it stays honest if the UI task ever misses a tick.
   s->anim_tick = static_cast<uint32_t>(
@@ -64,6 +64,7 @@ void assemble_status(neon::UiStatus* s) {
   s->ext_clock = app_status_ext_clock();
   s->setup_ap = netman::ap_is_up();
   s->big_beat_display = neon_config().big_beat_display != 0;
+  s->beat_style = static_cast<uint8_t>(neon_config().beat_style);
   s->ip[0] = '\0';
   netman::primary_ip(s->ip, sizeof(s->ip));
 
@@ -120,6 +121,26 @@ void poll_pot_tempo() {
       {ControlCommand::Kind::kSetTempo, static_cast<int32_t>(mbpm)});
 }
 
+// Sleep until `target_us`. Bulk of the wait is a FreeRTOS delay so WiFi
+// still runs; the last couple of milliseconds spin so a 1 ms tick cannot
+// overshoot the display lead.
+void wait_until_us(int64_t target_us) {
+  for (;;) {
+    const int64_t now = esp_timer_get_time();
+    const int64_t remain = target_us - now;
+    if (remain <= 0) {
+      return;
+    }
+    if (remain > 2000) {
+      uint32_t ms = static_cast<uint32_t>((remain - 1500) / 1000);
+      if (ms < 1) {
+        ms = 1;
+      }
+      vTaskDelay(pdMS_TO_TICKS(ms));
+    }
+  }
+}
+
 void ui_task(void*) {
   const oledui::PanelKind kind = oledui::panel_kind() != oledui::PanelKind::kNone
                                      ? oledui::panel_kind()
@@ -136,6 +157,11 @@ void ui_task(void*) {
   neon::Config ui_cfg = neon_config();
   neon::MenuModel menu(&ui_cfg);
   neon::Framebuffer fb;
+  // Previous frame lives in BSS: two 2 KB framebuffers on an 8 KB stack
+  // plus Config would not fit.
+  static neon::Framebuffer prev_fb;
+  bool have_prev = false;
+  bool lead_this = false;
 
   // Brightness is pushed to the controller only when it changes; a
   // contrast write per frame would waste I2C bandwidth for nothing.
@@ -178,6 +204,7 @@ void ui_task(void*) {
       live.start_stop_sync = ui_cfg.start_stop_sync;
       live.display_brightness = ui_cfg.display_brightness;
       live.big_beat_display = ui_cfg.big_beat_display;
+      live.beat_style = ui_cfg.beat_style;
       neon_config_apply(live);
       ui_cfg = live;
     } else if (!menu.editing()) {
@@ -199,19 +226,61 @@ void ui_task(void*) {
     }
 
     neon::UiStatus status;
-    assemble_status(&status);
+    const int64_t now_us = esp_timer_get_time();
+    assemble_status(&status, now_us, now_us);
+    const uint32_t led_phase = status.phase_milli_beats;
+    // LEDs follow Link time. The panel looks a couple of milliseconds
+    // ahead on a big redraw so its last rows land on the audible
+    // downbeat — I2C writes pages top-to-bottom.
+    if (lead_this) {
+      neon::TimelineSnapshot tl;
+      timeline_bus().read(tl);
+      status.phase_milli_beats =
+          neon::phase_milli_beats(tl, now_us + neon::ui::kBeatFlushLeadUs);
+    }
 
     halesp::status_led_net(status.active_net != 0);
     halesp::status_led_run(status.playing);
-    halesp::status_led_beat((status.phase_milli_beats % 1000) < 150);
+    halesp::status_led_beat((led_phase % 1000) < 150);
 
     if (have_display && want_brightness != 0) {
       neon::render_ui(menu, status, fb);
       if (!oledui::panel_flush(fb)) {
         ESP_LOGW(kTag, "panel flush failed");
       }
+      const int changed =
+          have_prev ? fb.diff_pixels(prev_fb)
+                    : neon::Framebuffer::kWidth * neon::Framebuffer::kHeight;
+      const bool beat_stage = menu.screen() == neon::MenuModel::Screen::kHome &&
+                              status.playing && status.big_beat_display;
+      const bool jumps = beat_stage &&
+                         status.beat_style !=
+                             static_cast<uint8_t>(neon::BeatStyle::kPendulum);
+      lead_this = neon::ui::anticipate_beat_flush(jumps, changed);
+      prev_fb.copy_from(fb);
+      have_prev = true;
+    } else {
+      lead_this = false;
     }
-    vTaskDelayUntil(&wake, kFrameTicks);
+
+    if (lead_this) {
+      neon::TimelineSnapshot tl;
+      timeline_bus().read(tl);
+      const int64_t marked = esp_timer_get_time();
+      int64_t target =
+          marked + neon::us_until_next_beat(tl, marked) - neon::ui::kBeatFlushLeadUs;
+      if (target < marked) {
+        target = marked;
+      }
+      const int64_t cap = marked + 100000;  // still poll the encoder at 10 Hz
+      if (target > cap) {
+        target = cap;
+      }
+      wait_until_us(target);
+      wake = xTaskGetTickCount();
+    } else {
+      vTaskDelayUntil(&wake, kFrameTicks);
+    }
   }
 }
 
@@ -231,6 +300,27 @@ void oledui_bringup() {
              static_cast<int>(kind));
   } else {
     ESP_LOGI(kTag, "bringup: panel kind=%d cleared", static_cast<int>(kind));
+  }
+}
+
+bool oledui_reinit() {
+  oledui::panel_reset();
+  oledui_bringup();
+  return oledui::panel_kind() != oledui::PanelKind::kNone;
+}
+
+const char* oledui_kind_str() {
+  switch (oledui::panel_kind()) {
+    case oledui::PanelKind::kSsd1327I2c:
+      return "ssd1327";
+    case oledui::PanelKind::kSh1107I2c:
+      return "sh1107";
+    case oledui::PanelKind::kSsd1306I2c:
+      return "ssd1306";
+    case oledui::PanelKind::kSh1107Spi:
+      return "sh1107_spi";
+    default:
+      return "none";
   }
 }
 

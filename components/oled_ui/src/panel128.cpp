@@ -41,6 +41,20 @@ bool i2c_cmd(uint8_t addr, uint8_t cmd) {
   return i2c_cmd_ctl(addr, 0x00, cmd);
 }
 
+// One STOP for the whole command list. Splitting two-byte SH1107
+// commands (0xAD/0x81, 0xD3/0x00, …) across transactions lets the
+// chip treat 0x81 as contrast-set and the rest of init as noise —
+// ACK still succeeds, the glass stays blank except a few pixels.
+bool i2c_cmd_list(uint8_t addr, const uint8_t* cmds, size_t n) {
+  if (cmds == nullptr || n == 0 || n > 48) {
+    return false;
+  }
+  uint8_t buf[49];
+  buf[0] = 0x00;
+  std::memcpy(buf + 1, cmds, n);
+  return halesp::i2c_write(addr, buf, n + 1, /*timeout_ms=*/50);
+}
+
 bool i2c_data(uint8_t addr, const uint8_t* data, size_t len) {
   // Chunk to keep each transaction under the I2C driver's comfort zone.
   // Prefix every chunk with 0x40 (data mode).
@@ -139,32 +153,39 @@ constexpr uint8_t kSh1107Addr = 0x3c;
 constexpr int kXShift = 0;
 
 bool sh1107_init_i2c() {
-  // Page addressing + 128×128 flip(False) defaults from sh1107.py (the
-  // rotate90 addressing mode, without any content rotation).
+  // Grove SH1107 has no reset pin. A warm ESP reset leaves the glass
+  // powered; start with display-off + a settle so leftover DC-DC state
+  // does not ignore the rest of the list.
+  if (!i2c_cmd(kSh1107Addr, 0xAE)) {
+    return false;
+  }
+  vTaskDelay(pdMS_TO_TICKS(20));
+
+  // Adafruit_SH1107 128×128 list, one STOP. Page mode is the POR default
+  // (matches VLSB FB). 0xAD 0x8A is the Adafruit DC-DC byte — 0x81 here
+  // used to be sent as its own transaction and stole the contrast command.
   const uint8_t cmds[] = {
-      0xAE,        // display off
-      0xA8, 0x7F,  // multiplex 128-1
-      0x20,        // page addressing (matches VLSB FB)
-      0xB0,        // page address 0
-      0xAD, 0x81,  // DC-DC enable
-      0xD5, 0x50,  // clock
-      0xDB, 0x35,  // VCOM
-      0xD9, 0x22,  // precharge
+      0xD5, 0x51,  // clock
+      0x20,        // page addressing
       0x81, 0x80,  // contrast
-      0xA6,        // normal (not inverted)
-      0xD3, 0x00,  // display offset (0 for 128×128)
+      0xAD, 0x8A,  // DC-DC
       0xA0,        // segment re-map
       0xC0,        // scan direction
       0xDC, 0x00,  // start line
+      0xD3, 0x00,  // display offset (128×128)
+      0xD9, 0x22,  // precharge
+      0xDB, 0x35,  // VCOM
+      0xA8, 0x7F,  // multiplex 128-1
       0xA4,        // resume from RAM
-      0xAF,        // display on
+      0xA6,        // normal (not inverted)
   };
-  for (uint8_t c : cmds) {
-    if (!i2c_cmd(kSh1107Addr, c)) {
-      return false;
-    }
+  if (!i2c_cmd_list(kSh1107Addr, cmds, sizeof(cmds))) {
+    return false;
   }
-  vTaskDelay(pdMS_TO_TICKS(50));
+  vTaskDelay(pdMS_TO_TICKS(100));
+  if (!i2c_cmd(kSh1107Addr, 0xAF)) {
+    return false;
+  }
   ESP_LOGI(kTag, "SH1107 @ 0x%02x (128x128 mono I2C, page mode, xshift=%d)",
            kSh1107Addr, kXShift);
   return true;
@@ -378,6 +399,8 @@ bool try_known_panels() {
 }
 
 }  // namespace
+
+void panel_reset() { g_kind = PanelKind::kNone; }
 
 PanelKind panel_init() {
   if (g_kind != PanelKind::kNone) {

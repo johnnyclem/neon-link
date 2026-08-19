@@ -159,10 +159,29 @@ int main() {
       std::snprintf(title, sizeof(title), "Live — beat %u",
                     static_cast<unsigned>(beat));
       capture(id, title,
-              beat % 2 == 1
-                  ? "Odd beat: largest white numeral inside a 2 px black border."
-                  : "Even beat: the panel inverts — black numeral, white field.",
+              "White numeral on black, 2 px border. Same for 1–4.",
               m, b);
+    }
+
+    struct StyleShot {
+      neon::BeatStyle style;
+      const char* id;
+      const char* title;
+      const char* note;
+    };
+    const StyleShot styles[] = {
+        {neon::BeatStyle::kPie, "live-pie", "Live — pie",
+         "A slice per beat, filling the circle through the bar."},
+        {neon::BeatStyle::kPendulum, "live-pendulum", "Live — pendulum",
+         "Arm at the left extreme on beat 1, same grid as the number."},
+        {neon::BeatStyle::kPulse, "live-pulse", "Live — pulse",
+         "Ring blooming from the centre; filled disc on the attack."},
+    };
+    for (const StyleShot& shot : styles) {
+      neon::UiStatus st = linked;
+      st.beat_style = static_cast<uint8_t>(shot.style);
+      st.phase_milli_beats = 0;
+      capture(shot.id, shot.title, shot.note, m, st);
     }
 
     neon::UiStatus classic = linked;

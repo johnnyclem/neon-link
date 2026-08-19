@@ -4,15 +4,23 @@ import { api } from "../api";
 import { strings } from "../design/strings";
 import { HeroTempo } from "../components/HeroTempo";
 import { PhaseBar } from "../components/PhaseBar";
-import { BeatStage, beatFromStatus } from "../components/BeatStage";
+import {
+  BeatStage,
+  BEAT_STYLES,
+  beatStyleFrom,
+  nextBeatStyle,
+  type BeatStyle,
+} from "../components/BeatStage";
 import { SubNav } from "../components/SubNav";
 import { Button, Card, Readout } from "../components/controls";
+import { SaveBar } from "./SaveBar";
 
 /**
  * The expanded live screen — a one-handed remote when the module is in
  * a case, and the same five facts the panel shows when you have a desk.
  */
-export function Live({ status, cfg }: PageProps) {
+export function Live(props: PageProps) {
+  const { status, cfg, patch, save } = props;
   const [presetMsg, setPresetMsg] = useState("");
   const [bpmDraft, setBpmDraft] = useState("");
   const [pane, setPane] = useState<"sync" | "set" | "stats">("sync");
@@ -34,20 +42,49 @@ export function Live({ status, cfg }: PageProps) {
 
   const quantum = status?.quantum ?? 4;
   const phase = status ? status.phase_milli / (quantum * 1000) : 0;
-  const beat = status ? beatFromStatus(status.phase_milli, quantum) : 1;
   const playing = status?.playing === true;
   const showBeat = playing && cfg.big_beat_display !== false;
+  const beatStyle = beatStyleFrom(cfg.beat_style);
+  const setStyle = (style: BeatStyle) => {
+    patch((d) => {
+      d.beat_style = style;
+    });
+    void save();
+  };
 
   return (
     <>
       <h1 class="page-title page-title--live">{strings.screens.live.web}</h1>
 
-      <Card title={showBeat ? `Beat ${beat}` : "Tempo"}>
+      <Card title={showBeat ? "Beat" : "Tempo"}>
         {showBeat ? (
-          <BeatStage beat={beat} playing />
+          <BeatStage
+            phaseMilli={status?.phase_milli ?? 0}
+            quantum={quantum}
+            bpm={status?.bpm ?? 120}
+            playing
+            style={beatStyle}
+            onCycle={() => setStyle(nextBeatStyle(beatStyle))}
+          />
         ) : (
           <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={72} />
         )}
+        {showBeat ? (
+          <div class="beat-stage__picker" role="radiogroup" aria-label="Beat style">
+            {BEAT_STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                class="beat-stage__pick"
+                role="radio"
+                aria-checked={beatStyle === s.id}
+                onClick={() => setStyle(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {showBeat && status?.tempo_valid ? (
           <div class="beat-stage__bpm">
             <HeroTempo bpm={status.bpm} size={28} />
@@ -210,6 +247,8 @@ export function Live({ status, cfg }: PageProps) {
           </div>
         </div>
       ) : null}
+
+      <SaveBar {...props} />
     </>
   );
 }

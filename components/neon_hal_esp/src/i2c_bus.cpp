@@ -2,9 +2,12 @@
 
 #include <cstring>
 
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 namespace halesp {
 
@@ -86,6 +89,35 @@ bool i2c_bus_init(int sda_gpio, int scl_gpio, uint32_t hz) {
     unlock();
     return false;
   }
+  // Warm reset leaves the Grove SH1107 powered and sometimes holding
+  // SDA. Nine SCL clocks plus a STOP unsticks it before the driver
+  // takes the pins — otherwise probe ACKs and init "succeeds" with a
+  // blank glass.
+  {
+    gpio_config_t io = {};
+    io.pin_bit_mask =
+        (1ull << static_cast<unsigned>(sda_gpio)) |
+        (1ull << static_cast<unsigned>(scl_gpio));
+    io.mode = GPIO_MODE_INPUT_OUTPUT_OD;
+    io.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&io);
+    gpio_set_level(static_cast<gpio_num_t>(scl_gpio), 1);
+    gpio_set_level(static_cast<gpio_num_t>(sda_gpio), 1);
+    if (gpio_get_level(static_cast<gpio_num_t>(sda_gpio)) == 0) {
+      ESP_LOGW(kTag, "SDA stuck low; clocking SCL to recover");
+      for (int i = 0; i < 9; ++i) {
+        gpio_set_level(static_cast<gpio_num_t>(scl_gpio), 0);
+        esp_rom_delay_us(5);
+        gpio_set_level(static_cast<gpio_num_t>(scl_gpio), 1);
+        esp_rom_delay_us(5);
+      }
+      gpio_set_level(static_cast<gpio_num_t>(sda_gpio), 0);
+      esp_rom_delay_us(5);
+      gpio_set_level(static_cast<gpio_num_t>(scl_gpio), 1);
+      esp_rom_delay_us(5);
+      gpio_set_level(static_cast<gpio_num_t>(sda_gpio), 1);
+    }
+  }
   i2c_master_bus_config_t bus_cfg = {};
   bus_cfg.i2c_port = I2C_NUM_0;
   bus_cfg.sda_io_num = static_cast<gpio_num_t>(sda_gpio);
@@ -103,8 +135,10 @@ bool i2c_bus_init(int sda_gpio, int scl_gpio, uint32_t hz) {
   unlock();
   const bool oled_3d = i2c_probe(0x3d, 20);
   const bool oled_3c = i2c_probe(0x3c, 20);
-  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s",
-           oled_3d ? "ACK" : "nack", oled_3c ? "ACK" : "nack");
+  const bool es8311 = i2c_probe(0x18, 20);
+  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s ES8311 0x18=%s",
+           oled_3d ? "ACK" : "nack", oled_3c ? "ACK" : "nack",
+           es8311 ? "ACK" : "nack");
   return true;
 }
 

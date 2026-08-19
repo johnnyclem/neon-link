@@ -1541,6 +1541,7 @@ SystemPage::SystemPage(EditorHost& host) : host_(host) {
   addAndMakeVisible(name_);
   addAndMakeVisible(bright_);
   addAndMakeVisible(bigBeat_);
+  addAndMakeVisible(beatStyle_);
   addAndMakeVisible(fw_);
   addAndMakeVisible(hostname_);
   addAndMakeVisible(ip_);
@@ -1640,10 +1641,21 @@ void SystemPage::load(const neon::Config& cfg, const Snapshot& snap) {
   bright_.onChange = [this](int v) {
     host_.patch([v](neon::Config& d) { d.display_brightness = static_cast<uint8_t>(v); });
   };
-  bigBeat_.setLabel("Big beat numbers");
+  bigBeat_.setLabel("Beat display");
   bigBeat_.setValue(cfg.big_beat_display != 0);
   bigBeat_.onChange = [this](bool v) {
     host_.patch([v](neon::Config& d) { d.big_beat_display = v ? 1 : 0; });
+  };
+  beatStyle_.set(
+      "Beat style", static_cast<int>(cfg.beat_style) + 1,
+      {{1, "Number"}, {2, "Pie"}, {3, "Pendulum"}, {4, "Pulse"}});
+  beatStyle_.onChange = [this](int id) {
+    host_.patch([id](neon::Config& d) {
+      const int v = id - 1;
+      d.beat_style = v >= 0 && v < static_cast<int>(neon::BeatStyle::kCount)
+                         ? static_cast<neon::BeatStyle>(v)
+                         : neon::BeatStyle::kNumber;
+    });
   };
   fw_.set("Installed", snap.status.firmware.empty() ? "—" : snap.status.firmware);
   hostname_.set("Hostname", snap.status.hostname.empty() ? "—" : snap.status.hostname);
@@ -1651,7 +1663,7 @@ void SystemPage::load(const neon::Config& cfg, const Snapshot& snap) {
   resized();
 }
 
-int SystemPage::preferredHeight() const { return 520; }
+int SystemPage::preferredHeight() const { return 568; }
 
 void SystemPage::resized() {
   neon::ui::Stack st{getLocalBounds()};
@@ -1676,6 +1688,7 @@ void SystemPage::resized() {
   name_.setVisible(panel);
   bright_.setVisible(panel);
   bigBeat_.setVisible(panel);
+  beatStyle_.setVisible(panel);
   fw_.setVisible(mod);
   hostname_.setVisible(mod);
   ip_.setVisible(mod);
@@ -1700,6 +1713,7 @@ void SystemPage::resized() {
     name_.setBounds(st.next(62));
     bright_.setBounds(st.next(62));
     bigBeat_.setBounds(st.next(28));
+    beatStyle_.setBounds(st.next(48));
   } else {
     fw_.setBounds(st.next(22));
     hostname_.setBounds(st.next(22));

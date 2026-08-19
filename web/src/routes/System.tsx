@@ -211,9 +211,21 @@ export function System(props: PageProps) {
             hint="0 blanks the panel"
           />
           <Toggle
-            label="Big beat numbers"
+            label="Beat display"
             checked={cfg.big_beat_display !== false}
             onChange={(v) => patch((d) => (d.big_beat_display = v))}
+          />
+          <SelectField
+            label="Beat style"
+            value={cfg.beat_style ?? "number"}
+            options={[
+              { value: "number", label: "Number" },
+              { value: "pie", label: "Pie" },
+              { value: "pendulum", label: "Pendulum" },
+              { value: "pulse", label: "Pulse" },
+            ]}
+            onChange={(v) => patch((d) => (d.beat_style = v))}
+            hint="Full-screen animation while playing"
           />
         </div>
       </Card>

@@ -54,8 +54,9 @@ unit with IDF 5.5.5 and `sdkconfig.defaults.p4v31`:
 | Ableton Link session object | Yes — local session; peers once C6 has a netif |
 | WiFi / SoftAP | **Yes** — C6 via ESP-Hosted. Setup AP `NEON-LINK-XXXX` |
 | BLE | Not this pass (hosted HCI is a separate path) |
-| Ethernet (RJ45) | Hardware present, driver not wired yet |
-| Audio (ES8311) | Hardware present, not mapped yet |
+| Ethernet (RJ45) | **Yes** — on-chip EMAC + IP101 RMII (IDF P4 defaults) |
+| Link Audio | **Yes** — I2S via the onboard ES8311 3.5 mm jack |
+| Audio (ES8311) | **Yes** — MCLK13 SCLK12 LRCK10 DOUT9 DIN11 PA53 |
 | Encoder | KY-040 on GPIO 2/3/4 (40-pin header) |
 
 ## I2C header
@@ -80,6 +81,24 @@ wrong header — check:
    or STEMMA cable on that header will power the panel wrong or swap
    the data lines.
 3. 3.3 V only. 5 V OLEDs do not belong here.
+
+## 3.5 mm jack (ES8311 + NS4150B)
+
+Onboard headphone / speaker jack. This is the listen path for Link Audio
+on this kit (there is no PCM3060 LINE OUT).
+
+| Function | GPIO |
+|---|---|
+| I2S MCLK | 13 |
+| I2S SCLK / BCLK | 12 |
+| I2S ASDOUT (ESP DIN) | 11 |
+| I2S LRCK | 10 |
+| I2S DSDIN (ESP DOUT) | 9 |
+| PA_Ctrl (NS4150B, active high) | 53 |
+| Codec I2C | 7 / 8 @ `0x18` |
+
+TRS stereo, not a modular line jack. Headphones or a powered speaker.
+The amp is loud at full codec volume — firmware leaves DAC REG32 at ~75%.
 
 ## C6 radio (ESP-Hosted)
 

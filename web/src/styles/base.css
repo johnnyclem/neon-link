@@ -714,20 +714,20 @@ a.button {
   align-items: center;
   justify-content: center;
   aspect-ratio: 1;
-  max-width: min(100%, 28rem);
+  width: min(100%, 22rem);
+  max-height: min(48vh, 22rem);
   margin: 0 auto;
   border: 2px solid var(--bg);
   box-sizing: border-box;
-}
-
-.beat-stage--odd {
   background: var(--bg);
   color: var(--text);
+  cursor: pointer;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.beat-stage--even {
-  background: var(--text);
-  color: var(--bg);
+.beat-stage[data-downbeat="true"] {
+  color: var(--neon);
 }
 
 .beat-stage__n {
@@ -737,6 +737,53 @@ a.button {
   font-size: clamp(5.5rem, 42vw, 11rem);
   line-height: 0.85;
   letter-spacing: -0.04em;
+  animation: beat-pop 0.12s var(--motion-easing);
+}
+
+@keyframes beat-pop {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.beat-stage__viz {
+  width: 86%;
+  height: 86%;
+  display: block;
+}
+
+.beat-stage__picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: var(--space-3);
+  border: var(--border-solid) solid var(--border);
+}
+
+.beat-stage__pick {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-right: var(--border-solid) solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+  cursor: pointer;
+  min-height: var(--touch-min);
+  padding: 0 var(--space-1);
+}
+
+.beat-stage__pick:last-child {
+  border-right: 0;
+}
+
+.beat-stage__pick[aria-checked="true"] {
+  color: var(--neon);
+  background: var(--surface-2);
 }
 
 .beat-stage__bpm {

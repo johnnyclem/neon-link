@@ -110,11 +110,26 @@ const neon::Config& neon_config() { return g_config; }
 void neon_config_apply(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
+  const bool net = neon::network_identity_changed(g_config, clean);
   g_config = clean;
   publish_buses();
-  g_save_pending = true;
-  g_last_change_us = 0;  // stamped by the next flush call
   ++g_rev;
+  // G6: a friend Save of WiFi/AP identity must hit flash even while
+  // I2S is holding. RAM-only apply looks like it worked, then reboot
+  // reloads always/open. One NVS stall is better than a silent revert.
+  if (net) {
+    g_save_pending = false;
+    g_last_change_us = 0;
+    if (persist(g_config)) {
+      ESP_LOGI(kTag, "config saved (network identity)");
+    } else {
+      g_save_pending = true;
+      ESP_LOGE(kTag, "config save failed");
+    }
+    return;
+  }
+  g_save_pending = true;
+  g_last_change_us = 0;
 }
 
 void neon_config_hold_nvs(bool hold) {
@@ -161,7 +176,8 @@ bool neon_config_flush_now() {
 bool neon_config_save(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
-  if (g_nvs_hold) {
+  const bool net = neon::network_identity_changed(g_config, clean);
+  if (g_nvs_hold && !net) {
     g_config = clean;
     publish_buses();
     g_save_pending = true;

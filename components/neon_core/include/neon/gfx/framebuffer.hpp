@@ -37,6 +37,7 @@ class Framebuffer {
   void fill_rect(int x, int y, int w, int h, bool on);
   void fill_rect_dither(int x, int y, int w, int h, Dither pattern);
   void rect(int x, int y, int w, int h, bool on);
+  void draw_line(int x0, int y0, int x1, int y1, bool on);
 
   // Flips every pixel in the region. This is how selection and focus are
   // shown on the panel — there is no colour to fall back on.
@@ -53,6 +54,18 @@ class Framebuffer {
   static int glyph_height(Font font);
 
   const uint8_t* data() const { return buf_; }
+
+  void copy_from(const Framebuffer& other);
+  // Count of pixels that differ. Used to decide whether the next flush
+  // is a "big redraw" that needs to start before the audible beat.
+  int diff_pixels(const Framebuffer& other) const;
+
+  // 30%: a change that rewrites enough of the glass that I2C/SPI
+  // scan-out is visible against the downbeat.
+  static constexpr int kBigRedrawPercent = 30;
+  static bool is_big_redraw(int changed_pixels) {
+    return changed_pixels * 100 >= kWidth * kHeight * kBigRedrawPercent;
+  }
 
   // "#"/"." rows for golden tests; out must hold kWidth+1 chars.
   void ascii_row(int y, char* out) const;

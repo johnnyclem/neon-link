@@ -15,6 +15,27 @@ std::string encode(const neon::Config& cfg) {
 }
 }  // namespace
 
+TEST_CASE("config JSON: beat_style names") {
+  neon::Config a;
+  CHECK(a.beat_style == neon::BeatStyle::kNumber);
+  const std::string json = encode(a);
+  CHECK(json.find("\"beat_style\":\"number\"") != std::string::npos);
+
+  a.beat_style = neon::BeatStyle::kPie;
+  neon::Config b;
+  const std::string pie_json = encode(a);
+  REQUIRE(neon::config_from_json(pie_json.c_str(), pie_json.size(), &b));
+  CHECK(b.beat_style == neon::BeatStyle::kPie);
+
+  const char* pie = "{\"beat_style\":\"pulse\"}";
+  REQUIRE(neon::config_from_json(pie, std::strlen(pie), &b));
+  CHECK(b.beat_style == neon::BeatStyle::kPulse);
+
+  const char* junk = "{\"beat_style\":\"cowbell\"}";
+  REQUIRE(neon::config_from_json(junk, std::strlen(junk), &b));
+  CHECK(b.beat_style == neon::BeatStyle::kPulse);
+}
+
 // docs/STUDIO_MODE_TEST_PLAN.md's debug-only test knobs: defaults to
 // normal operation, round-trips through JSON like everything else, and a
 // garbage string leaves the profile alone rather than adopting it.
@@ -82,6 +103,7 @@ TEST_CASE("config JSON round-trips every field") {
   std::strcpy(a.device_name, "stage-left");
   a.display_brightness = 64;
   a.big_beat_display = 0;
+  a.beat_style = neon::BeatStyle::kPendulum;
   a.midi_nudge_us = -3000;
   a.start_stop_sync = 0;
   a.tempo_milli_bpm = 137500;
@@ -119,6 +141,7 @@ TEST_CASE("config JSON round-trips every field") {
   CHECK(std::strcmp(b.device_name, "stage-left") == 0);
   CHECK(b.display_brightness == 64);
   CHECK(b.big_beat_display == 0);
+  CHECK(b.beat_style == neon::BeatStyle::kPendulum);
   CHECK(b.midi_nudge_us == -3000);
   CHECK(b.start_stop_sync == 0);
   CHECK(b.tempo_milli_bpm == 137500);

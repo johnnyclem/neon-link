@@ -28,6 +28,7 @@
 #include "neon/ui/icons_gen.hpp"
 #include "neon/ui/menu_model.hpp"
 #include "neon/ui/render.hpp"
+#include "neon/ui/widgets.hpp"
 
 #include "audio_t41.h"
 #include "board_pins_t41.h"
@@ -185,12 +186,22 @@ void assemble_status(neon::UiStatus* s, int64_t now_us) {
   s->setup_ap = false;
   s->ble_on = false;
   s->big_beat_display = neon_config().big_beat_display != 0;
+  s->beat_style = static_cast<uint8_t>(neon_config().beat_style);
   net::primary_ip(s->ip, sizeof(s->ip));
 }
 
 void service_ui(int64_t now_us) {
   neon::UiStatus status;
   assemble_status(&status, now_us);
+  const uint32_t led_phase = status.phase_milli_beats;
+  if (status.playing && status.big_beat_display &&
+      status.beat_style !=
+          static_cast<uint8_t>(neon::BeatStyle::kPendulum)) {
+    neon::TimelineSnapshot tl;
+    timeline_bus().read(tl);
+    status.phase_milli_beats =
+        neon::phase_milli_beats(tl, now_us + neon::ui::kBeatFlushLeadUs);
+  }
   neon::render_ui(g_menu, status, g_fb);
   g_display.draw_ui(g_fb);
   g_display.draw_strip(g_touch.pressed_mask(), status.playing);
@@ -202,7 +213,7 @@ void service_ui(int64_t now_us) {
 
   digitalWriteFast(kPinLedNet, net::has_ip() ? HIGH : LOW);
   const bool beat_on =
-      status.playing && (status.phase_milli_beats % 1000u) < 120u;
+      status.playing && (led_phase % 1000u) < 120u;
   digitalWriteFast(kPinLedBeat, beat_on ? HIGH : LOW);
   digitalWriteFast(kPinLedRun,
                    (PulseHwT41::levels() & (1u << neon::kChRun)) ? HIGH : LOW);
