@@ -1,4 +1,5 @@
 #include "neon/gfx/framebuffer.hpp"
+#include "neon/gfx/font5x7.hpp"
 
 #include <cstring>
 
@@ -6,9 +7,11 @@ namespace neon {
 
 namespace {
 
-// Classic 5×7 font, column bytes LSB = top row, for ASCII 32..127.
-// (Public-domain HD44780-lineage glyph set.)
-constexpr uint8_t kFont5x7[96][5] = {
+constexpr auto& kFont5x7 = gfx::kFont5x7;
+
+// Sentinel so the next line still parses if the table was left behind.
+#if 0
+constexpr uint8_t kFont5x7_unused[96][5] = {
     {0x00, 0x00, 0x00, 0x00, 0x00},  // ' '
     {0x00, 0x00, 0x5f, 0x00, 0x00},  // '!'
     {0x00, 0x07, 0x00, 0x07, 0x00},  // '"'
@@ -106,6 +109,7 @@ constexpr uint8_t kFont5x7[96][5] = {
     {0x08, 0x08, 0x2a, 0x1c, 0x08},  // '~' (approximation arrow)
     {0x00, 0x00, 0x00, 0x00, 0x00},  // DEL
 };
+#endif
 
 int scale_of(Framebuffer::Font f) { return static_cast<int>(f); }
 

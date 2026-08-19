@@ -138,6 +138,8 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[docs/SPDIF_BENCH_TEST.md](docs/SPDIF_BENCH_TEST.md)** | Hardware | AMYboard SPDIF jack characterization — schematic-backed: AC-coupled PCM9211, not GPIO |
 | **[docs/TEENSY41.md](docs/TEENSY41.md)** | Hardware / Firmware | Teensy 4.1 build target — Ableton Link over native Ethernet, web editor, TRS MIDI, CLK/RST IN, audio engine, 2.8" SPI colour touchscreen (ILI9341 + XPT2046), two rotary encoders, 16 MB PSRAM; wiring and PlatformIO build |
 | **[docs/DAISY.md](docs/DAISY.md)** | Hardware / Firmware | Daisy-family build targets — Seed with a 128×64 SSD1306/1309 OLED, headless Daisy Pod and Eurorack-native patch.init() configs (internal timeline, no network on stock hardware), and the netlink config (Ableton Link + web editor + VST REST over USB CDC-ECM gadget networking); pulse engine, TRS MIDI, CLK/RST IN, audio engine on the built-in codec, Tempo CV on the true DAC, QSPI config store; wiring and Makefile/libDaisy build |
+| **[docs/LINKSYNC.md](docs/LINKSYNC.md)** | Hardware / Firmware | **link-sync dongle** — Seeed XIAO ESP32S3, Ableton Link → TRS MIDI clock + transport + SPP. Reference board only |
+| **[docs/LINKSYNC_EPD.md](docs/LINKSYNC_EPD.md)** | Hardware / Firmware | link-sync on a **Waveshare 5.79" e-Paper** + ESP32-S3 — same clock, panel for status |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
 | **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
@@ -239,6 +241,33 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" bui
 > First flash after a partition-table change: `idf.py erase-flash`, then
 > the script. After that, the script or the editor's **INSTALL UPDATE**
 > button is enough.
+
+### Run on the link-sync dongle (XIAO ESP32S3)
+
+A separate build target in this tree: Link join, 24 PPQN MIDI clock,
+start/stop/continue and song position out one TRS jack. No audio, no
+OLED. **Reference board only — PRs welcome, no support for arbitrary
+hardware.** See **[docs/LINKSYNC.md](docs/LINKSYNC.md)**.
+
+```bash
+idf.py set-target esp32s3
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync" build
+./scripts/flash_linksync.sh
+```
+
+Install the U.FL antenna before any timing test. First boot: Espressif
+*ESP BLE Prov* app, device `LSYNC-XXXX`, PoP from the USB console.
+
+### Run on Waveshare 5.79" e-Paper + ESP32-S3
+
+Same dongle firmware, with the 792×272 panel as the status surface.
+See **[docs/LINKSYNC_EPD.md](docs/LINKSYNC_EPD.md)**.
+
+```bash
+idf.py set-target esp32s3
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-epd" build
+./scripts/flash_linksync-epd.sh
+```
 
 Host unit tests (no ESP-IDF):
 

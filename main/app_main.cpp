@@ -5,6 +5,9 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include <cstdio>
+#include <cstring>
+
 #include "ablink/priority.hpp"
 #include "app_state/config_store.h"
 #include "board_pins.h"
@@ -51,6 +54,12 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_P4DEVKIT
   ESP_LOGI(kTag, "NEON LINK firmware starting (P4-Module-DEV-KIT) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC
+  ESP_LOGI(kTag, "link-sync firmware starting (XIAO ESP32S3) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_EPD
+  ESP_LOGI(kTag, "link-sync firmware starting (5.79 e-Paper) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
 #endif
@@ -63,6 +72,36 @@ extern "C" void app_main(void) {
   }
 
   neon_config_load();
+
+#if CONFIG_NEON_LINKSYNC
+  {
+    neon::Config cfg = neon_config();
+    bool dirty = false;
+    if (std::strcmp(cfg.device_name, "neon-link") == 0) {
+#if CONFIG_NEON_BOARD_LINKSYNC_EPD
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-epd");
+#else
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
+#endif
+      dirty = true;
+    }
+    if (cfg.ble_enabled != 0) {
+      cfg.ble_enabled = 0;
+      dirty = true;
+    }
+    if (cfg.audio.enabled != 0) {
+      cfg.audio.enabled = 0;
+      dirty = true;
+    }
+    if (cfg.telemetry_uart_csv == 0) {
+      cfg.telemetry_uart_csv = 1;
+      dirty = true;
+    }
+    if (dirty) {
+      neon_config_apply(cfg);
+    }
+  }
+#endif
 
   // Must land before any task that could touch Link's asio ServiceRunner
   // singleton or start the pump is created (neon_start_link_service /
@@ -79,13 +118,19 @@ extern "C" void app_main(void) {
   // of CPU0 spin and the 5 s idle-task WDT resets us. After a USB flash
   // the rail was already up so the sweep returned instantly and the
   // panel looked fine — until the next power cycle.
+#if !CONFIG_NEON_LINKSYNC
   oledui_bringup();
+#endif
 
   // Real-time pulse engine (and the AMYboard CV mirror, which shares
   // this I2C bus). Panel is already up so a later hang is visible.
   neon_start_core1_tasks();
   neon_start_core0_tasks();
   neon_start_link_service();
+#if !CONFIG_NEON_LINKSYNC
   neon_start_midi_service();
+#endif
+  // Always linked: web_ui resolves /api/audio/channels against these
+  // symbols. On link-sync the service is a no-op (CONFIG_NEON_AUDIO=n).
   neon_start_audio_service();
 }

@@ -13,6 +13,10 @@ struct PulseEdge {
   int64_t t_us;
   uint32_t gpio_set_mask;
   uint32_t gpio_clear_mask;
+  // Optional MIDI payload emitted from the same GPTimer ISR as the GPIO
+  // edge. midi_len == 0 means GPIO only (every existing clock/gate path).
+  uint8_t midi[3];
+  uint8_t midi_len;
 };
 
 // Emits pre-scheduled edges with hardware-timer precision. Implementations

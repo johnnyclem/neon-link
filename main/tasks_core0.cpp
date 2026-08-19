@@ -6,6 +6,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #include "oledui/oled_ui.h"
 #include "tasks.h"
@@ -26,5 +27,13 @@ void app_task(void*) {
 
 void neon_start_core0_tasks() {
   xTaskCreatePinnedToCore(app_task, "app", 4096, nullptr, 5, nullptr, 0);
+#if CONFIG_NEON_BOARD_LINKSYNC
+  neon_start_status_led_service();
+  neon_start_telemetry_service();
+#elif CONFIG_NEON_BOARD_LINKSYNC_EPD
+  neon_start_epd_service();
+  neon_start_telemetry_service();
+#else
   oledui_start();
+#endif
 }

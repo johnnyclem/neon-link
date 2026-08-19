@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Core 0: networking / Link / BLE / web / OLED (application side).
 void neon_start_core0_tasks();
 
@@ -11,6 +13,15 @@ void neon_start_midi_service();
 
 // Core 1: real-time pulse engine. Nothing else runs at this priority.
 void neon_start_core1_tasks();
+
+// Core 0: single inverted user LED (XIAO link-sync). No-op elsewhere.
+void neon_start_status_led_service();
+
+// Core 0: Waveshare 5.79" e-paper status. No-op on other boards.
+void neon_start_epd_service();
+
+// Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
+void neon_start_telemetry_service();
 
 // Core 1: the I2S audio render loop, plus its core-0 control task.
 // A no-op unless CONFIG_NEON_AUDIO is set and audio is enabled in the

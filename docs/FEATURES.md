@@ -60,6 +60,8 @@ These define the product. Shipping without any of them means it is not yet the p
 - Preset system / SD card storage of settings
 - Custom front panel with clearer labeling for the two outs
 - Battery / portable experiments
+- **link-sync dongle** (XIAO ESP32S3) — sister product, same tree, no
+  audio. See [`docs/LINKSYNC.md`](LINKSYNC.md)
 
 ---
 

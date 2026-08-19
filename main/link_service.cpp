@@ -21,6 +21,7 @@
 #include "board_pins.h"
 #include "app_state/config_store.h"
 #include "netman/net_manager.h"
+#include "provision.h"
 #include "tasks.h"
 #include "app_state/timeline_bus.h"
 #include "webui/web_ui.h"
@@ -74,6 +75,8 @@ void link_service_task(void*) {
   netman::mdns_start(neon_config().device_name);
   webui_start();
 
+  neon_provision_start();
+
   if (neon_config().ap_policy == neon::ApPolicy::kAlways) {
     // "Always create an access point": self-host immediately and never
     // join a stored network.
@@ -93,11 +96,14 @@ void link_service_task(void*) {
       }
     }
   } else if (neon_config().ap_policy == neon::ApPolicy::kFallback) {
-    // First boot / no stored STA: bring the C6 up now. Waiting for the
-    // 10 s unconfigured grace just delays setup, and on Hosted a late
-    // get_mode probe used to crash before the slave was reset.
-    ESP_LOGI(kTag, "no STA credentials; starting setup AP");
-    start_ap_from_config();
+    // First boot / no stored STA. On link-sync, BLE provision is the
+    // primary path and SoftAP waits 90 s (neon_provision_poll).
+    if (neon_provision_active()) {
+      ESP_LOGI(kTag, "no STA credentials; BLE provision running (SoftAP in 90 s)");
+    } else {
+      ESP_LOGI(kTag, "no STA credentials; starting setup AP");
+      start_ap_from_config();
+    }
   }
 
   auto& session = ablink::session();
@@ -301,7 +307,15 @@ void link_service_task(void*) {
       local_playing = state.playing;
       app_status_set_transport(state.playing);
     }
-    neon_config_flush(esp_timer_get_time());
+    {
+      const int64_t now = esp_timer_get_time();
+      if (neon_provision_poll(now) &&
+          neon_config().ap_policy == neon::ApPolicy::kFallback &&
+          !netman::ap_is_up()) {
+        start_ap_from_config();
+      }
+      neon_config_flush(now);
+    }
     vTaskDelay(kCapturePeriod);
   }
 }

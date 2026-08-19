@@ -39,6 +39,9 @@ int neon_wifi_scan_json(char* buf, int cap);
 }
 #endif
 
+// True once STA has an IPv4 address. Cleared on disconnect.
+bool neon_wifi_sta_got_ip();
+
 // Block until an IP is acquired or the timeout elapses.
 bool neon_wifi_wait_ip(uint32_t timeout_ms);
 

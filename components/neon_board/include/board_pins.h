@@ -12,6 +12,9 @@
 //   Pulse channels are *virtual* (indices 0..5); the ISR updates an
 //   atomic level word and a core-1 task mirrors CLK1 onto CV out 2.
 //   Tempo CV rides CV out 1. See docs/AMYBOARD.md.
+//
+// LINKSYNC: Seeed XIAO ESP32S3 dongle. One UART MIDI TX, one inverted
+//   user LED. No audio, no OLED, no pulse GPIOs. See docs/LINKSYNC.md.
 
 #include "sdkconfig.h"
 
@@ -41,7 +44,119 @@ inline constexpr int kPinI2sPa = 53;
 inline constexpr int kPinI2sPa = -1;
 #endif
 
-#if CONFIG_NEON_BOARD_P4DEVKIT
+#if CONFIG_NEON_BOARD_LINKSYNC
+
+// Seeed XIAO ESP32S3 (non-Sense). 11 broken-out GPIOs. Pulse channels
+// are virtual: the only physical output is UART1 MIDI TX on D0.
+// Locked before carrier layout — do not move without updating
+// docs/LINKSYNC.md.
+//
+//   D0  GPIO1   MIDI TX   (UART1 @ 31250). Not GPIO3 (JTAG strap).
+//   D1  GPIO2   reserved  jack-detect / battery divider
+//   D2  GPIO3   DO NOT USE — JTAG strap
+//   GPIO0 / 45 / 46 — boot / VDD_SPI / ROM strap. Leave them alone.
+//   USER LED GPIO21, inverted (LOW = on). Charge LED is separate.
+
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = 1;  // D0
+inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinJackSense = -1;  // D1 / GPIO2 if populated
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+inline constexpr int kPinI2cSda = -1;
+inline constexpr int kPinI2cScl = -1;
+
+inline constexpr int kPinDispSck = -1;
+inline constexpr int kPinDispMosi = -1;
+inline constexpr int kPinDispCs = -1;
+inline constexpr int kPinDispDc = -1;
+inline constexpr int kPinDispRes = -1;
+
+inline constexpr int kPinEncA = -1;
+inline constexpr int kPinEncB = -1;
+inline constexpr int kPinEncSw = -1;
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = 21;
+inline constexpr bool kUserLedInverted = true;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
+#elif CONFIG_NEON_BOARD_LINKSYNC_EPD
+
+// 5.79" dual-SSD1683 panel. Default pins are the Elecrow CrowPanel
+// all-in-one (S3 on the back). The driver also probes the DevKit +
+// 9-pin Waveshare module map. See docs/LINKSYNC_EPD.md.
+
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = 21;  // CrowPanel 2x10 header, UART1 @ 31250
+inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+inline constexpr int kPinI2cSda = -1;
+inline constexpr int kPinI2cScl = -1;
+
+inline constexpr int kPinDispSck = 12;   // EPD CLK
+inline constexpr int kPinDispMosi = 11;  // EPD DIN
+inline constexpr int kPinDispCs = 45;    // CrowPanel (DevKit module: 10)
+inline constexpr int kPinDispDc = 46;    // CrowPanel (DevKit module: 9)
+inline constexpr int kPinDispRes = 47;   // CrowPanel (DevKit module: 8)
+inline constexpr int kPinEpdBusy = 48;   // CrowPanel (DevKit module: 18)
+inline constexpr int kPinEpdPwr = 7;     // hold HIGH
+
+inline constexpr int kPinEncA = -1;
+inline constexpr int kPinEncB = -1;
+inline constexpr int kPinEncSw = -1;
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
+#elif CONFIG_NEON_BOARD_P4DEVKIT
 
 // Waveshare ESP32-P4-Module-DEV-KIT. No Eurorack jacks on the stock
 // board: pulse channels are virtual (same word as AMYboard) so the
@@ -87,6 +202,10 @@ inline constexpr int kPinEncSw = 4;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
 
 inline constexpr int kAmyCvTempoChannel = 0;
 inline constexpr int kAmyCvClockChannel = 1;
@@ -151,6 +270,10 @@ inline constexpr int kPinEncSw = -1;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
 
 // GP8413 DAC (I2C) channel map for the two CV jacks.
 inline constexpr int kAmyCvTempoChannel = 0;  // CV1
@@ -202,6 +325,10 @@ inline constexpr int kPinEncSw = 41;
 inline constexpr int kPinLedNet = 42;
 inline constexpr int kPinLedBeat = 2;
 inline constexpr int kPinLedRun = 1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
 
 inline constexpr int kAmyCvTempoChannel = 0;
 inline constexpr int kAmyCvClockChannel = 1;

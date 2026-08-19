@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [link, stub, bleoff, amyboard-audio, stub-audio]
+        variant: [link, stub, bleoff, amyboard-audio, stub-audio, linksync, linksync-epd]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,19 +125,27 @@ jobs:
             ${{ matrix.variant == 'bleoff' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.bleoff"' || '' }}
             ${{ matrix.variant == 'amyboard-audio' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard;sdkconfig.ci.audio"' || '' }}
             ${{ matrix.variant == 'stub-audio' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub;sdkconfig.ci.audio"' || '' }}
+            ${{ matrix.variant == 'linksync' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync"' || '' }}
+            ${{ matrix.variant == 'linksync-epd' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-epd"' || '' }}
             build
 
       # The AMYboard image has to fit the OTA slot it will be flashed into,
       # and "it built" is not the same statement. 6 MB slots, checked here
       # so a size regression fails in CI rather than during an update.
       - name: App image fits its OTA slot
-        if: matrix.variant == 'amyboard-audio'
+        if: matrix.variant == 'amyboard-audio' || matrix.variant == 'linksync' || matrix.variant == 'linksync-epd'
         run: |
-          size=$(stat -c%s build/neon-link.bin 2>/dev/null || stat -c%s build/*.bin | head -1)
-          limit=$((6 * 1024 * 1024))
+          size=$(stat -c%s build/neon_link.bin 2>/dev/null || stat -c%s build/*.bin | head -1)
+          if [ "${{ matrix.variant }}" = "linksync" ] || [ "${{ matrix.variant }}" = "linksync-epd" ]; then
+            limit=$((3 * 1024 * 1024))
+            slot="3 MB"
+          else
+            limit=$((6 * 1024 * 1024))
+            slot="6 MB"
+          fi
           echo "app image: $size bytes (limit $limit)"
           if [ "$size" -gt "$limit" ]; then
-            echo "::error::The app image no longer fits the 6 MB OTA slot."
+            echo "::error::The app image no longer fits the $slot OTA slot."
             exit 1
           fi
 

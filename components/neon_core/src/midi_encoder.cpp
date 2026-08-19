@@ -26,5 +26,13 @@ size_t control_change(uint8_t channel, uint8_t cc, uint8_t value,
   return 3;
 }
 
+size_t song_position(uint16_t sixteenths, uint8_t* buf) {
+  const uint16_t pos = static_cast<uint16_t>(sixteenths & 0x3fffu);
+  buf[0] = kSongPosition;
+  buf[1] = static_cast<uint8_t>(pos & 0x7fu);
+  buf[2] = static_cast<uint8_t>((pos >> 7) & 0x7fu);
+  return 3;
+}
+
 }  // namespace midi
 }  // namespace neon

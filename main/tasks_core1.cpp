@@ -13,7 +13,9 @@
 
 #include "board_pins.h"
 #include "app_state/config_store.h"
+#include "halesp/midi_uart.hpp"
 #include "halesp/pulse_hw_gptimer.hpp"
+#include "neon/midi/clock_engine.hpp"
 #include "neon/multi_engine.hpp"
 #include "tasks.h"
 #include "app_state/timeline_bus.h"
@@ -66,6 +68,26 @@ void cv_mirror_task(void*) {
 }
 #endif
 
+#if CONFIG_NEON_LINKSYNC
+bool submit_midi(const neon::midi::Event& ev) {
+  uint8_t buf[3];
+  const size_t len = neon::midi::encode_event(ev, buf);
+  if (len == 0) {
+    return true;
+  }
+  hal::PulseEdge pe{};
+  pe.t_us = ev.t_us;
+  pe.midi_len = static_cast<uint8_t>(len);
+  for (size_t i = 0; i < len; ++i) {
+    pe.midi[i] = buf[i];
+  }
+  while (!g_pulse_hw.submit(pe)) {
+    vTaskDelay(1);
+  }
+  return true;
+}
+#endif
+
 void pulse_task(void*) {
   if (!g_pulse_hw.init(kChannelGpio, neon::kChannelCount, kPulseVirtual)) {
     ESP_LOGE(kTag, "pulse hardware init failed");
@@ -73,6 +95,44 @@ void pulse_task(void*) {
     return;
   }
 
+#if CONFIG_NEON_LINKSYNC
+  if (kPinMidiTx >= 0 && !halesp::midi_uart_init(kPinMidiTx)) {
+    ESP_LOGE(kTag, "MIDI UART init failed on GPIO%d", kPinMidiTx);
+  }
+
+  neon::midi::ClockEngine midi;
+  int64_t cursor = g_pulse_hw.now_us() + kLeadUs;
+  uint32_t timeline_version = 0;
+  bool have_timeline = false;
+  neon::TimelineSnapshot last_snap{};
+
+  TickType_t wake = xTaskGetTickCount();
+  for (;;) {
+    if (timeline_bus().version() != timeline_version) {
+      timeline_version = timeline_bus().read(last_snap);
+      midi.set_nudge(neon_config().midi_nudge_us);
+      midi.retime(last_snap, cursor);
+      if (!have_timeline) {
+        ESP_LOGI(kTag, "timeline acquired; MIDI clock live");
+        have_timeline = true;
+      }
+    }
+
+    const int64_t until = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
+    if (have_timeline && until > cursor && neon_config().midi_clock_out != 0) {
+      neon::midi::Event evs[32];
+      size_t n;
+      do {
+        n = midi.generate(cursor, until, evs, 32);
+        for (size_t i = 0; i < n; ++i) {
+          submit_midi(evs[i]);
+        }
+      } while (n == 32);
+      cursor = until;
+    }
+    vTaskDelayUntil(&wake, kRefillTicks);
+  }
+#else
   neon::MultiClockEngine engine;
   neon::EngineConfig eng_cfg = neon_config().engine;
 #if CONFIG_NEON_BOARD_AMYBOARD
@@ -146,6 +206,7 @@ void pulse_task(void*) {
     }
     vTaskDelayUntil(&wake, kRefillTicks);
   }
+#endif
 }
 
 }  // namespace

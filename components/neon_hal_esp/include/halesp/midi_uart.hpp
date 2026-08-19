@@ -9,5 +9,7 @@ namespace halesp {
 bool midi_uart_init(int tx_gpio);
 void midi_uart_send(const uint8_t* bytes, size_t len);
 void midi_uart_send_byte(uint8_t b);
+// IRAM: write the UART1 TX FIFO from the GPTimer ISR. No-op until init.
+void midi_uart_send_isr(const uint8_t* bytes, size_t len);
 
 }  // namespace halesp

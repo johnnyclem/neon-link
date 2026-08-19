@@ -7,6 +7,9 @@ choice NEON_BOARD
         Board profile selects the pin map, pulse path, and CV drivers.
         AMYboard is the FEATURES.md v1 platform (10HP Eurorack module).
         P4-Module-DEV-KIT is the v2 R&D Waveshare board + I2C OLED.
+        link-sync is the XIAO ESP32S3 MIDI-clock dongle (docs/LINKSYNC.md).
+        link-sync-epd is the same dongle with a Waveshare 5.79" e-Paper
+        (docs/LINKSYNC_EPD.md).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -14,7 +17,19 @@ config NEON_BOARD_AMYBOARD
     bool "AMYboard (GP8413 CV outs, ADS1015 CV ins, TRS MIDI)"
 config NEON_BOARD_P4DEVKIT
     bool "Waveshare ESP32-P4-Module-DEV-KIT (I2C OLED, no radio)"
+config NEON_BOARD_LINKSYNC
+    bool "link-sync dongle (Seeed XIAO ESP32S3, TRS MIDI clock)"
+config NEON_BOARD_LINKSYNC_EPD
+    bool "link-sync (Waveshare 5.79\" e-Paper + ESP32-S3)"
 endchoice
+
+config NEON_LINKSYNC
+    bool
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD
+    help
+        Shared link-sync firmware path: Link + MIDI clock + BLE provision.
+        No audio, no OLED. The XIAO uses a single LED; the e-Paper board
+        uses the 5.79" panel.
 
 config NEON_AUDIO
     bool "Audio engine (I2S out, metronome, pulses as audio)"

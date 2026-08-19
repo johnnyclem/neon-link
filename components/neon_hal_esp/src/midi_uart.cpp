@@ -1,6 +1,8 @@
 #include "halesp/midi_uart.hpp"
 
 #include "driver/uart.h"
+#include "esp_attr.h"
+#include "soc/uart_reg.h"
 
 namespace halesp {
 
@@ -38,5 +40,14 @@ void midi_uart_send(const uint8_t* bytes, size_t len) {
 }
 
 void midi_uart_send_byte(uint8_t b) { midi_uart_send(&b, 1); }
+
+void IRAM_ATTR midi_uart_send_isr(const uint8_t* bytes, size_t len) {
+  if (!g_ready || bytes == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < len; ++i) {
+    WRITE_PERI_REG(UART_FIFO_AHB_REG(UART_NUM_1), bytes[i]);
+  }
+}
 
 }  // namespace halesp

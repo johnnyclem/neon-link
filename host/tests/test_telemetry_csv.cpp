@@ -4,6 +4,7 @@
 #include <string>
 
 #include "neon/telemetry/csv.hpp"
+#include "neon/telemetry/linksync_csv.hpp"
 
 TEST_CASE("telemetry CSV header matches the plan's field order") {
   char buf[256];
@@ -53,6 +54,33 @@ TEST_CASE("telemetry CSV line: field count matches the header, values round-trip
 
   CHECK(std::string(line, ln) ==
         "123456789,ap,1,200,170,8160,3,2,2,5,42,-38,1,-67,123000,4500000");
+}
+
+TEST_CASE("link-sync telemetry CSV header and a sample line") {
+  char header[192];
+  const size_t hn = neon::linksync_telemetry_csv_header(header, sizeof(header));
+  REQUIRE(hn > 0);
+  CHECK(std::string(header, hn) ==
+        "uptime_ms,mode,rssi,heap_free_internal,heap_free_psram,"
+        "peers,playing,milli_bpm,pulse_edges,late_max_us,late_avg_us");
+
+  neon::LinkSyncTelemetrySample s;
+  s.uptime_ms = 15000;
+  s.mode = "ap";
+  s.rssi = 0;
+  s.heap_free_internal = 200000;
+  s.heap_free_psram = 7000000;
+  s.peers = 2;
+  s.playing = 1;
+  s.milli_bpm = 128000;
+  s.pulse_edges = 480;
+  s.late_max_us = 12;
+  s.late_avg_us = 3;
+  char line[192];
+  const size_t ln = neon::linksync_telemetry_csv_line(s, line, sizeof(line));
+  REQUIRE(ln > 0);
+  CHECK(std::string(line, ln) ==
+        "15000,ap,0,200000,7000000,2,1,128000,480,12,3");
 }
 
 TEST_CASE("telemetry CSV: undersized buffer reports failure, not truncation") {

@@ -4,6 +4,7 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "halesp/midi_uart.hpp"
 #include "soc/gpio_reg.h"
 
 namespace halesp {
@@ -136,6 +137,9 @@ bool IRAM_ATTR PulseHwGptimer::on_alarm(gptimer_handle_t timer,
       lv |= e.gpio_set_mask;
       lv &= ~e.gpio_clear_mask;
       g_levels.store(lv, std::memory_order_relaxed);
+    }
+    if (e.midi_len != 0) {
+      halesp::midi_uart_send_isr(e.midi, e.midi_len);
     }
     const uint32_t late = static_cast<uint32_t>(now - due);
     g_edges.fetch_add(1, std::memory_order_relaxed);

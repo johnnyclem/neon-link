@@ -11,6 +11,8 @@ The tree builds two ways:
 | Build | Toolchain | What it proves |
 |-------|-----------|----------------|
 | Firmware | ESP-IDF **v5.3.x** (pinned in CI), target `esp32s3` | The real application compiles for the ESP32-S3-WROOM-1 |
+| link-sync | same IDF, `NEON_BOARD_LINKSYNC` | XIAO ESP32S3 dongle: Link + MIDI clock, no audio ([docs/LINKSYNC.md](LINKSYNC.md)) |
+| link-sync-epd | same IDF, `NEON_BOARD_LINKSYNC_EPD` | Waveshare 5.79" e-Paper + ESP32-S3: same clock, panel status ([docs/LINKSYNC_EPD.md](LINKSYNC_EPD.md)) |
 | Host | Any desktop gcc/clang, CMake ≥ 3.16 | Portable core logic is correct (unit tests, ASan/UBSan) |
 
 ```
@@ -70,7 +72,10 @@ force a re-render race). Instead:
   earliest pending edge across all outputs.
 - The ISR (IRAM-resident, core 1) writes `GPIO_OUT_W1TS_REG` /
   `GPIO_OUT_W1TC_REG` directly — all pulse outputs are on GPIO < 32 so one
-  register write flips any combination of them simultaneously.
+  register write flips any combination of them simultaneously. An optional
+  `PulseEdge::midi[]` payload is written to the UART1 TX FIFO in the same
+  ISR so the link-sync dongle shares this ring for 24 PPQN MIDI clock and
+  transport (`neon::midi::ClockEngine`).
 - Jitter is interrupt latency only: ~1–2 µs with core 1 kept clear, well
   inside the sub-millisecond musical budget. This satisfies the "hardware
   timers or RMT only" requirement (HARDWARE.md §4.3): the timer *is* the

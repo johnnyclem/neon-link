@@ -354,6 +354,15 @@ extern "C" void neon_wifi_apply_credentials(void) {
            static_cast<unsigned>(std::strlen(effective_pass())));
 }
 
+bool neon_wifi_sta_got_ip() {
+#if NEON_HAVE_WIFI
+  return g_events != nullptr &&
+         (xEventGroupGetBits(g_events) & kGotIpBit) != 0;
+#else
+  return false;
+#endif
+}
+
 bool neon_wifi_wait_ip(uint32_t timeout_ms) {
   if (g_events == nullptr) {
     return false;
@@ -497,6 +506,8 @@ void neon_wifi_start() {
 void neon_wifi_hold_station() {}
 
 extern "C" void neon_wifi_apply_credentials(void) {}
+
+bool neon_wifi_sta_got_ip() { return false; }
 
 bool neon_wifi_wait_ip(uint32_t) { return false; }
 

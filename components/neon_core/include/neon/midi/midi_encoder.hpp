@@ -14,12 +14,15 @@ inline constexpr uint8_t kClock = 0xf8;
 inline constexpr uint8_t kStart = 0xfa;
 inline constexpr uint8_t kContinue = 0xfb;
 inline constexpr uint8_t kStop = 0xfc;
+inline constexpr uint8_t kSongPosition = 0xf2;
 
 // Each returns the number of bytes written (buf must hold >= 3).
 size_t note_on(uint8_t channel, uint8_t note, uint8_t velocity, uint8_t* buf);
 size_t note_off(uint8_t channel, uint8_t note, uint8_t* buf);
 size_t control_change(uint8_t channel, uint8_t cc, uint8_t value,
                       uint8_t* buf);
+// 0xF2 + 14-bit position in sixteenth notes (6 MIDI clocks).
+size_t song_position(uint16_t sixteenths, uint8_t* buf);
 
 }  // namespace midi
 }  // namespace neon
