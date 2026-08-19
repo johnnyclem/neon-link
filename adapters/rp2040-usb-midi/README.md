@@ -70,6 +70,24 @@ On the **XIAO RP2040** the onboard NeoPixel is the status lamp
 | dim green | playing |
 | white flash | quarter-note (every 24 MIDI clocks) |
 
+### Seeed 6×10 RGB MATRIX
+
+The [6x10 RGB MATRIX for XIAO](https://wiki.seeedstudio.com/rgb_matrix_for_xiao/)
+stacks on the XIAO. DIN is **D0** (GPIO26); MIDI stays on **D7**.
+The PCB is **6 columns × 10 rows**, row-major left-to-right then down
+(not 10×6, not serpentine). Pixel 0 is at the USB / D0 end.
+
+```bash
+pio run -e xiao_matrix -t upload
+```
+
+Giant **1 / 2 / 3 / 4** (neon-link big-number). Downbeat is warmer;
+2–4 are green. White flash on the attack, then the digit holds.
+Stopped = dim blue digit. USB down = dim red field.
+
+If the number is upside-down, add `-DMATRIX_FLIP_Y=1` (and
+`-DMATRIX_FLIP_X=1` if it is also mirrored) in `platformio.ini`.
+
 A generic Pico uses the onboard LED as a traffic blink only.
 
 ## Flash
