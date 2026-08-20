@@ -10,6 +10,8 @@ choice NEON_BOARD
         link-sync is the XIAO ESP32S3 MIDI-clock dongle (docs/LINKSYNC.md).
         link-sync-epd is the same dongle with a Waveshare 5.79" e-Paper
         (docs/LINKSYNC_EPD.md).
+        link-sync-p4lcd is CrowPanel Advance 5.0" ESP32-P4 RGB LCD.
+        link-sync-tab5 is M5Stack Tab5 (ESP32-P4 MIPI-DSI 720×1280).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -21,15 +23,19 @@ config NEON_BOARD_LINKSYNC
     bool "link-sync dongle (Seeed XIAO ESP32S3, TRS MIDI clock)"
 config NEON_BOARD_LINKSYNC_EPD
     bool "link-sync (Waveshare 5.79\" e-Paper + ESP32-S3)"
+config NEON_BOARD_LINKSYNC_P4LCD
+    bool "link-sync (CrowPanel Advance 5.0\" ESP32-P4 RGB LCD)"
+config NEON_BOARD_LINKSYNC_TAB5
+    bool "link-sync (M5Stack Tab5 ESP32-P4 MIPI LCD)"
 endchoice
 
 config NEON_LINKSYNC
     bool
-    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5
     help
-        Shared link-sync firmware path: Link + MIDI clock + BLE provision.
-        No audio, no OLED. The XIAO uses a single LED; the e-Paper board
-        uses the 5.79" panel.
+        Shared link-sync firmware path: Link + MIDI clock. No audio, no
+        OLED. The XIAO uses a single LED; the e-Paper board uses the
+        5.79" panel; the P4 LCD board paints the same status live.
 
 config NEON_AUDIO
     bool "Audio engine (I2S out, metronome, pulses as audio)"

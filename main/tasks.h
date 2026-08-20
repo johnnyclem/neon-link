@@ -20,6 +20,9 @@ void neon_start_status_led_service();
 // Core 0: Waveshare 5.79" e-paper status. No-op on other boards.
 void neon_start_epd_service();
 
+// Core 0: CrowPanel Advance 5.0" RGB LCD status. No-op on other boards.
+void neon_start_lcd_service();
+
 // Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
 void neon_start_telemetry_service();
 

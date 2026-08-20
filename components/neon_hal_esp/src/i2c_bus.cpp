@@ -136,9 +136,10 @@ bool i2c_bus_init(int sda_gpio, int scl_gpio, uint32_t hz) {
   const bool oled_3d = i2c_probe(0x3d, 20);
   const bool oled_3c = i2c_probe(0x3c, 20);
   const bool es8311 = i2c_probe(0x18, 20);
-  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s ES8311 0x18=%s",
+  const bool stc8 = i2c_probe(0x2f, 20);
+  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s ES8311 0x18=%s STC8 0x2f=%s",
            oled_3d ? "ACK" : "nack", oled_3c ? "ACK" : "nack",
-           es8311 ? "ACK" : "nack");
+           es8311 ? "ACK" : "nack", stc8 ? "ACK" : "nack");
   return true;
 }
 

@@ -29,6 +29,8 @@
 #define CONFIG_WIFI_RMT_CACHE_TX_BUFFER_NUM 32
 #endif
 #include "esp_wifi.h"
+#include "esp_wifi_default.h"
+#include "esp_wifi_netif.h"
 #define NEON_HAVE_WIFI 1
 #else
 #define NEON_HAVE_WIFI 0
@@ -328,13 +330,42 @@ void mdns_start(const char* hostname) {
 
 char g_ap_ssid[33] = {};
 bool g_ap_handlers = false;
+esp_netif_t* g_ap_netif = nullptr;
+bool g_ap_lwip_up = false;
 
 #if NEON_HAVE_WIFI
-void on_ap_event(void*, esp_event_base_t, int32_t id, void* event_data) {
+void ap_netif_start_once() {
+  if (g_ap_lwip_up || g_ap_netif == nullptr) {
+    return;
+  }
+  auto* driver =
+      static_cast<wifi_netif_driver_t>(esp_netif_get_io_driver(g_ap_netif));
+  uint8_t mac[6] = {};
+  if (driver != nullptr && esp_wifi_get_if_mac(driver, mac) == ESP_OK) {
+    (void)esp_netif_set_mac(g_ap_netif, mac);
+  }
+  if (driver != nullptr && esp_wifi_is_if_ready_when_started(driver)) {
+    (void)esp_wifi_register_if_rxcb(driver, esp_netif_receive, g_ap_netif);
+  }
+  (void)esp_netif_action_start(g_ap_netif, WIFI_EVENT, WIFI_EVENT_AP_START,
+                               nullptr);
+  g_ap_lwip_up = true;
+}
+
+void on_ap_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
   if (id == WIFI_EVENT_AP_START) {
+    const bool first = !g_ap_lwip_up;
+    ap_netif_start_once();
     g_ap_up = true;
-    ESP_LOGI(kTag, "SoftAP started: %s at 192.168.4.1", g_ap_ssid);
+    if (first) {
+      ESP_LOGI(kTag, "SoftAP started: %s at 192.168.4.1", g_ap_ssid);
+    }
   } else if (id == WIFI_EVENT_AP_STOP) {
+    if (g_ap_lwip_up && g_ap_netif != nullptr) {
+      (void)esp_netif_action_stop(g_ap_netif, base, id, event_data);
+      g_ap_lwip_up = false;
+    }
+    g_ap_up = false;
     ESP_LOGW(kTag, "SoftAP stopped");
   } else if (id == WIFI_EVENT_AP_STACONNECTED) {
     auto* ev = static_cast<wifi_event_ap_staconnected_t*>(event_data);
@@ -352,15 +383,25 @@ void on_ap_event(void*, esp_event_base_t, int32_t id, void* event_data) {
 }
 
 bool ap_start(const ApParams& params) {
+  // Do not use esp_netif_create_default_wifi_ap() on Hosted: the C6
+  // posts WIFI_EVENT_AP_START twice per wifi_start, and the default
+  // glue netif_adds on each (lwIP "netif already added" → reboot).
+  if (g_ap_netif == nullptr) {
+    esp_netif_config_t ncfg = ESP_NETIF_DEFAULT_WIFI_AP();
+    g_ap_netif = esp_netif_new(&ncfg);
+    if (g_ap_netif == nullptr ||
+        esp_netif_attach_wifi_ap(g_ap_netif) != ESP_OK) {
+      ESP_LOGE(kTag, "WIFI_AP_DEF create/attach failed");
+      g_ap_netif = nullptr;
+      return false;
+    }
+  }
   if (!wifi_driver_init()) {
     return false;
   }
   wifi_mode_t mode = WIFI_MODE_NULL;
   if (esp_wifi_get_mode(&mode) != ESP_OK) {
     mode = WIFI_MODE_NULL;
-  }
-  if (esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") == nullptr) {
-    esp_netif_create_default_wifi_ap();
   }
   if (!g_ap_handlers) {
     if (esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &on_ap_event,
@@ -419,9 +460,6 @@ bool ap_start(const ApParams& params) {
       esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK) {
     return false;
   }
-  // Always start. Hosted get_mode() can return AP/STA after init even
-  // when the C6 is not beaconing; skipping start left the OLED in AP
-  // mode with nothing on the air (no WIFI_EVENT_AP_START, no DHCP).
   g_ap_up = false;
   const esp_err_t start_err = esp_wifi_start();
   ESP_LOGI(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));

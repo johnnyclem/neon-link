@@ -12,6 +12,7 @@
 #include "app_state/config_store.h"
 #include "board_pins.h"
 #include "halesp/i2c_bus.hpp"
+#include "halesp/lcd_rgb.hpp"
 #include "neon/config/model.hpp"
 #include "oledui/oled_ui.h"
 #include "tasks.h"
@@ -60,8 +61,21 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_EPD
   ESP_LOGI(kTag, "link-sync firmware starting (5.79 e-Paper) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  ESP_LOGI(kTag, "link-sync firmware starting (P4 5.0 LCD) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
+  ESP_LOGI(kTag, "link-sync firmware starting (Tab5 MIPI LCD) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
+#endif
+
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+  // CrowPanel: LDO4 3.3 V before C6. Tab5: PI4IOE WIFI_EN + LDO3 DPHY.
+  if (!halesp::lcd_rgb_ldos()) {
+    ESP_LOGW(kTag, "P4 rails / expander failed");
+  }
 #endif
 
   // Shared I2C early so GP8413 / ADS1015 / OLED all attach to one bus.
@@ -70,6 +84,12 @@ extern "C" void app_main(void) {
       ESP_LOGW(kTag, "I2C bus init failed; CV / OLED will be unavailable");
     }
   }
+
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+  if (!halesp::lcd_rgb_init()) {
+    ESP_LOGW(kTag, "P4 LCD init failed; status task will retry");
+  }
+#endif
 
   neon_config_load();
 
@@ -80,6 +100,10 @@ extern "C" void app_main(void) {
     if (std::strcmp(cfg.device_name, "neon-link") == 0) {
 #if CONFIG_NEON_BOARD_LINKSYNC_EPD
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-epd");
+#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-lcd");
+#elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-tab");
 #else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
 #endif

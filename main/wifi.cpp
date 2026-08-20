@@ -379,6 +379,9 @@ extern "C" uint8_t neon_wifi_last_disconnect_reason(void) {
 extern "C" const char* neon_wifi_current_ssid(void) { return effective_ssid(); }
 
 extern "C" int8_t neon_wifi_rssi(void) {
+  if (!g_sta_started) {
+    return 0;
+  }
   wifi_ap_record_t info = {};
   return esp_wifi_sta_get_ap_info(&info) == ESP_OK ? info.rssi : 0;
 }

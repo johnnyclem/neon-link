@@ -77,6 +77,14 @@ void link_service_task(void*) {
 
   neon_provision_start();
 
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+  // Hosted only talks to the C6 inside esp_wifi_init (ap_start).
+  if (start_ap_from_config()) {
+    ESP_LOGI(kTag, "C6 up; setup AP is on the air");
+  } else {
+    ESP_LOGW(kTag, "P4 LCD: SoftAP failed; local Link only");
+  }
+#else
   if (neon_config().ap_policy == neon::ApPolicy::kAlways) {
     // "Always create an access point": self-host immediately and never
     // join a stored network.
@@ -105,6 +113,7 @@ void link_service_task(void*) {
       start_ap_from_config();
     }
   }
+#endif
 
   auto& session = ablink::session();
   apply_session_settings(session);
