@@ -16,6 +16,7 @@
 #include "neon/gfx/epd_canvas.hpp"
 #include "neon/transport.hpp"
 #include "neon/ui/epd_front.hpp"
+#include "neon/ui/epd_refresh.hpp"
 #include "netman/net_manager.h"
 #include "provision.h"
 #include "wifi.h"
@@ -180,9 +181,11 @@ void epd_task(void*) {
   neon::Config ui_cfg = neon_config();
   neon::EpdFrontPanel ui(&ui_cfg);
   auto* canvas = new neon::EpdCanvas();
+  neon::EpdRefreshPlanner planner;
   uint32_t last_fp = 0;
+  uint8_t last_overlay = 0xff;
+  bool last_invert = false;
   bool asleep = false;
-  int64_t next_ok_us = 0;
 
   bool raw_top = false;
   bool raw_bot = false;
@@ -311,20 +314,37 @@ void epd_task(void*) {
     neon::LinkSyncPanelStatus st{};
     fill_status(&st, ui);
     const uint32_t fp = fingerprint(st);
-    if (fp != last_fp && (user || now >= next_ok_us)) {
+    const bool layout_changed =
+        st.overlay != last_overlay || st.invert != last_invert;
+    using Kind = neon::EpdRefreshPlanner::Kind;
+    const Kind kind = planner.plan(now, fp != last_fp, user, layout_changed,
+                                   asleep);
+    if (kind != Kind::kNone) {
       if (asleep) {
         halesp::epd5in79_awaken();
         asleep = false;
       }
       neon::render_linksync_panel(*canvas, st);
-      ESP_LOGI(kTag, "paint overlay=%u invert=%d cursor=%d",
+      ESP_LOGI(kTag, "paint %s overlay=%u invert=%d cursor=%d",
+               kind == Kind::kFull ? "full" : "partial",
                static_cast<unsigned>(st.overlay), st.invert ? 1 : 0,
                st.cursor);
-      halesp::epd5in79_display(canvas->data(), /*fast=*/false);
-      halesp::epd5in79_sleep();
-      asleep = true;
+      if (kind == Kind::kFull) {
+        halesp::epd5in79_display(canvas->data(), /*fast=*/false);
+      } else {
+        halesp::epd5in79_display_partial(canvas->data());
+      }
+      planner.note_painted(now, kind, user);
       last_fp = fp;
-      next_ok_us = now + (user ? 800000 : 5000000);
+      last_overlay = st.overlay;
+      last_invert = st.invert;
+    }
+    // Stay awake through interaction bursts so key presses land as
+    // sub-second partials; release the glass to deep sleep once idle.
+    if (!asleep && planner.sleep_due(now)) {
+      halesp::epd5in79_sleep();
+      planner.note_slept();
+      asleep = true;
     }
     vTaskDelay(pdMS_TO_TICKS(25));
   }

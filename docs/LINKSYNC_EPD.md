@@ -19,9 +19,12 @@ still comes out the 2×10 IDC on the bottom of the case (GPIO21).
 E-paper cannot flash the downbeat. That is a choice, not a bug. No
 metronome, no big-beat animation, no partial chase. The panel
 repaints only when the text changes (tempo, PLAYING/STOPPED, peers,
-WiFi / setup AP) with a 5 s floor, then sleeps so the glass is not
-held at high voltage. Clock lives on the GPTimer ring, same as the
-XIAO.
+WiFi / setup AP). Key interactions (BPM nudge, menu cursor, value
+edits) land as **partial refreshes** — sub-second, no flash — while
+ambient changes keep a 5 s floor. A full refresh runs on layout
+changes and every 20 partials to clear ghosting, and the panel drops
+to deep sleep after 30 s idle so the glass is not held at high
+voltage. Clock lives on the GPTimer ring, same as the XIAO.
 
 While the setup AP is up (or the box is still unprovisioned) the
 glass prints the SoftAP SSID and password. Physical access is the
@@ -110,7 +113,12 @@ is the ground truth. The panel will not tick.
 
 Waveshare's own precautions apply:
 
-- Full refresh only when the painted text changes, then sleep
+- Repaint only when the painted text changes; sleep once idle
+- Partial refresh (mode 0xFF) for interactions; it diffs against the
+  old RAM seeded by the last full refresh (Waveshare `Display_Base`
+  pattern) and accumulates ghosting, so a full refresh (0xF7) runs on
+  every layout change and after 20 consecutive partials
+  (`neon::EpdRefreshPlanner`, host-tested)
 - Do not treat the glass as a metronome
 
 ## Build & flash
