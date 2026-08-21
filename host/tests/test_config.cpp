@@ -300,6 +300,7 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   a.engine.reset_before_edge = true;
   a.big_beat_display = 0;
   a.beat_style = neon::BeatStyle::kPie;
+  a.midi_trs_type = 1;
 
   std::vector<uint8_t> buf(neon::config_blob_size());
   REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
@@ -321,6 +322,7 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   CHECK(b.engine.reset_before_edge);
   CHECK(b.big_beat_display == 0);
   CHECK(b.beat_style == neon::BeatStyle::kPie);
+  CHECK(b.midi_trs_type == 1);
 }
 
 TEST_CASE("a v2 config blob keeps wifi and defaults the big beat flag") {

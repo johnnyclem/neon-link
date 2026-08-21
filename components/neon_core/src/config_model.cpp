@@ -148,6 +148,7 @@ void config_sanitize(Config* cfg) {
   if (cfg->beat_style >= BeatStyle::kCount) {
     cfg->beat_style = BeatStyle::kNumber;
   }
+  cfg->midi_trs_type = cfg->midi_trs_type ? 1 : 0;
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -397,6 +398,9 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   if (h.version < 7) {
     // beat_style sits in what was v6 tail padding after device_token.
     out->beat_style = BeatStyle::kNumber;
+  }
+  if (h.version < 8) {
+    out->midi_trs_type = 0;
   }
   config_sanitize(out);
   return true;

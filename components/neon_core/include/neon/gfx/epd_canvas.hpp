@@ -22,6 +22,14 @@ struct LinkSyncPanelStatus {
   char ap_ssid[33] = {};
   char ap_pass[65] = {};
   char detail[48] = {};
+  bool invert = false;
+  // 0 live, 1 settings list, 2 editing a value, 3 power popup, 4 splash.
+  uint8_t overlay = 0;
+  int cursor = 0;
+  int n_items = 0;
+  char item_label[8][20] = {};
+  char item_value[8][16] = {};
+  int power_cursor = 0;
 };
 
 class EpdCanvas {
@@ -42,6 +50,9 @@ class EpdCanvas {
 
   // 5×7 glyphs scaled by `scale`. Returns advance width.
   int draw_text(int x, int y, const char* s, int scale);
+
+  void invert();
+  void invert_rect(int x, int y, int w, int h);
 
   const uint8_t* data() const { return buf_; }
   uint8_t* data() { return buf_; }

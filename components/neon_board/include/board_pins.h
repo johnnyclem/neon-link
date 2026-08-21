@@ -145,6 +145,13 @@ inline constexpr int kPinEpdPwr = 7;     // hold HIGH
 inline constexpr int kPinEncA = -1;
 inline constexpr int kPinEncB = -1;
 inline constexpr int kPinEncSw = -1;
+// CrowPanel left-side 5-way: PREV/NEXT + HOME/EXIT (+ rotary OK).
+// Mapped to the physical up/down toggle and top/bottom buttons as felt.
+inline constexpr int kPinKeyUp = 4;
+inline constexpr int kPinKeyDown = 6;
+inline constexpr int kPinKeyTop = 1;
+inline constexpr int kPinKeyBot = 2;
+inline constexpr int kPinKeyOk = 5;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;

@@ -57,6 +57,40 @@ TEST_CASE("setup AP paints the password; joined network hides it") {
   CHECK(setup.black_pixels() > lan.black_pixels());
 }
 
+TEST_CASE("invert flips ink and menu overlay paints a highlight") {
+  neon::LinkSyncPanelStatus s;
+  s.milli_bpm = 120000;
+  s.invert = true;
+  s.overlay = 1;
+  s.n_items = 2;
+  std::snprintf(s.item_label[0], sizeof(s.item_label[0]), "PPQN");
+  std::snprintf(s.item_value[0], sizeof(s.item_value[0]), "24");
+  std::snprintf(s.item_label[1], sizeof(s.item_label[1]), "TRS");
+  std::snprintf(s.item_value[1], sizeof(s.item_value[1]), "A");
+  s.cursor = 1;
+  neon::EpdCanvas c;
+  neon::render_linksync_panel(c, s);
+  CHECK(c.black_pixels() > 200);
+
+  neon::LinkSyncPanelStatus live = s;
+  live.invert = false;
+  live.overlay = 0;
+  neon::EpdCanvas d;
+  neon::render_linksync_panel(d, live);
+  CHECK(std::memcmp(c.data(), d.data(), neon::EpdCanvas::kSize) != 0);
+}
+
+TEST_CASE("splash wordmark and left-edge arrows") {
+  neon::LinkSyncPanelStatus s;
+  s.overlay = 4;
+  neon::EpdCanvas c;
+  neon::render_linksync_panel(c, s);
+  CHECK(c.black_pixels() > 400);
+  CHECK(c.pixel(12, neon::EpdCanvas::kHeight / 5));
+  CHECK(c.pixel(12, (neon::EpdCanvas::kHeight * 4) / 5));
+  CHECK_FALSE(c.pixel(400, 8));
+}
+
 TEST_CASE("e-paper panel is static text — same status, same pixels") {
   neon::LinkSyncPanelStatus s;
   s.milli_bpm = 88000;

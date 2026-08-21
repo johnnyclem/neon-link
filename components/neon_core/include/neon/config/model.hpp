@@ -195,10 +195,14 @@ struct Config {
   // of big_beat_display, which remains the on/off. A v6 blob decodes with
   // this back at kNumber — see config_decode.
   BeatStyle beat_style = BeatStyle::kNumber;
+
+  // Appended in v8. TRS MIDI jack convention shown on the e-paper face.
+  // 0 = Type A (MMA), 1 = Type B. Does not rewire the physical jack.
+  uint8_t midi_trs_type = 0;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 7;
+inline constexpr uint16_t kConfigVersion = 8;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

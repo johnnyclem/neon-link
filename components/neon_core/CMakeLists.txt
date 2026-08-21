@@ -18,6 +18,7 @@ set(NEON_CORE_SRCS
   src/gfx_framebuffer.cpp
   src/epd_canvas.cpp
   src/menu_model.cpp
+  src/epd_front.cpp
   src/ui_widgets.cpp
   src/ui_render.cpp
   src/ble_midi_parser.cpp
