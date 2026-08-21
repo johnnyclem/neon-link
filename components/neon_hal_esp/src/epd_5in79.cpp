@@ -29,6 +29,10 @@ int g_rst = -1;
 int g_busy = -1;
 spi_device_handle_t g_spi = nullptr;
 bool g_ready = false;
+// The "old" RAM planes (0x26/0xA6) hold what the glass shows, so a
+// partial refresh can diff against them. Only a full display seeds
+// them; reset (init/awaken) discards them.
+bool g_base = false;
 
 struct PinMap {
   const char* name;
@@ -188,7 +192,40 @@ void turn_on(uint8_t mode) {
   cmd(0x22);
   data(mode);
   cmd(0x20);
+  // BUSY needs ≥200 µs to assert after 0x20 (Waveshare delays 100 ms);
+  // polling immediately can read the pin before it rises and return
+  // while the glass is still refreshing.
+  delay_ms(5);
   wait_busy();
+}
+
+// Dual-IC RAM split, exactly as the full display path streams it:
+// M part (0x24/0x26) gets bytes 0..width_ic-1 of each row, S part
+// (0xA4/0xA6) bytes width_ic-1..2*width_ic-2, per the Waveshare demo.
+void write_planes(const uint8_t* frame, uint8_t cmd_m, uint8_t cmd_s) {
+  const int width_ic = (kWidth % 16 == 0) ? (kWidth / 16) : (kWidth / 16 + 1);
+  const int stride = kWidth / 8;
+  cmd(cmd_m);
+  for (int y = 0; y < kHeight; ++y) {
+    data_buf(frame + y * stride, static_cast<size_t>(width_ic));
+  }
+  cmd(cmd_s);
+  for (int y = 0; y < kHeight; ++y) {
+    data_buf(frame + y * stride + (width_ic - 1),
+             static_cast<size_t>(width_ic));
+  }
+}
+
+void fill_planes(uint8_t value, uint8_t cmd_m, uint8_t cmd_s) {
+  const int width_ic = (kWidth % 16 == 0) ? (kWidth / 16) : (kWidth / 16 + 1);
+  cmd(cmd_m);
+  for (int i = 0; i < width_ic * kHeight; ++i) {
+    data(value);
+  }
+  cmd(cmd_s);
+  for (int i = 0; i < width_ic * kHeight; ++i) {
+    data(value);
+  }
 }
 
 bool start_spi(const PinMap& m) {
@@ -294,6 +331,7 @@ void epd5in79_awaken() {
   wait_busy();
   window();
   g_ready = true;
+  g_base = false;
 }
 
 void epd5in79_clear() {
@@ -302,24 +340,13 @@ void epd5in79_clear() {
   }
   const int64_t t0 = esp_timer_get_time();
   ESP_LOGI(kTag, "clear begin busy=%d", busy_level());
-  constexpr int kHalf = 13600;
-  cmd(0x24);
-  for (int i = 0; i < kHalf; ++i) {
-    data(0xff);
-  }
-  cmd(0x26);
-  for (int i = 0; i < kHalf; ++i) {
-    data(0x00);
-  }
-  cmd(0xa4);
-  for (int i = 0; i < kHalf; ++i) {
-    data(0xff);
-  }
-  cmd(0xa6);
-  for (int i = 0; i < kHalf; ++i) {
-    data(0x00);
-  }
+  fill_planes(0xff, 0x24, 0xa4);
+  fill_planes(0x00, 0x26, 0xa6);
   turn_on(0xf7);
+  // Seed the old RAM with what the glass now shows (all white), same
+  // as Waveshare Display_Base_color, so partials can follow a clear.
+  fill_planes(0xff, 0x26, 0xa6);
+  g_base = true;
   ESP_LOGI(kTag, "clear done %lld ms busy=%d",
            (esp_timer_get_time() - t0) / 1000, busy_level());
 }
@@ -330,31 +357,45 @@ void epd5in79_display(const uint8_t* frame, bool fast) {
   }
   const int64_t t0 = esp_timer_get_time();
   ESP_LOGI(kTag, "display begin fast=%d busy=%d", fast ? 1 : 0, busy_level());
-  const int width_ic = (kWidth % 16 == 0) ? (kWidth / 16) : (kWidth / 16 + 1);
-  const int stride = kWidth / 8;
-
-  cmd(0x24);
-  for (int y = 0; y < kHeight; ++y) {
-    data_buf(frame + y * stride, static_cast<size_t>(width_ic));
-  }
-  cmd(0x26);
-  for (int i = 0; i < width_ic * kHeight; ++i) {
-    data(0x00);
-  }
-  cmd(0xa4);
-  for (int y = 0; y < kHeight; ++y) {
-    data_buf(frame + y * stride + (width_ic - 1),
-             static_cast<size_t>(width_ic));
-  }
-  cmd(0xa6);
-  for (int i = 0; i < width_ic * kHeight; ++i) {
-    data(0x00);
-  }
+  write_planes(frame, 0x24, 0xa4);
+  fill_planes(0x00, 0x26, 0xa6);
   // 0xC7 is Waveshare Init_Fast() only (temp register load). Regular
   // 0x12 + window + 0xC7 does not update the glass. Always 0xF7.
   (void)fast;
   turn_on(0xf7);
+  // Waveshare Display_Base: after the flash, copy the frame into the
+  // old RAM so the next partial diffs against what is on the glass.
+  write_planes(frame, 0x26, 0xa6);
+  g_base = true;
   ESP_LOGI(kTag, "display done %lld ms busy=%d",
+           (esp_timer_get_time() - t0) / 1000, busy_level());
+}
+
+void epd5in79_display_partial(const uint8_t* frame) {
+  if (!g_ready || frame == nullptr) {
+    return;
+  }
+  if (!g_base) {
+    // No seeded base to diff against (fresh init/awaken). A partial
+    // now would flash garbage; do the full paint instead.
+    ESP_LOGW(kTag, "partial without base, doing full refresh");
+    epd5in79_display(frame, /*fast=*/false);
+    return;
+  }
+  const int64_t t0 = esp_timer_get_time();
+  // Waveshare Display_Partial: re-enable clock + analog (the previous
+  // update sequence powered them down), then rewrite the windows and
+  // stream the new frame. Mode 0xFF diffs against the old RAM and
+  // ping-pongs it, so repeated partials need no old-RAM rewrites.
+  cmd(0x22);
+  data(0xc0);
+  cmd(0x20);
+  delay_ms(5);
+  wait_busy();
+  window();
+  write_planes(frame, 0x24, 0xa4);
+  turn_on(0xff);
+  ESP_LOGI(kTag, "partial done %lld ms busy=%d",
            (esp_timer_get_time() - t0) / 1000, busy_level());
 }
 
