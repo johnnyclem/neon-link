@@ -9,6 +9,8 @@ A desk variant with a Waveshare 5.79" e-Paper is
 [docs/LINKSYNC_EPD.md](LINKSYNC_EPD.md).
 The zero-computer defaults and positioning proposal for this product
 family is [docs/NEARBY.md](NEARBY.md).
+A proposed spike to find the price floor — single-core ESP32-C3 with a
+0.42" OLED — is [docs/SPIKE_ESP32C3_OLED.md](SPIKE_ESP32C3_OLED.md).
 Reference board only. PRs welcome. **No support for arbitrary hardware.**
 
 Shares with neon-link: Link integration, the timeline bus, the GPTimer
