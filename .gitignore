@@ -167,3 +167,4 @@ web/dist-styleguide/
 
 # Generated at netlink build parse time from the committed web bundle.
 daisy/netlink/gen/
+__pycache__/
