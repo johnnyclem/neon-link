@@ -3,7 +3,10 @@
 **Version**: 1.0
 **Date**: 2026-08-12
 **Status**: Implemented — see §12 for what shipped, what is gated on
-hardware, and the two submodules that are not in this tree
+hardware, and the two submodules that are not in this tree.
+A proposal to supersede Link Audio streaming as the multi-player audio
+strategy — pre-distributed stems, events on the wire — is
+[`STEM_SYNC.md`](STEM_SYNC.md).
 **Related**: [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`AMYBOARD.md`](AMYBOARD.md) · [`FEATURES.md`](FEATURES.md) · [`../SOFTWARE.md`](../SOFTWARE.md)
 
 ---
