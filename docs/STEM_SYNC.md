@@ -309,7 +309,14 @@ mechanisms are exactly what §4.3 says survive.
 | §6.2 "22.4 ms flash stall measured in A1" | `tools/a1_psram_stall` S3 rev2: `stall_max_us=22384`. Documented as a lower bound twice ([FRIENDS_FAMILY_HANDOFF.md](FRIENDS_FAMILY_HANDOFF.md) G7) |
 | §4.1 "refill-horizon pattern already proven in the pulse path" | `main/tasks_core1.cpp` — pulse refill horizon is 67 ms = 3× the A1 stall (ship gate G7, landed) |
 
-One correction: 22.4 ms is the **S3** number.
+Two corrections. First, the §4.1 / §9 "19× margin" is the **maximum**,
+not the typical: the real margin is `target_beat_time − moment_of_click`,
+and musicians launch scenes on or just before the beat — the worst case
+is the normal case. Measuring that distribution is the point of the S1
+spike (`tools/s1_scene_launch`), and the §6.2 seek-into-file path is the
+mitigation when a launch event arrives after the target beat.
+
+Second, 22.4 ms is the **S3** number.
 [P4DEVKIT.md](P4DEVKIT.md) measured **51.0 ms** for the same stall on
 ESP32-P4, so on P4 targets the §6.2 sizing rule (2–3×) means
 ~100–150 ms of read-ahead — roughly 10–15 KB per mono 48 kHz/16-bit
@@ -349,7 +356,10 @@ stem, still trivial in PSRAM.
   names: `plugin/README.md` — VST3, HTTP config manager, "not a Link
   peer", no session-grid access. No Control Surface script or Max for
   Live device exists in the tree. S1 stays the critical unknown and
-  nothing here pre-empts it.
+  nothing here pre-empts it. Phase A of the spike — measuring the
+  launch-lookahead distribution via AbletonOSC, no code of our own in
+  Live — is tooled at `tools/s1_scene_launch` (daemon, analysis,
+  runbook); it produces the go/no-go before any Phase B work.
 - **Desktop tool.** Nothing exists for validate/index/transfer.
 
 ### Hardware caveat — "the targets have SD slots"
