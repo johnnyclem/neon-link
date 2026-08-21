@@ -7,6 +7,8 @@ TRS jack. Same repo, same GPLv2+ license, different build target.
 **Reference board:** Seeed Studio **XIAO ESP32S3** (non-Sense).
 A desk variant with a Waveshare 5.79" e-Paper is
 [docs/LINKSYNC_EPD.md](LINKSYNC_EPD.md).
+The zero-computer defaults and positioning proposal for this product
+family is [docs/NEARBY.md](NEARBY.md).
 Reference board only. PRs welcome. **No support for arbitrary hardware.**
 
 Shares with neon-link: Link integration, the timeline bus, the GPTimer
