@@ -356,7 +356,7 @@ stem, still trivial in PSRAM.
 
 Not established in this repo. SDMMC host support appears only in the
 ESP32-P4 configs; the AMYboard/S3 targets declare no SD interface in
-[HARDWARE.md](HARDWARE.md) or any board pin map. Either the S3 targets
+[HARDWARE.md](../HARDWARE.md) or any board pin map. Either the S3 targets
 get SPI-mode SD on the expansion header, sets live in spare flash
 (16 MB parts, ~2 songs of 4 mono stems per available 8 MB — tight), or
 v1 scopes stem playback to P4-class hardware. Needs a hardware answer
