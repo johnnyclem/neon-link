@@ -205,7 +205,8 @@ npm run build:styleguide               # review both surfaces side by side, no h
 Ableton Link is dual-licensed (GPLv2+ and commercial).  
 Open-source firmware using the Link library will fall under GPL obligations.  
 A commercial license path from Ableton exists for closed-source / commercial products.  
-This must be resolved before any public release or sale.
+This must be resolved before any public release or sale.  
+**[docs/SPIKE_NEON_SYNC.md](docs/SPIKE_NEON_SYNC.md)** researches the exits, including a Link-free sync protocol of our own.
 
 ---
 
