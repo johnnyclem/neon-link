@@ -144,6 +144,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
 | **[docs/BELA_GEM_SPEC.md](docs/BELA_GEM_SPEC.md)** | Hardware / Software | Design specification for implementing NEON LINK on the Bela Gem Multi platform |
 | **[ADDENDUM_01-SOFTWARE.md](ADDENDUM_01-SOFTWARE.md)** | Software / Firmware | BLE MIDI standards, compatibility, scope, latency expectations, and build guidance |
+| **[docs/DAWLESS_SYNC_RESEARCH.md](docs/DAWLESS_SYNC_RESEARCH.md)** | Everyone | Research spike — a license-clean, DAWless Link-type sync & discovery protocol ("Bonjour for electronic music gear"): Link licensing analysis, option space, comparison against BLE MIDI / RTP-MIDI / Network MIDI 2.0, and a layered recommendation |
 
 Start with the Executive Briefing if you are joining hardware, then dive into `HARDWARE.md`.  
 Software contributors should begin with `FEATURES.md` + `SOFTWARE.md` + `ADDENDUM_01-SOFTWARE.md`.  
