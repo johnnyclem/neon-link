@@ -22,6 +22,7 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_hal neon_hal)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_core neon_core)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_sync neon_sync)
 
 find_package(Threads REQUIRED)
 
@@ -58,11 +59,16 @@ add_executable(neon_tests
   tests/test_quadrature.cpp
   tests/test_telemetry_csv.cpp
   tests/test_telemetry_emitter.cpp
+  tests/test_nsync_wire.cpp
+  tests/test_nsync_clock.cpp
+  tests/test_nsync_node.cpp
+  tests/test_nsync_sim.cpp
 )
 target_include_directories(neon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/doctest
   ${CMAKE_CURRENT_SOURCE_DIR}/fakes)
-target_link_libraries(neon_tests PRIVATE neon_core neon_hal Threads::Threads)
+target_link_libraries(neon_tests PRIVATE neon_core neon_hal neon_sync
+                                         Threads::Threads)
 
 enable_testing()
 add_test(NAME neon_tests COMMAND neon_tests)
