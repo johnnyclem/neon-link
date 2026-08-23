@@ -13,9 +13,29 @@ NeonLinkProcessor::~NeonLinkProcessor() {
   stopTimer();
   if (controller_) controller_->requestStop();
   if (mic_) mic_->requestStop();
+  sync_.stop();
+}
+
+void NeonLinkProcessor::setSyncEnabled(bool enabled) {
+  sync_enabled_ = enabled;
+  if (enabled) {
+    sync_.set_drive(sync_drive_);
+    sync_.start();
+  } else {
+    sync_.stop();
+  }
+}
+
+void NeonLinkProcessor::setSyncDrive(bool enabled) {
+  sync_drive_ = enabled;
+  sync_.set_drive(enabled);
 }
 
 void NeonLinkProcessor::ensureControllerStarted() {
+  if (sync_enabled_ && !sync_.running()) {
+    sync_.set_drive(sync_drive_);
+    sync_.start();
+  }
   if (controller_ != nullptr && mic_ != nullptr) return;
   stopTimer();
   if (controller_ == nullptr) {
@@ -69,6 +89,20 @@ void NeonLinkProcessor::processBlock(juce::AudioBuffer<float>& buffer,
   juce::ScopedNoDenormals noDenormals;
   midi.clear();
   juce::ignoreUnused(buffer);
+
+  // Hand the host's playhead to the Neon Sync bridge. Wait-free seqlock
+  // publish — still zero locks and zero sockets on the audio callback.
+  nsync::DawPlayhead ph;
+  ph.sampled_us = neon::client::SyncService::now_us();
+  if (auto* head = getPlayHead()) {
+    if (const auto pos = head->getPosition()) {
+      ph.valid = true;
+      ph.playing = pos->getIsPlaying();
+      ph.bpm = pos->getBpm().orFallback(0.0);
+      ph.beat = pos->getPpqPosition().orFallback(0.0);
+    }
+  }
+  sync_.publish_playhead(ph);
 }
 
 void NeonLinkProcessor::getStateInformation(juce::MemoryBlock& dest) {
@@ -105,6 +139,8 @@ void NeonLinkProcessor::getStateInformation(juce::MemoryBlock& dest) {
   }
   xml->setAttribute("mic_host", mic_host);
   if (mic_ip.isNotEmpty()) xml->setAttribute("mic_ip", mic_ip);
+  xml->setAttribute("sync_enabled", sync_enabled_);
+  xml->setAttribute("sync_drive", sync_drive_);
   copyXmlToBinary(*xml, dest);
 }
 
@@ -116,6 +152,13 @@ void NeonLinkProcessor::setStateInformation(const void* data, int size) {
   pending_mic_host_ =
       xml->getStringAttribute("mic_host", "neon-mic.local:17001");
   pending_mic_ip_ = xml->getStringAttribute("mic_ip");
+  sync_enabled_ = xml->getBoolAttribute("sync_enabled", true);
+  sync_drive_ = xml->getBoolAttribute("sync_drive", true);
+  sync_.set_drive(sync_drive_);
+  // Session restore never *opens* sockets on its own — the service comes
+  // up (per the restored flag) with the controllers — but an explicit
+  // "off" must stick even if the service is already running.
+  if (!sync_enabled_) sync_.stop();
   if (controller_) {
     if (pending_ip_.isNotEmpty()) controller_->hintIp(pending_ip_.toStdString());
     controller_->bind(pending_host_.toStdString());

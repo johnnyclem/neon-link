@@ -9,6 +9,7 @@ set(NEON_SYNC_SRCS
   src/wire.cpp
   src/peer_clock.cpp
   src/node.cpp
+  src/daw_follower.cpp
 )
 
 if(ESP_PLATFORM)

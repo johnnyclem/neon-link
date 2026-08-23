@@ -14,9 +14,10 @@ add_library(neon_client STATIC
   src/patch.cpp
   src/ratelimit.cpp
   src/status.cpp
+  src/sync.cpp
 )
 target_include_directories(neon_client
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${NEON_CJSON_DIR})
 target_compile_features(neon_client PUBLIC cxx_std_17)
-target_link_libraries(neon_client PUBLIC neon_core neon_hal)
+target_link_libraries(neon_client PUBLIC neon_core neon_hal neon_sync)

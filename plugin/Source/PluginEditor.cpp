@@ -26,6 +26,10 @@ NeonLinkEditor::NeonLinkEditor(NeonLinkProcessor& p)
     send(std::move(fn));
   };
 
+  live_.onSyncEnable = [this](bool v) { processor_.setSyncEnabled(v); };
+  live_.onSyncDrive = [this](bool v) { processor_.setSyncDrive(v); };
+  live_.onLayoutChange = [this] { relayoutPage(); };
+
   brand_.setText("NEON  LINK", juce::dontSendNotification);
   brand_.setColour(juce::Label::textColourId, neon::ui::text());
   brand_.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold))
@@ -316,7 +320,12 @@ void NeonLinkEditor::resized() {
   if (confirm_.isVisible()) confirm_.setBounds(getLocalBounds());
 }
 
-void NeonLinkEditor::timerCallback() { refreshFromSnapshot(); }
+void NeonLinkEditor::timerCallback() {
+  // The Neon Sync peer lives on the processor, not behind the REST bind:
+  // refresh it even while the module snapshot is offline or absent.
+  live_.loadNeonSync(processor_.sync().status(), processor_.syncEnabled());
+  refreshFromSnapshot();
+}
 
 void NeonLinkEditor::refreshFromSnapshot() {
   auto* ctl = processor_.controller();

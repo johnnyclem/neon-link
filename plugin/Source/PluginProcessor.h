@@ -6,6 +6,7 @@
 
 #include "DeviceController.h"
 #include "MicController.h"
+#include "neon/client/sync.hpp"
 
 class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
  public:
@@ -40,11 +41,23 @@ class NeonLinkProcessor : public juce::AudioProcessor, private juce::Timer {
   neon::plugin::DeviceController* controller() { return controller_.get(); }
   neon::plugin::MicController* micController() { return mic_.get(); }
 
+  // The Neon Sync peer (mesh membership + DAW bridge). The object always
+  // exists — construction is scan-safe — but sockets and its thread only
+  // come up via ensureControllerStarted()/setSyncEnabled().
+  neon::client::SyncService& sync() { return sync_; }
+  void setSyncEnabled(bool enabled);
+  bool syncEnabled() const { return sync_enabled_; }
+  void setSyncDrive(bool enabled);
+  bool syncDrive() const { return sync_drive_; }
+
  private:
   void timerCallback() override;
 
   std::unique_ptr<neon::plugin::DeviceController> controller_;
   std::unique_ptr<neon::plugin::MicController> mic_;
+  neon::client::SyncService sync_;
+  bool sync_enabled_ = true;
+  bool sync_drive_ = true;
   juce::String pending_host_;
   juce::String pending_ip_;
   juce::String pending_mic_host_;
