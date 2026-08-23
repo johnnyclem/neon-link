@@ -1,0 +1,19 @@
+menu "NEON LINK — Neon Sync"
+
+config NEON_SYNC
+    bool "Use Neon Sync (Link-free session protocol) instead of Ableton Link"
+    default n
+    depends on !NEON_LINK_STUB
+    help
+        Replaces the Ableton Link session with Neon Sync, our own
+        leaderless session protocol (docs/NEON_SYNC.md): same
+        hal::ILinkSession seam, same downstream behavior, no GPL
+        dependency in the image. Peers discover each other over UDP
+        multicast (239.77.83.78:20809), agree on tempo/phase/transport
+        last-writer-wins, and discipline clocks via NTP-style ping/pong —
+        or via the AP's TSF beacon clock when two peers share a BSS.
+
+        Neon Sync peers do not interoperate with Ableton Link peers on
+        the wire; Live is bridged via MIDI clock or the VST3 plugin.
+
+endmenu

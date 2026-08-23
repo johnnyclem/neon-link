@@ -3,6 +3,11 @@ set(LINK_ROOT ${NEON_REPO_ROOT}/third_party/link)
 
 if(CONFIG_NEON_LINK_STUB)
   set(ABLINK_SRCS src/link_stub.cpp src/atomic_shim.c src/priority.cpp)
+elseif(CONFIG_NEON_SYNC)
+  # Link-free session: forwards the seam to Neon Sync (neon_sync_esp).
+  # No Ableton Link, no asio anywhere in the image.
+  set(ABLINK_SRCS src/link_session_nsync.cpp src/atomic_shim.c
+                  src/priority.cpp)
 else()
   # asio is built in separate-compilation mode (like Espressif's asio port):
   # asio.cpp provides the non-inline implementation, except posix_event's
@@ -37,12 +42,12 @@ endif()
 idf_component_register(
   SRCS ${ABLINK_SRCS}
   INCLUDE_DIRS include
-  REQUIRES neon_hal neon_core
+  REQUIRES neon_hal neon_core neon_sync_esp
   PRIV_REQUIRES esp_timer lwip esp_netif pthread esp_psram
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
 
-if(NOT CONFIG_NEON_LINK_STUB)
+if(NOT CONFIG_NEON_LINK_STUB AND NOT CONFIG_NEON_SYNC)
   if(CONFIG_NEON_LINK_AUDIO AND NOT EXISTS ${LINK_ROOT}/include/ableton/LinkAudio.hpp)
     message(FATAL_ERROR
       "NEON_LINK_AUDIO needs Ableton Link 4.0 — check the submodule out at "

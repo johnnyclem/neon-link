@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [link, stub, bleoff, amyboard-audio, stub-audio, linksync, linksync-epd]
+        variant: [link, stub, nsync, bleoff, amyboard-audio, stub-audio, linksync, linksync-epd]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,6 +122,7 @@ jobs:
           command: >-
             idf.py
             ${{ matrix.variant == 'stub' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub"' || '' }}
+            ${{ matrix.variant == 'nsync' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.nsync"' || '' }}
             ${{ matrix.variant == 'bleoff' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.bleoff"' || '' }}
             ${{ matrix.variant == 'amyboard-audio' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard;sdkconfig.ci.audio"' || '' }}
             ${{ matrix.variant == 'stub-audio' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub;sdkconfig.ci.audio"' || '' }}

@@ -11,7 +11,7 @@ config NEON_LINK_STUB
 
 config NEON_LINK_AUDIO
     bool "Link Audio streaming (needs Ableton Link 4.0)"
-    depends on !NEON_LINK_STUB
+    depends on !NEON_LINK_STUB && !NEON_SYNC
     default y if NEON_AUDIO
     default n
     help

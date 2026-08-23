@@ -1,0 +1,5 @@
+# CI matrix leg: build with Neon Sync (docs/NEON_SYNC.md) instead of
+# Ableton Link, proving the Link-free session path compiles and that no
+# GPL-licensed code is required by the image. Combined with
+# sdkconfig.defaults.
+CONFIG_NEON_SYNC=y
