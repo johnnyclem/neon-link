@@ -1,7 +1,10 @@
 # NEON LINK — Ableton VST3
 
 In-set device manager for the NEON LINK Eurorack module. Audio-effect
-passthrough; talks HTTP to the module's existing REST API. Not a Link peer.
+passthrough; talks HTTP to the module's REST API for configuration, and
+joins the module mesh directly as a **Neon Sync** peer
+(docs/NEON_SYNC.md §4.5) so the DAW's transport can drive the hardware
+without a bind. Not a Link peer.
 
 | | |
 |---|---|
@@ -35,7 +38,16 @@ ctest --test-dir build-host -R neon_client_tests --output-on-failure
 
 ## What this binary is (and is not)
 
-- Stereo passthrough. No DSP. No sockets on the audio callback.
+- Stereo passthrough. No DSP. No sockets on the audio callback (the
+  playhead reaches the sync thread through a wait-free seqlock).
+- A Neon Sync peer (`neon::client::SyncService` around the same
+  `nsync::Node` the firmware runs): multicast discovery, ping/pong clock
+  measurement, and last-writer-wins session state on 239.77.83.78:20809.
+  While the DAW transport runs, its tempo, bar grid, and start/stop write
+  the mesh (`nsync::DawFollower`); stopped, only DAW edits are sent. Both
+  the peer and the "DAW drives the mesh" switch live on the Live tab and
+  persist with the set. The plugin's node id sorts below every device id,
+  so the laptop never becomes the session's clock reference.
 - Does **not** vendor Ableton Link. Live is already the Link peer.
 - Does **not** perform OTA firmware upload (use the web editor for that).
 - Full editor: Live, Outputs, Network, MIDI, Audio, System, Mic — same

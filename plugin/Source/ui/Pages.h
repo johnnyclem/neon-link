@@ -8,6 +8,7 @@
 #include "HeroTempo.h"
 #include "PhaseBar.h"
 #include "../DeviceController.h"
+#include "neon/client/sync.hpp"
 #include "neon/config/model.hpp"
 
 namespace neon::plugin {
@@ -22,9 +23,16 @@ class LivePage : public juce::Component {
   explicit LivePage(EditorHost&);
   void load(const Snapshot&, bool online);
   void setPhase(float phase01, int quantum, bool running);
-  int preferredHeight() const { return 520; }
+  // The plugin's own Neon Sync peer — fed straight from the processor's
+  // SyncService, independent of the REST snapshot above.
+  void loadNeonSync(const neon::client::SyncStatus&, bool enabled);
+  int preferredHeight() const { return pane_ == 0 ? 620 : 520; }
   void resized() override;
   void paint(juce::Graphics&) override;
+
+  std::function<void(bool)> onSyncEnable;
+  std::function<void(bool)> onSyncDrive;
+  std::function<void()> onLayoutChange;  // pane switch changed the height
 
  private:
   EditorHost& host_;
@@ -42,6 +50,14 @@ class LivePage : public juce::Component {
   neon::ui::SubNav extras_;
   juce::TextButton resyncNext_{"Reset next loop"};
   juce::TextButton resyncNow_{"Re-align grid now"};
+  juce::Label nsHead_;
+  neon::ui::Toggle nsEnable_;
+  neon::ui::Toggle nsDrive_;
+  neon::ui::Readout nsPeers_;
+  neon::ui::Readout nsTempo_;
+  neon::ui::Readout nsTransport_;
+  neon::ui::Readout nsPhase_;
+  juce::Label nsNote_;
   juce::TextButton save_[4];
   juce::TextButton recall_[4];
   juce::Label slotLab_[4];

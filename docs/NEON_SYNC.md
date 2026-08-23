@@ -19,10 +19,12 @@ to beat Link on our own hardware (the WiFi TSF fast path, §4.3).
 
 The wire protocol itself is ours; nothing here speaks or derives from
 Link's wire format or source. Neon Sync peers therefore do **not**
-interoperate with Link peers: Ableton Live is bridged via MIDI clock today
-(`ClockEngine` out, `ExtClockEstimator` in) and via the VST3 plugin's
-`AudioPlayHead` next; a clean-room Link-compatible wire module remains a
-possible later add-on, deliberately off the critical path.
+interoperate with Link peers: Ableton Live (and every other VST3 host) is
+bridged via MIDI clock (`ClockEngine` out, `ExtClockEstimator` in) and via
+the VST3 plugin, which is itself a Neon Sync peer that writes the DAW's
+`AudioPlayHead` timeline into the mesh (§5); a clean-room Link-compatible
+wire module remains a possible later add-on, deliberately off the critical
+path.
 
 ## 2. The replacement contract
 
@@ -127,12 +129,40 @@ before `set_playing`), receivers flip when session time reaches the toggle
 instant. With start/stop sync disabled the local transport is private, as
 with Link 3.
 
+### 4.5 The DAW bridge (VST3 plugin as a peer)
+
+The plugin joins the mesh like any other node — discovery, announces,
+ping/pong measurement, LWW state — but its node id carries `'D'` in the
+high byte where firmware ids carry `'N'`, so a device always outranks it
+and the laptop clock can never become the ghost reference (§4.2): the
+session keeps a device's timebase and the plugin disciplines toward it.
+
+On top of the node, `nsync::DawFollower` applies the authority rule *"the
+DAW is authoritative while its transport runs"*: playing, the host's tempo
+is level-asserted, a quantum boundary is re-anchored onto the host's bar
+line whenever the phase error persists beyond tolerance, and the transport
+is held running — mesh-side edits are corrected (rate-limited), because
+VST3 gives a plugin no way to set host tempo, so the mesh cannot win that
+argument without drifting off the DAW. Stopped, only edges write (a DAW
+tempo change, the start/stop transition itself) and mesh edits stand. With
+no live peers, or with drive switched off, the follower writes nothing —
+which also lets the first device's announce win the seq-1 tie so the
+plugin adopts the session's quantum and time domain rather than imposing
+defaults. Mesh → DAW tempo remains the Max for Live device's job (§7).
+
 ## 5. Where it lives
 
 - `components/neon_sync` — portable core (wire, peer clock, node).
   Dual-mode CMake like `neon_core`; no sockets, no ESP includes.
 - `components/neon_sync_esp` — the socket/task/TSF glue implementing
   `hal::ILinkSession` (`nsyncesp::session()`).
+- `nsync/daw_follower.hpp` + `nsync/playhead_mailbox.hpp` — the DAW
+  bridge (§4.5): the sans-I/O policy that maps a VST3 host's
+  `AudioPlayHead` onto node writes, and the wait-free seqlock the audio
+  thread hands samples through. `plugin/client/src/sync.cpp`
+  (`neon::client::SyncService`) is the desktop socket/thread glue — the
+  third I/O wrapper around the same node, next to `neon_sync_esp` and the
+  host simulator.
 - `components/ableton_link` — with `CONFIG_NEON_SYNC`, `ablink::session()`
   forwards to Neon Sync and neither Link nor asio is compiled at all
   (`NEON_LINK_AUDIO` is unavailable; the no-op Link Audio facade stands
@@ -153,7 +183,10 @@ delay, jitter, loss, and partition, each node on its own offset + drifting
 clock; everything randomized is seeded. The suites cover: wire roundtrip
 and rejection, estimator selection/drift/TTL behavior, discovery, LWW
 convergence under concurrent edits, transport propagation, BYE vs TTL
-death, quantum propagation, island merge, and two soak scenarios:
+death, quantum propagation, island merge, the DAW bridge
+(`test_nsync_follower.cpp`: authority while the host plays, edge-only
+writes while stopped, stale-playhead release, grid alignment onto the
+host's bars, the seqlock mailbox), and two soak scenarios:
 
 - **Studio-grade** (1 ms jitter, 5% loss, ±20 ppm — ESP32 crystal spec):
   five peers hold worst-case pairwise phase error **< 500 µs** over 60
@@ -180,9 +213,14 @@ better.
    launches for this reason). Related: with both SoftAP and STA up, lwIP
    routes the multicast out one netif; per-interface announce fan-out is a
    known v0 limitation to revisit at bring-up.
-4. **Live bridges:** VST3 `AudioPlayHead` → mesh in the plugin, and the
-   Max for Live device for mesh → Live tempo. MIDI clock in/out works
-   today with no new code.
+4. **Live bridges:** the VST3 `AudioPlayHead` → mesh direction ships in
+   the plugin (§4.5: `nsync::DawFollower` behind
+   `neon::client::SyncService`) — the plugin is a full Neon Sync peer and
+   drives the mesh from any VST3 host's transport, host-validated like the
+   rest of the protocol. Remaining: the Max for Live device for mesh →
+   Live tempo, and bench time with a real device (the plugin side of the
+   studio-mode A/B rides item 1). MIDI clock in/out works today with no
+   new code.
 5. **Licensing hygiene** regardless of protocol: the repo still has no
    LICENSE file, which blocks release with or without Link; and a GPL
    build variant (Link inside, source published, no locked secure boot)

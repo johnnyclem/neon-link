@@ -21,6 +21,7 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_hal neon_hal)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_core neon_core)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../components/neon_sync neon_sync)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/client neon_client)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Juce.cmake)
@@ -81,6 +82,7 @@ target_link_libraries(NeonLink
     neon_client
     neon_core
     neon_hal
+    neon_sync
   PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags

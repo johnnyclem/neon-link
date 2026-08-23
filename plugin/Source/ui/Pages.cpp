@@ -196,11 +196,41 @@ LivePage::LivePage(EditorHost& host) : host_(host) {
   extras_.onChange = [this](int i) {
     pane_ = i;
     resized();
+    if (onLayoutChange) onLayoutChange();
   };
   addAndMakeVisible(extras_);
 
   hook(resyncNext_, [](DeviceController& c) { c.resync(neon::client::ResyncOp::Next); });
   hook(resyncNow_, [](DeviceController& c) { c.resync(neon::client::ResyncOp::Now); });
+
+  nsHead_.setText("NEON SYNC", juce::dontSendNotification);
+  nsHead_.setColour(juce::Label::textColourId, neon::ui::muted());
+  nsHead_.setFont(juce::Font(juce::FontOptions(12.0f, juce::Font::bold))
+                      .withExtraKerningFactor(0.12f));
+  addAndMakeVisible(nsHead_);
+  nsEnable_.setLabel("Join the mesh (Neon Sync)");
+  nsEnable_.onChange = [this](bool v) {
+    if (onSyncEnable) onSyncEnable(v);
+  };
+  addAndMakeVisible(nsEnable_);
+  nsDrive_.setLabel("DAW drives the mesh");
+  nsDrive_.onChange = [this](bool v) {
+    if (onSyncDrive) onSyncDrive(v);
+  };
+  addAndMakeVisible(nsDrive_);
+  addAndMakeVisible(nsPeers_);
+  addAndMakeVisible(nsTempo_);
+  addAndMakeVisible(nsTransport_);
+  addAndMakeVisible(nsPhase_);
+  nsNote_.setText("While the DAW transport runs, its tempo, bars and "
+                  "start/stop write the mesh directly over Neon Sync — "
+                  "no module bind needed. Stopped, only DAW edits are sent.",
+                  juce::dontSendNotification);
+  nsNote_.setColour(juce::Label::textColourId, neon::ui::muted());
+  nsNote_.setFont(juce::Font(juce::FontOptions(12.0f)));
+  nsNote_.setJustificationType(juce::Justification::topLeft);
+  nsNote_.setMinimumHorizontalScale(1.0f);
+  addAndMakeVisible(nsNote_);
 
   for (int i = 0; i < 4; ++i) {
     slotLab_[i].setText("Slot " + juce::String(i + 1), juce::dontSendNotification);
@@ -260,6 +290,29 @@ void LivePage::setPhase(float phase01, int quantum, bool running) {
   phase_.setPhase(phase01, quantum, running);
 }
 
+void LivePage::loadNeonSync(const neon::client::SyncStatus& s, bool enabled) {
+  nsEnable_.setValue(enabled);
+  nsDrive_.setValue(s.drive);
+  const bool up = enabled && s.running;
+  nsPeers_.set("Mesh peers", up ? juce::String(static_cast<int>(s.peers)) : "—");
+  nsTempo_.set("Session tempo",
+               up && s.session_up ? juce::String(s.session_bpm, 1) + " BPM"
+                                  : "—");
+  nsTransport_.set("Session transport",
+                   up ? (s.session_playing ? juce::String("RUN")
+                                           : juce::String("STOP"))
+                      : "—");
+  juce::String phase = "—";
+  if (up && s.phase_valid) {
+    phase = juce::String(static_cast<double>(s.phase_err_us) / 1000.0, 1) +
+            " ms";
+    if (s.phase_locked) phase += "  ·  locked";
+  } else if (up && !s.daw_playing) {
+    phase = "DAW stopped";
+  }
+  nsPhase_.set("DAW ↔ mesh phase", phase);
+}
+
 void LivePage::paint(juce::Graphics& g) {
   auto r = getLocalBounds();
   auto card = r.removeFromTop(268);
@@ -308,6 +361,14 @@ void LivePage::resized() {
   const bool stats = pane_ == 2;
   resyncNext_.setVisible(sync);
   resyncNow_.setVisible(sync);
+  nsHead_.setVisible(sync);
+  nsEnable_.setVisible(sync);
+  nsDrive_.setVisible(sync);
+  nsPeers_.setVisible(sync);
+  nsTempo_.setVisible(sync);
+  nsTransport_.setVisible(sync);
+  nsPhase_.setVisible(sync);
+  nsNote_.setVisible(sync);
   for (int i = 0; i < 4; ++i) {
     slotLab_[i].setVisible(set);
     save_[i].setVisible(set);
@@ -324,6 +385,22 @@ void LivePage::resized() {
     resyncNext_.setBounds(s.removeFromLeft(s.getWidth() / 2 - 4));
     s.removeFromLeft(8);
     resyncNow_.setBounds(s);
+    r.removeFromTop(14);
+    nsHead_.setBounds(r.removeFromTop(18));
+    r.removeFromTop(4);
+    nsEnable_.setBounds(r.removeFromTop(28));
+    r.removeFromTop(4);
+    nsDrive_.setBounds(r.removeFromTop(28));
+    r.removeFromTop(6);
+    nsPeers_.setBounds(r.removeFromTop(22));
+    r.removeFromTop(4);
+    nsTempo_.setBounds(r.removeFromTop(22));
+    r.removeFromTop(4);
+    nsTransport_.setBounds(r.removeFromTop(22));
+    r.removeFromTop(4);
+    nsPhase_.setBounds(r.removeFromTop(22));
+    r.removeFromTop(6);
+    nsNote_.setBounds(r.removeFromTop(48));
   } else if (set) {
     for (int i = 0; i < 4; ++i) {
       auto pr = r.removeFromTop(28);
