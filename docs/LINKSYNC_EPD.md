@@ -50,7 +50,9 @@ The driver probes RST/BUSY at boot and will switch to the DevKit +
 GPIO 45/46 are strapping pins; they are fine after boot. CrowPanel
 GPIO4 is the rotary NEXT switch — do not put UART there.
 
-IDC → DIN / TRS / USB-MIDI adapters: [LINKSYNC_EPD_IDC.md](LINKSYNC_EPD_IDC.md).
+IDC → DIN / TRS / USB-MIDI adapters:
+[elecrow_epaper_adapters.md](elecrow_epaper_adapters.md) (shop notes,
+2×DIN + 6N138) and [LINKSYNC_EPD_IDC.md](LINKSYNC_EPD_IDC.md).
 
 ## CrowPanel 2×10 IDC (only I/O without opening the case)
 
@@ -163,5 +165,6 @@ that jumper today.
 
 ## Out of scope (same list as the XIAO)
 
-Native USB MIDI (needs firmware + GPIO19/20 pigtail), MIDI in/thru,
-audio, a second jack. The e-paper is status only.
+Native USB MIDI (needs firmware + GPIO19/20 pigtail), audio. MIDI IN
+is an opto on IO38, not a second jack on the case. The e-paper is
+status only.

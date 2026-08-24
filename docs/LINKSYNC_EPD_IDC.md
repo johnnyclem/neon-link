@@ -5,6 +5,9 @@ case is the **2×10 2.54 mm IDC** on the bottom. Firmware UART1 MIDI is **GPIO21
 header (not GPIO4 — that is the rotary NEXT switch and never
 reaches the connector). RX needs an optocoupler; TX does not.
 
+Full shop notes (2× DIN + 6N138, BOM, battery, bring-up):
+[elecrow_epaper_adapters.md](elecrow_epaper_adapters.md).
+
 
 ## What you need
 - 5-pin DIN jacks, 2.54 mm pitch (breadboard / perfboard)
