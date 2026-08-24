@@ -45,7 +45,8 @@
     "network": { "device": "NETWORK", "web": "Network" },
     "midi":    { "device": "MIDI",    "web": "MIDI / BLE" },
     "audio":   { "device": "AUDIO",   "web": "Audio" },
-    "system":  { "device": "SYSTEM",  "web": "System" }
+    "system":  { "device": "SYSTEM",  "web": "System" },
+    "back":    { "device": "BACK",    "web": "Back" }
   },
 
   "brand": {

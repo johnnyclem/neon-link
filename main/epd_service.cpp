@@ -46,6 +46,7 @@ uint32_t fingerprint(const neon::LinkSyncPanelStatus& s) {
   h = h * 33u + (s.provisioned ? 1u : 0u);
   h = h * 33u + (s.wifi_up ? 1u : 0u);
   h = h * 33u + (s.setup_ap ? 1u : 0u);
+  h = h * 33u + (s.usb_power ? 1u : 0u);
   h = h * 33u + (s.invert ? 1u : 0u);
   h = h * 33u + s.overlay;
   h = h * 33u + static_cast<uint32_t>(s.cursor);
@@ -66,6 +67,12 @@ bool key_down(int pin) {
   return gpio_get_level(static_cast<gpio_num_t>(pin)) == 0;
 }
 
+// Do not gpio_config GPIO44 — UART0 owns it. The pad still reads:
+// CH340 TX idle-high iff VBUS is up.
+bool usb_vbus_high() {
+  return gpio_get_level(static_cast<gpio_num_t>(kPinUsbSense)) != 0;
+}
+
 void keys_init() {
   const int pins[] = {kPinKeyUp, kPinKeyDown, kPinKeyTop, kPinKeyBot,
                       kPinKeyOk};
@@ -79,7 +86,8 @@ void keys_init() {
   gpio_config(&io);
 }
 
-void fill_status(neon::LinkSyncPanelStatus* s, neon::EpdFrontPanel& ui) {
+void fill_status(neon::LinkSyncPanelStatus* s, neon::EpdFrontPanel& ui,
+                 bool usb_power) {
   const neon::Config& cfg = neon_config();
   std::snprintf(s->title, sizeof(s->title), "%s", cfg.device_name);
   neon::TimelineSnapshot tl{};
@@ -115,6 +123,7 @@ void fill_status(neon::LinkSyncPanelStatus* s, neon::EpdFrontPanel& ui) {
                   trs);
   }
 
+  s->usb_power = usb_power;
   s->invert = ui.invert();
   if (ui.mode() == neon::EpdFrontPanel::Mode::kMenu) {
     s->overlay = 1;
@@ -206,9 +215,27 @@ void epd_task(void*) {
   int64_t bot_down_us = 0;
   bool bot_long_fired = false;
   int64_t stable_us = 0;
+  bool usb_power = false;
+  int usb_high_n = 0;
+  int usb_low_n = 0;
 
   for (;;) {
     const int64_t now = esp_timer_get_time();
+    if (usb_vbus_high()) {
+      usb_high_n = usb_high_n < 8 ? usb_high_n + 1 : 8;
+      usb_low_n = 0;
+      if (!usb_power && usb_high_n >= 2) {
+        usb_power = true;
+        ESP_LOGI(kTag, "usb_power=1");
+      }
+    } else {
+      usb_low_n = usb_low_n < 12 ? usb_low_n + 1 : 12;
+      usb_high_n = 0;
+      if (usb_power && usb_low_n >= 8) {
+        usb_power = false;
+        ESP_LOGI(kTag, "usb_power=0");
+      }
+    }
     const bool s_top = key_down(kPinKeyTop);
     const bool s_bot = key_down(kPinKeyBot);
     const bool s_up = key_down(kPinKeyUp);
@@ -312,7 +339,7 @@ void epd_task(void*) {
     }
 
     neon::LinkSyncPanelStatus st{};
-    fill_status(&st, ui);
+    fill_status(&st, ui, usb_power);
     const uint32_t fp = fingerprint(st);
     const bool layout_changed =
         st.overlay != last_overlay || st.invert != last_invert;

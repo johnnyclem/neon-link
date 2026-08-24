@@ -1,0 +1,52 @@
+# link-sync on ACEIRMC / Super Mini ESP32-C3 + 0.42" 72×40 OLED.
+#   idf.py set-target esp32c3
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-c3oled" build
+#
+# Unicore RISC-V, 4 MB embedded flash, no PSRAM. USB-C is Serial/JTAG.
+# No audio, no Ethernet, no BLE (RAM). SoftAP + OLED for first-boot WiFi.
+# See docs/LINKSYNC_C3OLED.md.
+
+CONFIG_NEON_BOARD_LINKSYNC_C3OLED=y
+# CONFIG_NEON_BOARD_CUSTOM is not set
+# CONFIG_NEON_BOARD_AMYBOARD is not set
+# CONFIG_NEON_BOARD_P4DEVKIT is not set
+# CONFIG_NEON_BOARD_LINKSYNC is not set
+# CONFIG_NEON_BOARD_LINKSYNC_EPD is not set
+# CONFIG_NEON_BOARD_LINKSYNC_P4LCD is not set
+# CONFIG_NEON_BOARD_LINKSYNC_TAB5 is not set
+# CONFIG_NEON_AUDIO is not set
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHFREQ="80m"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_4mb.csv"
+
+# No PSRAM on this die. Do not inherit the S3 octal-PSRAM block.
+# CONFIG_SPIRAM is not set
+
+# Native USB Serial/JTAG on the stamp USB-C port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+# CONFIG_ESP_CONSOLE_UART is not set
+
+# BLE MIDI / NimBLE is compiled out: 384 KB SRAM cannot host WiFi +
+# Link asio + NimBLE together. First-boot WiFi is SoftAP + OLED.
+# CONFIG_BT_ENABLED is not set
+# CONFIG_BT_NIMBLE_ENABLED is not set
+# CONFIG_ESP_COEX_SW_COEXIST_ENABLE is not set
+
+# Unicore: the S3 "pin housekeeping to CPU0" symbols do not exist.
+# CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0 is not set
+# CONFIG_ESP_TIMER_TASK_AFFINITY_CPU0 is not set
+
+# Tighter WiFi RAM. Link still needs multicast + a handful of sockets.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+CONFIG_LWIP_MAX_SOCKETS=10
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=6144
+
+CONFIG_UART_ISR_IN_IRAM=y

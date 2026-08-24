@@ -139,6 +139,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[docs/TEENSY41.md](docs/TEENSY41.md)** | Hardware / Firmware | Teensy 4.1 build target — Ableton Link over native Ethernet, web editor, TRS MIDI, CLK/RST IN, audio engine, 2.8" SPI colour touchscreen (ILI9341 + XPT2046), two rotary encoders, 16 MB PSRAM; wiring and PlatformIO build |
 | **[docs/DAISY.md](docs/DAISY.md)** | Hardware / Firmware | Daisy-family build targets — Seed with a 128×64 SSD1306/1309 OLED, headless Daisy Pod and Eurorack-native patch.init() configs (internal timeline, no network on stock hardware), and the netlink config (Ableton Link + web editor + VST REST over USB CDC-ECM gadget networking); pulse engine, TRS MIDI, CLK/RST IN, audio engine on the built-in codec, Tempo CV on the true DAC, QSPI config store; wiring and Makefile/libDaisy build |
 | **[docs/LINKSYNC.md](docs/LINKSYNC.md)** | Hardware / Firmware | **link-sync dongle** — Seeed XIAO ESP32S3, Ableton Link → TRS MIDI clock + transport + SPP. Reference board only |
+| **[docs/LINKSYNC_C3OLED.md](docs/LINKSYNC_C3OLED.md)** | Hardware / Firmware | link-sync on an **ESP32-C3 Super Mini + 0.42" OLED** — same clock, 72×40 status |
 | **[docs/LINKSYNC_EPD.md](docs/LINKSYNC_EPD.md)** | Hardware / Firmware | link-sync on a **Waveshare 5.79" e-Paper** + ESP32-S3 — same clock, panel for status |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
@@ -263,6 +264,16 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync" bui
 
 Install the U.FL antenna before any timing test. First boot: Espressif
 *ESP BLE Prov* app, device `LSYNC-XXXX`, PoP from the USB console.
+
+### Run on the ESP32-C3 0.42" OLED stamp
+
+Same dongle firmware on an ACEIRMC / Super Mini **ESP32-C3** with the
+onboard 72×40 OLED. Unicore, 4 MB flash, no BLE — first boot is SoftAP
+and the password is on the glass. See **[docs/LINKSYNC_C3OLED.md](docs/LINKSYNC_C3OLED.md)**.
+
+```bash
+./scripts/flash_linksync-c3oled.sh
+```
 
 ### Run on Waveshare 5.79" e-Paper + ESP32-S3
 

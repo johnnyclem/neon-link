@@ -10,7 +10,7 @@
 #include "neon/status_led.hpp"
 #include "wifi.h"
 
-#if CONFIG_NEON_BOARD_LINKSYNC
+#if CONFIG_NEON_BOARD_LINKSYNC || CONFIG_NEON_BOARD_LINKSYNC_C3OLED
 
 namespace {
 

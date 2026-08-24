@@ -299,6 +299,9 @@ void neon_wifi_start() {
       start_err != ESP_ERR_INVALID_STATE) {
     ESP_LOGW(kTag, "esp_wifi_start: %s", esp_err_to_name(start_err));
   }
+  if (start_err == ESP_OK || start_err == ESP_ERR_INVALID_STATE) {
+    netman::wifi_after_start();
+  }
   // Fresh start delivers WIFI_EVENT_STA_START, which calls request_connect.
   // Already-running driver (INVALID_STATE) will not, so connect here.
   if (start_err == ESP_ERR_INVALID_STATE) {

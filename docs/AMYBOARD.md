@@ -14,7 +14,7 @@ TRS MIDI, front-panel Grove I2C).
 | Reset In           | CV in 2 (ADS1015 ch1) | Rising edge ≥ 1 V |
 | TRS MIDI out       | MIDI OUT (GPIO 14, Type A) | UART1 @ 31250 baud |
 | OLED 128×128       | Front Grove I2C (SDA 17 / SCL 18) | Same as `amyboard.init_display()` |
-| Encoder / LEDs     | NULLLAB GPIO expander @ 0x24 | E1/E2/E3 = KY-040 (CLK/DT/SW); E0 = 10k B pot → BPM when enabled; OLED stays on a Grove hub port |
+| Encoder / LEDs     | Grove I2C on a hub with the OLED | **NULLLAB expander @ 0x24:** E1/E2/E3 = KY-040 (CLK/DT/SW); E0 = 10k B pot → BPM when enabled. **M5Stack Unit Encoder (U135) @ 0x40:** I2C pulse count + click; both SK6812s light dim magenta when the firmware finds it. A passive 3-into-1 Grove hub is the right splitter (shared I2C, unique addresses). A GPIO-only Grove encoder cannot share the hub with the OLED. |
 | Ethernet           | — | Not present; WiFi + setup AP only |
 | S/PDIF in / out    | PCM9211 (`RXIN0` / `MPO0`) | **AC-coupled, not GPIO.** 100 nF series on both tips. Not usable as clock / gate / CV — leave labeled SPDIF (`docs/SPDIF_BENCH_TEST.md`) |
 

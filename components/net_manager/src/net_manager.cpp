@@ -82,11 +82,101 @@ void init_common() {
 
 #if NEON_HAVE_WIFI
 bool g_wifi_driver = false;
+int8_t g_tx_qdBm = 0;
+int g_nearby = -1;
+
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+// Super Mini C3: ceramic chip antenna is jammed against the 40 MHz xtal
+// and GPIO21. Full TX power reflects into the PA, beacons vanish, the
+// die cooks. Community fix is isolate GPIO20/21 and cap TX at 8.5 dBm
+// (roryhay.es/blog/esp32-c3-super-mini-flaw).
+void c3_isolate_antenna_gpios() {
+  gpio_config_t io = {};
+  io.pin_bit_mask = (1ull << 20) | (1ull << 21);
+  io.mode = GPIO_MODE_INPUT;
+  io.pull_down_en = GPIO_PULLDOWN_ENABLE;
+  gpio_config(&io);
+}
+
+void c3_tune_tx() {
+  const uint8_t proto =
+      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+  (void)esp_wifi_set_protocol(WIFI_IF_AP, proto);
+  (void)esp_wifi_set_protocol(WIFI_IF_STA, proto);
+  (void)esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+  (void)esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
+  wifi_country_t country = {};
+  country.cc[0] = '0';
+  country.cc[1] = '1';
+  country.schan = 1;
+  country.nchan = 13;
+  country.max_tx_power = 84;
+  country.policy = WIFI_COUNTRY_POLICY_MANUAL;
+  (void)esp_wifi_set_country(&country);
+  // 8.5 dBm = 34 × 0.25 dBm. Higher values look stronger in the register
+  // and weaker on the air because of the mismatch.
+  constexpr int8_t kQdBm = 34;
+  (void)esp_wifi_set_max_tx_power(kQdBm);
+  (void)esp_wifi_get_max_tx_power(&g_tx_qdBm);
+  ESP_LOGI(kTag, "C3 Super Mini TX %d qBm (%d.%d dBm)", g_tx_qdBm,
+           g_tx_qdBm / 4, ((g_tx_qdBm % 4) * 25) / 10);
+}
+
+int c3_listen_probe() {
+  if (esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK) {
+    return -1;
+  }
+  (void)esp_wifi_set_ps(WIFI_PS_NONE);
+  const esp_err_t start = esp_wifi_start();
+  if (start != ESP_OK && start != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(kTag, "listen probe start: %s", esp_err_to_name(start));
+    return -1;
+  }
+  c3_tune_tx();
+  wifi_scan_config_t scan = {};
+  scan.ssid = nullptr;
+  scan.bssid = nullptr;
+  scan.channel = 0;
+  scan.show_hidden = true;
+  scan.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+  scan.scan_time.active.min = 80;
+  scan.scan_time.active.max = 120;
+  if (esp_wifi_scan_start(&scan, true) != ESP_OK) {
+    ESP_LOGW(kTag, "listen probe scan failed");
+    (void)esp_wifi_stop();
+    return -1;
+  }
+  uint16_t n = 0;
+  (void)esp_wifi_scan_get_ap_num(&n);
+  wifi_ap_record_t recs[8] = {};
+  uint16_t got = n > 8 ? 8 : n;
+  if (got > 0) {
+    (void)esp_wifi_scan_get_ap_records(&got, recs);
+  }
+  ESP_LOGI(kTag, "listen probe: %u nearby 2.4 GHz AP%s", n, n == 1 ? "" : "s");
+  for (uint16_t i = 0; i < got; ++i) {
+    ESP_LOGI(kTag, "  [%u] ch%u rssi=%d \"%s\"", i,
+             recs[i].primary, static_cast<int>(recs[i].rssi),
+             reinterpret_cast<char*>(recs[i].ssid));
+  }
+  (void)esp_wifi_stop();
+  return static_cast<int>(n);
+}
+#endif
+
+void wifi_after_start() {
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  c3_tune_tx();
+#endif
+}
 
 bool wifi_driver_init() {
   if (g_wifi_driver) {
     return true;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  c3_isolate_antenna_gpios();
+#endif
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   const esp_err_t err = esp_wifi_init(&init);
   if (err != ESP_OK) {
@@ -95,10 +185,20 @@ bool wifi_driver_init() {
     return false;
   }
   g_wifi_driver = true;
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  {
+    uint32_t mask = 0;
+    if (esp_wifi_get_event_mask(&mask) == ESP_OK) {
+      mask &= ~WIFI_EVENT_MASK_AP_PROBEREQRECVED;
+      (void)esp_wifi_set_event_mask(mask);
+    }
+  }
+#endif
   return true;
 }
 #else
 bool wifi_driver_init() { return false; }
+void wifi_after_start() {}
 #endif
 
 bool attach_eth_netif(esp_eth_handle_t handle) {
@@ -379,6 +479,12 @@ void on_ap_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
       ESP_LOGW(kTag, "AP client left " MACSTR " aid=%u", MAC2STR(ev->mac),
                ev->aid);
     }
+  } else if (id == WIFI_EVENT_AP_PROBEREQRECVED) {
+    auto* ev = static_cast<wifi_event_ap_probe_req_rx_t*>(event_data);
+    if (ev != nullptr) {
+      ESP_LOGI(kTag, "AP probe " MACSTR " rssi=%d", MAC2STR(ev->mac),
+               ev->rssi);
+    }
   }
 }
 
@@ -399,6 +505,11 @@ bool ap_start(const ApParams& params) {
   if (!wifi_driver_init()) {
     return false;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  if (g_nearby < 0) {
+    g_nearby = c3_listen_probe();
+  }
+#endif
   wifi_mode_t mode = WIFI_MODE_NULL;
   if (esp_wifi_get_mode(&mode) != ESP_OK) {
     mode = WIFI_MODE_NULL;
@@ -432,6 +543,8 @@ bool ap_start(const ApParams& params) {
              sizeof(cfg.ap.password), params.pass);
     cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     cfg.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
+    cfg.ap.pmf_cfg.capable = true;
+    cfg.ap.pmf_cfg.required = false;
   } else {
     cfg.ap.authmode = WIFI_AUTH_OPEN;
   }
@@ -468,6 +581,7 @@ bool ap_start(const ApParams& params) {
     ESP_LOGW(kTag, "esp_wifi_start failed; C6 not beaconing");
     return false;
   }
+  wifi_after_start();
   for (int i = 0; i < 50 && !g_ap_up; ++i) {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
@@ -495,6 +609,14 @@ bool ap_start(const ApParams&) {
 #endif  // NEON_HAVE_WIFI
 
 bool ap_is_up() { return g_ap_up; }
+
+#if NEON_HAVE_WIFI
+int8_t wifi_tx_qdBm() { return g_tx_qdBm; }
+int wifi_nearby_count() { return g_nearby; }
+#else
+int8_t wifi_tx_qdBm() { return 0; }
+int wifi_nearby_count() { return -1; }
+#endif
 
 const char* ap_ssid() { return g_ap_up ? g_ap_ssid : ""; }
 

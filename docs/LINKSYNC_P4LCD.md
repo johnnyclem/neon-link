@@ -13,7 +13,7 @@ tick. SoftAP is the provision path (no on-chip BLE).
 | Radio | ESP32-C6 over SDIO (ESP-Hosted 1.4) |
 | Panel | 800×480 RGB565, ~25 MHz PCLK |
 | Console | CH343 on the UART USB-C (`/dev/cu.wchusbserial*`) |
-| Touch | GT911 on I2C 45/46 (not used this pass) |
+| Touch | GT911 on I2C 45/46, RST GPIO 36, INT GPIO 42 |
 | Backlight | STC8H1K28 @ `0x2F` PWM |
 
 C6 SDIO is **not** the Waveshare Function-EV map:
@@ -28,8 +28,27 @@ C6 SDIO is **not** the Waveshare Function-EV map:
 RGB data/sync eat GPIO 2–19, 40, 41. Do not enable the P4 EMAC — those
 pins collide with SDIO.
 
-MIDI TX is unset until the 7-pin / Crowtail UART is beeped. Clock still
-runs internally.
+## UART1 Crowtail — M5 Unit MIDI (SAM2695)
+
+DIP on the back: **UART**, not wireless-module. The onboard C6 (Wi-Fi)
+is SDIO and is unaffected.
+
+| Net | GPIO | Grove wire (host names) |
+|-----|------|-------------------------|
+| UART1 TX | **47** | white (host TX → unit RX → SAM2695 + MIDI OUT) |
+| UART1 RX | **48** | yellow (host RX ← MIDI IN after the opto) |
+| 5V | — | red |
+| GND | — | black |
+
+Switch on the unit: **Separate (ON)** so IN and OUT are not tied.
+Headphones on the 3.5 mm **audio** jack hear the SAM2695. Link clock
+leaves UART1 TX onto MIDI OUT (DIN and TRS-A). MIDI IN is already
+opto-isolated on the unit.
+
+If OUT is silent and IN works (or the reverse), swap 47/48 — Crowtail
+yellow/white vs M5 Grove is the usual mix-up.
+
+Do not use UART3-IN for this. That port is 5V/2A power + IO27/28.
 
 ## Build & flash
 
@@ -43,8 +62,30 @@ Device in download: hold **BOOT**, tap **RESET**, release BOOT.
 Isolated tree: `build-linksync-p4lcd/` + `sdkconfig.linksync-p4lcd`.
 Does not overwrite the S3 / e-paper `sdkconfig`.
 
-First boot (this bring-up): the **800×480 panel is live** — BPM, STOPPED,
-1–4 boxes, peers. Link runs a local session. MIDI UART is not pinned yet.
+The **800×480 panel** is the Tab5 neon face in landscape: near-black
+void, cyan tubes, hot-pink **STOP**. No encoders — drive it from the
+glass.
+
+| Hit | Action |
+|-----|--------|
+| BPM digits | tap-tempo |
+| **−** / **+** | nudge ±1 BPM (hold to repeat) |
+| **RUN** / **STOP** | transport toggle |
+| Gear (top right) | settings — same sections as the web editor |
+
+Settings tabs match the web UI: **OUTPUTS**, **NETWORK**, **MIDI**,
+**AUDIO**, **SYSTEM**. Tap a row to cycle/toggle; **−** / **+** on a
+row nudge the value (hold to repeat). Flick the list to scroll.
+**NETWORK** is a readout (Wi-Fi passwords still need a keyboard — use
+the web editor). **SYSTEM > REBOOT** asks first. Changes apply live
+and persist like the OLED menu.
+
+GT911 is on I2C 45/46 (RST 36, INT 42). Address is `0x5D` or `0x14`
+depending on INT during reset. First-boot log should show
+`touch GT911 @0x.. ok` and `live panel 800x480 touch=1`.
+
+Link runs a local session. MIDI is UART1 on GPIO 47/48 (Crowtail),
+M5 Unit MIDI in Separate mode.
 
 SoftAP is `LINK-LCD-XXXX` (password on the glass / `http://192.168.4.1`).
 `esp_wifi_init` is what brings the C6 up over SDIO; do not pulse GPIO20

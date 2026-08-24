@@ -1,7 +1,5 @@
 #include "halesp/gpio_expansion.hpp"
 
-#include <cstdio>
-
 #include "esp_log.h"
 #include "halesp/i2c_bus.hpp"
 
@@ -31,21 +29,6 @@ bool gpio_exp_init() {
   if (i2c_bus() == nullptr) {
     return false;
   }
-  // One-shot scan so a missing 0x24 (solder-pad address) is obvious.
-  char seen[80];
-  size_t n = 0;
-  seen[0] = '\0';
-  for (uint8_t a = 0x08; a <= 0x77; ++a) {
-    if (i2c_probe(a, 10)) {
-      n += static_cast<size_t>(
-          snprintf(seen + n, sizeof(seen) - n, n ? " %02x" : "%02x", a));
-      if (n >= sizeof(seen) - 4) {
-        break;
-      }
-    }
-  }
-  ESP_LOGI(kTag, "I2C scan:%s%s", n ? " " : " (none)", seen);
-
   if (!i2c_probe(kGpioExpAddr, 50)) {
     ESP_LOGW(kTag, "no expander at 0x%02x", kGpioExpAddr);
     return false;

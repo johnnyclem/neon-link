@@ -25,6 +25,9 @@ TEST_CASE("link-sync panel draws BPM and PLAYING in ink") {
   std::snprintf(s.ssid, sizeof(s.ssid), "studio");
   neon::render_linksync_panel(c, s);
   CHECK(c.black_pixels() > 200);
+  // No full-width bars — they collide with a dark bezel.
+  CHECK_FALSE(c.pixel(400, 2));
+  CHECK_FALSE(c.pixel(400, neon::EpdCanvas::kHeight - 3));
 
   neon::EpdCanvas stopped;
   s.playing = false;
@@ -89,6 +92,28 @@ TEST_CASE("splash wordmark and left-edge arrows") {
   CHECK(c.pixel(12, neon::EpdCanvas::kHeight / 5));
   CHECK(c.pixel(12, (neon::EpdCanvas::kHeight * 4) / 5));
   CHECK_FALSE(c.pixel(400, 8));
+}
+
+TEST_CASE("charging icon paints only when usb_power") {
+  neon::LinkSyncPanelStatus s;
+  s.milli_bpm = 120000;
+  s.provisioned = true;
+  s.wifi_up = true;
+  neon::EpdCanvas off;
+  neon::render_linksync_panel(off, s);
+  s.usb_power = true;
+  neon::EpdCanvas on;
+  neon::render_linksync_panel(on, s);
+  CHECK(on.black_pixels() > off.black_pixels());
+  CHECK(on.pixel(750, 18));
+  CHECK_FALSE(off.pixel(750, 18));
+
+  neon::LinkSyncPanelStatus splash;
+  splash.overlay = 4;
+  splash.usb_power = true;
+  neon::EpdCanvas sp;
+  neon::render_linksync_panel(sp, splash);
+  CHECK_FALSE(sp.pixel(750, 18));
 }
 
 TEST_CASE("e-paper panel is static text — same status, same pixels") {

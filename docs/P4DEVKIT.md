@@ -62,7 +62,7 @@ unit with IDF 5.5.5 and `sdkconfig.defaults.p4v31`:
 ## I2C header
 
 Schematic net `ESP_I2C_*` (4-pin SH1.0 next to the I3C port, also
-40-pin header 11/12):
+40-pin header pins 3 / 5, silkscreen SDA / SCL):
 
 | Signal | GPIO | Also on this bus |
 |---|---|---|
@@ -133,6 +133,102 @@ KY-040 (or any EC11 with a switch) on the 40-pin header:
 | GND | GND | Commons for A/B/SW |
 
 If rotation is backwards, swap A/B.
+
+## TRS MIDI IN / OUT (40-pin header)
+
+UART1 @ 31250, MIDI Association **Type A**. Not the Pimidi HAT — that
+board is an I²C coprocessor; these pins are a plain UART current loop.
+
+Do **not** use the header pads labelled TXD / RXD (physical 8 / 10).
+Those are the USB-UART console (GPIO 37/38).
+
+| Function | P4 GPIO | 40-pin (pin 1 = 3V3) |
+|----------|---------|----------------------|
+| MIDI OUT TX | **20** | **13** |
+| MIDI IN  RX | **21** | **11** |
+| 3V3 | — | 1 or 17 |
+| 5V (6N138 VCC) | — | 2 or 4 |
+| GND | — | 6, 9, 14, 20, 25, 30, 34, 39 |
+
+### MIDI OUT (Type A)
+
+```
+3V3 ── 220 Ω ── ring
+GPIO20 ── 220 Ω ── tip
+GND ────────────── sleeve
+```
+
+Idle UART is high, so the loop is off until a start bit. Same circuit
+as the XIAO link-sync dongle.
+
+### MIDI IN (Type A) — 6N138
+
+A MIDI current loop is not 3.3 V UART. Direct-wiring a TRS IN to GPIO21
+will not speak MIDI and can stress the pin.
+
+Feed the 6N138 from **5 V** (header pin 2/4). At 3.3 V VCC the 6N138 is
+too slow for 31250. Pin 6 is open-collector: pull it up to **3V3** so
+the P4 GPIO never sees 5 V.
+
+DIP-8: 1 NC, 2 anode, 3 cathode, 4 NC, 5 GND, 6 out, 7 base, 8 VCC.
+
+```
+ring ── 220 Ω ── pin 2 (anode)     Type A = DIN 4, current source
+tip  ────────── pin 3 (cathode)    Type A = DIN 5, current sink
+sleeve ──────── GND (screen only)
+
+pin 8 ── 5V
+pin 5 ── GND
+pin 7 ── 10 kΩ ── GND              speeds the falling edge
+pin 6 ── GPIO21 and 10 kΩ to 3V3
+```
+
+If IN is dead-silent, swap tip and ring — that is Type B. Leave OUT as
+drawn; a Type-B cable is a tip/ring swap, not a firmware mode.
+
+### Two 5-pin DIN jacks (same UART, no firmware change)
+
+DIN-5 is the same current loop. Type A TRS tip = DIN **5**, ring = DIN **4**.
+Pin **2** is shield. Pins **1** and **3** stay unconnected.
+
+Female chassis jack, **looking into the holes**, notch at the bottom:
+
+```
+      1           3      (NC)     (NC)
+   4                 5   (+)      (−)
+          2              shield
+```
+
+Solder cups on the back are mirrored. Pin 2 is always the centre pin.
+
+**OUT** (no opto):
+
+```
+3V3    ── 220 Ω ── DIN pin 4
+GPIO20 ── 220 Ω ── DIN pin 5
+GND    ────────── DIN pin 2
+```
+
+**IN** (6N138, VCC from 5 V, GPIO pulled to 3V3):
+
+```
+DIN pin 4 ── 220 Ω ── 6N138 pin 2 (anode)
+DIN pin 5 ────────── 6N138 pin 3 (cathode)
+DIN pin 2 ────────── GND (screen only — not in the LED loop)
+
+6N138 pin 8 ── 5V
+6N138 pin 5 ── GND
+6N138 pin 7 ── 10 kΩ ── GND
+6N138 pin 6 ── GPIO21 and 10 kΩ to 3V3
+```
+
+Two separate jacks. Do not jumper OUT pin 4/5 onto IN — that is a
+hardware thru box, not this circuit. If IN is mute, swap DIN 4 and 5
+on the IN jack only.
+
+Notes IN (and start/stop/clock) hit the same `MidiRouter` as BLE MIDI:
+gates, transport, program change. Link-derived 24 PPQN clock still
+leaves on OUT unless `clock_policy` is `replace`.
 
 ## Build & flash
 

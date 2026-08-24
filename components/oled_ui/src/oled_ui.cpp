@@ -36,6 +36,90 @@ const char* kTag = "oled_ui";
 // case at 400 kHz). Diff-less full flushes are fine; lower rate keeps the
 // bus free for GP8413 / ADS1015.
 constexpr TickType_t kFrameTicks = pdMS_TO_TICKS(100);
+constexpr int64_t kBootIgnoreUs = 3000000;
+constexpr int64_t kDoubleClickUs = 500000;
+
+int64_t g_ui_boot_us = 0;
+int64_t g_pending_home_short_us = 0;
+
+void toggle_transport() {
+  neon::TimelineSnapshot tl{};
+  timeline_bus().read(tl);
+  ControlCommand cmd{};
+  cmd.kind = tl.playing ? ControlCommand::Kind::kStopNow
+                        : ControlCommand::Kind::kPlayNow;
+  control_queue_push(cmd);
+  ESP_LOGI(kTag, "encoder %s", tl.playing ? "stop" : "play");
+}
+
+bool boot_locked() {
+  return g_ui_boot_us != 0 &&
+         esp_timer_get_time() - g_ui_boot_us < kBootIgnoreUs;
+}
+
+void commit_pending_home_short(neon::MenuModel& menu) {
+  if (g_pending_home_short_us == 0) {
+    return;
+  }
+  if (esp_timer_get_time() - g_pending_home_short_us < kDoubleClickUs) {
+    return;
+  }
+  g_pending_home_short_us = 0;
+  if (menu.screen() == neon::MenuModel::Screen::kHome) {
+    toggle_transport();
+  }
+}
+
+void open_settings(neon::MenuModel& menu) {
+  g_pending_home_short_us = 0;
+  halesp::encoder_clear_press();
+  if (menu.screen() == neon::MenuModel::Screen::kHome) {
+    menu.on_click();
+  }
+}
+
+void handle_press(neon::MenuModel& menu, halesp::EncoderPress ev) {
+  using S = neon::MenuModel::Screen;
+  if (ev == halesp::EncoderPress::kNone) {
+    return;
+  }
+  if (boot_locked()) {
+    return;
+  }
+  const bool home = menu.screen() == S::kHome;
+  switch (ev) {
+    case halesp::EncoderPress::kDouble:
+      if (home) {
+        open_settings(menu);
+      } else {
+        menu.on_click();
+      }
+      break;
+    case halesp::EncoderPress::kShort:
+      if (home) {
+        if (g_pending_home_short_us != 0) {
+          open_settings(menu);
+        } else {
+          g_pending_home_short_us = esp_timer_get_time();
+        }
+      } else {
+        g_pending_home_short_us = 0;
+        ESP_LOGI(kTag, "menu click cursor=%d", menu.cursor());
+        menu.on_click();
+      }
+      break;
+    case halesp::EncoderPress::kLong:
+      g_pending_home_short_us = 0;
+      // Top-level settings: a leftover hold from the double-click must
+      // not count as "back". Leave via BACK / LIVE click instead.
+      if (!home && menu.screen() != S::kMenu) {
+        menu.on_long_press();
+      }
+      break;
+    case halesp::EncoderPress::kNone:
+      break;
+  }
+}
 
 void assemble_status(neon::UiStatus* s, int64_t now_us, int64_t phase_us) {
   neon::TimelineSnapshot tl;
@@ -152,6 +236,7 @@ void ui_task(void*) {
     ESP_LOGI(kTag, "panel kind=%d", static_cast<int>(kind));
   }
   halesp::encoder_init(kPinEncA, kPinEncB, kPinEncSw);
+  g_ui_boot_us = esp_timer_get_time();
   halesp::status_leds_init(kPinLedNet, kPinLedBeat, kPinLedRun);
 
   neon::Config ui_cfg = neon_config();
@@ -174,15 +259,15 @@ void ui_task(void*) {
     if (detents != 0) {
       menu.on_rotate(detents);
     }
-    switch (halesp::encoder_take_press()) {
-      case halesp::EncoderPress::kShort:
-        menu.on_click();
-        break;
-      case halesp::EncoderPress::kLong:
-        menu.on_long_press();
-        break;
-      case halesp::EncoderPress::kNone:
-        break;
+    const int tempo_nudge = menu.take_tempo_nudge();
+    if (tempo_nudge != 0) {
+      control_queue_push(
+          {ControlCommand::Kind::kNudgeTempo, tempo_nudge});
+    }
+    handle_press(menu, halesp::encoder_take_press());
+    commit_pending_home_short(menu);
+    if (boot_locked() && menu.screen() != neon::MenuModel::Screen::kHome) {
+      menu.go_home();
     }
     // E0 pot → BPM. Off while no slider is wired: a floating ADC on E0
     // would wander across the pickup threshold and steal tempo.
@@ -248,6 +333,10 @@ void ui_task(void*) {
       if (!oledui::panel_flush(fb)) {
         ESP_LOGW(kTag, "panel flush failed");
       }
+      // Clicks during the I2C flush are queued by the encoder task; drain
+      // them now so a menu enter/back does not wait another 100 ms frame.
+      handle_press(menu, halesp::encoder_take_press());
+      commit_pending_home_short(menu);
       const int changed =
           have_prev ? fb.diff_pixels(prev_fb)
                     : neon::Framebuffer::kWidth * neon::Framebuffer::kHeight;

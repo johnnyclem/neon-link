@@ -2,7 +2,7 @@
 
 #include "sdkconfig.h"
 
-#if CONFIG_NEON_LINKSYNC && !CONFIG_NEON_BOARD_LINKSYNC_P4LCD && !CONFIG_NEON_BOARD_LINKSYNC_TAB5
+#if CONFIG_NEON_LINKSYNC && !CONFIG_NEON_BOARD_LINKSYNC_P4LCD && !CONFIG_NEON_BOARD_LINKSYNC_TAB5 && !CONFIG_NEON_BOARD_LINKSYNC_C3OLED
 
 #include <cstdio>
 #include <cstring>
@@ -146,12 +146,16 @@ void neon_provision_stop() {
   g_inited = false;
 }
 
-#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5 || CONFIG_NEON_BOARD_LINKSYNC_C3OLED
 
 #include "esp_log.h"
 
 void neon_provision_start() {
+#if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  ESP_LOGI("prov", "C3 OLED: SoftAP provision (no BLE)");
+#else
   ESP_LOGI("prov", "P4 LCD: SoftAP provision (no BLE)");
+#endif
 }
 bool neon_provision_active() { return false; }
 bool neon_provision_poll(int64_t) { return false; }

@@ -2,6 +2,18 @@
 
 #include <cstdint>
 
+#include "freertos/FreeRTOS.h"
+#include "sdkconfig.h"
+
+// Pulse/audio tasks pin to core 1 on dual-core chips. ESP32-C3 is unicore
+// — pinning to 1 fails and the task never runs.
+inline constexpr BaseType_t kNeonCoreApp = 0;
+#if CONFIG_FREERTOS_UNICORE
+inline constexpr BaseType_t kNeonCoreRt = 0;
+#else
+inline constexpr BaseType_t kNeonCoreRt = 1;
+#endif
+
 // Core 0: networking / Link / BLE / web / OLED (application side).
 void neon_start_core0_tasks();
 
@@ -22,6 +34,9 @@ void neon_start_epd_service();
 
 // Core 0: CrowPanel Advance 5.0" RGB LCD status. No-op on other boards.
 void neon_start_lcd_service();
+
+// Core 0: ESP32-C3 stamp 72×40 OLED. No-op on other boards.
+void neon_start_c3oled_service();
 
 // Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
 void neon_start_telemetry_service();

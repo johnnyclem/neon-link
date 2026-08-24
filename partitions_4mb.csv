@@ -1,0 +1,9 @@
+# Name,   Type, SubType, Offset,   Size
+# ESP32-C3 stamp: 4 MB embedded flash. Two ~1.875 MB OTA slots so a
+# USB flash still mirrors ota_1 (see top-level CMakeLists.txt). The
+# link-sync C3 image is ~1.4 MB on S3; leave a little headroom.
+nvs,      data, nvs,     0x9000,   0x6000
+otadata,  data, ota,     0xf000,   0x2000
+phy_init, data, phy,     0x11000,  0x1000
+ota_0,    app,  ota_0,   0x20000,  0x1E0000
+ota_1,    app,  ota_1,   0x200000, 0x1E0000

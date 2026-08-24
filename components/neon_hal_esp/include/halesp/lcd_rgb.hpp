@@ -27,7 +27,8 @@ void lcd_rgb_backlight(uint8_t duty);
 // Draw a full-screen RGB565 buffer (native panel endian, already swapped).
 bool lcd_rgb_blit(const uint16_t* rgb565, int x, int y, int w, int h);
 
-// Capacitive panel. Tab5: ST7123 @ 0x55 (GT911 fallback). CrowPanel: stub.
+// Capacitive panel. Tab5: ST7123 @ 0x55 (GT911 fallback).
+// CrowPanel Advance 5.0": GT911 on I2C 45/46, RST 36, INT 42.
 bool lcd_touch_init();
 bool lcd_touch_ok();
 // Latest sample in panel pixels. True while a finger is down.

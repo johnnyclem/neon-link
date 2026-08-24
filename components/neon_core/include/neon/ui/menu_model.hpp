@@ -53,16 +53,17 @@ struct UiStatus {
 // Encoder-driven menu state machine (pure logic; host-tested).
 //
 // The tree is deliberately shallow (DESIGN_SYSTEM.md §11): one menu with
-// six destinations, at most one level below it, and long-press as the
-// universal way back.
+// six destinations plus BACK, at most one level below it, and long-press
+// as the universal way back.
 //
-//   Home --click--> Menu [Live, Outputs, Network, MIDI, Audio, System]
+//   Home --click--> Menu [Live, Outputs, Network, MIDI, Audio, System, Back]
 //     Outputs [CLK1..4] --click--> OutputEdit (param list)
 //     Network              read-only; credentials are the web UI's job
 //     MIDI, Audio, System  param lists
 //     System > REBOOT   --click--> Confirm
 //
-// Interaction (§11): rotate moves focus or changes the focused value,
+// Interaction (§11): rotate moves focus or changes the focused value
+// (on the live screen it queues a whole-BPM nudge via take_tempo_nudge),
 // short press enters/confirms/toggles, long press cancels an edit or goes
 // back one level.
 //
@@ -89,7 +90,8 @@ class MenuModel {
     kReboot,
   };
 
-  static constexpr int kMenuItems = 6;  // Live, Outputs, Network, MIDI, Audio, System
+  static constexpr int kMenuItems = 7;  // Live, Outputs, Network, MIDI, Audio, System, Back
+  static constexpr int kMenuBackItem = kMenuItems - 1;
   static constexpr int kOutputsItems = 4;  // CLK1..4
   // ENABLED, PPQN, MULT, DIV, MODE, TRIG MS, DUTY, SHUF, then the parity
   // set: ROLE, FREE RUN, RHYTHM, STEPS, FILLS, ROT, CHANCE, JITTER,
@@ -117,9 +119,19 @@ class MenuModel {
   // Cancels an in-progress edit if there is one, otherwise goes back one
   // level. From the menu this returns to the live screen.
   void on_long_press();
+  void go_home();
+  // Touch / direct navigation: jump to a section, pick a row, or nudge
+  // the focused value without an encoder click into edit mode.
+  void go_section(Screen s);
+  void set_cursor(int index);
+  void set_output_index(int index);
+  void set_confirm_yes(bool yes);
+  void nudge_value(int delta);
 
   bool take_dirty();
   Action take_action();
+  // Whole-BPM steps queued by rotating on the live screen. One-shot.
+  int take_tempo_nudge();
 
   Screen screen() const { return screen_; }
   int cursor() const { return cursor_; }
@@ -150,6 +162,7 @@ class MenuModel {
   bool dirty_ = false;
   bool confirm_yes_ = false;
   Action action_ = Action::kNone;
+  int tempo_nudge_ = 0;
 };
 
 }  // namespace neon

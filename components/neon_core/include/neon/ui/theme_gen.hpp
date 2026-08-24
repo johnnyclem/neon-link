@@ -81,6 +81,7 @@ inline constexpr const char kTitleNetwork[] = "NETWORK";
 inline constexpr const char kTitleMidi[] = "MIDI";
 inline constexpr const char kTitleAudio[] = "AUDIO";
 inline constexpr const char kTitleSystem[] = "SYSTEM";
+inline constexpr const char kTitleBack[] = "BACK";
 
 inline constexpr const char kBrand[] = "NEON";
 inline constexpr const char kSetupIp[] = "192.168.4.1";

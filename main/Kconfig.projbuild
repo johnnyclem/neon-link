@@ -12,6 +12,8 @@ choice NEON_BOARD
         (docs/LINKSYNC_EPD.md).
         link-sync-p4lcd is CrowPanel Advance 5.0" ESP32-P4 RGB LCD.
         link-sync-tab5 is M5Stack Tab5 (ESP32-P4 MIPI-DSI 720×1280).
+        link-sync-c3oled is the ACEIRMC / Super Mini ESP32-C3 stamp
+        with a 0.42" 72×40 OLED (docs/LINKSYNC_C3OLED.md).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -27,15 +29,18 @@ config NEON_BOARD_LINKSYNC_P4LCD
     bool "link-sync (CrowPanel Advance 5.0\" ESP32-P4 RGB LCD)"
 config NEON_BOARD_LINKSYNC_TAB5
     bool "link-sync (M5Stack Tab5 ESP32-P4 MIPI LCD)"
+config NEON_BOARD_LINKSYNC_C3OLED
+    bool "link-sync (ESP32-C3 0.42\" OLED stamp)"
 endchoice
 
 config NEON_LINKSYNC
     bool
-    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED
     help
-        Shared link-sync firmware path: Link + MIDI clock. No audio, no
-        OLED. The XIAO uses a single LED; the e-Paper board uses the
-        5.79" panel; the P4 LCD board paints the same status live.
+        Shared link-sync firmware path: Link + MIDI clock. No audio.
+        The XIAO uses a single LED; the e-Paper board uses the 5.79"
+        panel; the P4 LCD board paints the same status live; the C3
+        stamp uses the onboard 72×40 OLED.
 
 config NEON_AUDIO
     bool "Audio engine (I2S out, metronome, pulses as audio)"

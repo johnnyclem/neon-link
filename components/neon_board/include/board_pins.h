@@ -120,7 +120,7 @@ inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
 inline constexpr int kPinMidiTx = 21;  // CrowPanel 2x10 header, UART1 @ 31250
-inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinMidiRx = 38;  // adjacent to TX; opto required
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -152,6 +152,10 @@ inline constexpr int kPinKeyDown = 6;
 inline constexpr int kPinKeyTop = 1;
 inline constexpr int kPinKeyBot = 2;
 inline constexpr int kPinKeyOk = 5;
+// CH340 is powered from USB VBUS; UART0 RX (GPIO44) sits idle-high
+// only while the cable is plugged in. The 4054 CHRG pin is NC and
+// BAT is not divided onto an ADC — no voltage / %.
+inline constexpr int kPinUsbSense = 44;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;
@@ -166,7 +170,7 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 #elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
 
 // CrowPanel Advance 5.0" ESP32-P4 (800×480 RGB565). Pulse channels are
-// virtual. MIDI TX is left unset until the 7-pin header is beeped.
+// virtual. MIDI is Crowtail UART1 (DIP = UART, not wireless module).
 // C6 radio is ESP-Hosted SDIO (not the Waveshare Function-EV map).
 inline constexpr int kPinClk1 = 0;
 inline constexpr int kPinClk2 = 1;
@@ -177,8 +181,8 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = -1;
-inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinMidiTx = 47;  // UART1 TX, Crowtail / Grove white
+inline constexpr int kPinMidiRx = 48;  // UART1 RX, Crowtail / Grove yellow
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -192,6 +196,8 @@ inline constexpr int kPinEthRst = -1;
 // GT911 + STC8H1K28 expander (backlight PWM / TP reset).
 inline constexpr int kPinI2cSda = 45;
 inline constexpr int kPinI2cScl = 46;
+inline constexpr int kPinTouchRst = 36;  // GT911 RST (STC8 P1.2 is a backup)
+inline constexpr int kPinTouchInt = 42;  // GT911 INT; level at reset picks 0x5D/0x14
 
 inline constexpr int kPinDispSck = -1;
 inline constexpr int kPinDispMosi = -1;
@@ -266,6 +272,65 @@ inline constexpr int kAmyCvClockChannel = 1;
 inline constexpr float kAmyGateHighVolts = 5.0f;
 inline constexpr float kAmyGateLowVolts = 0.0f;
 
+#elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+
+// ACEIRMC / Super Mini ESP32-C3 stamp with onboard 0.42" 72×40 OLED.
+// Unicore RISC-V, 4 MB embedded flash, no PSRAM. Native USB Serial/JTAG.
+// See docs/LINKSYNC_C3OLED.md.
+//
+//   GPIO5  OLED SDA (SSD1306 @ 0x3C)
+//   GPIO6  OLED SCL
+//   GPIO8  blue LED, inverted (HIGH = off; also a boot strap — leave high)
+//   GPIO9  BOOT button, active low, used as the only UI click
+//   GPIO10 UART1 MIDI TX @ 31250 (optional pigtail)
+//   GPIO18/19 USB D−/D+. Do not use.
+
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = 10;
+inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+inline constexpr int kPinI2cSda = 5;
+inline constexpr int kPinI2cScl = 6;
+
+inline constexpr int kPinDispSck = -1;
+inline constexpr int kPinDispMosi = -1;
+inline constexpr int kPinDispCs = -1;
+inline constexpr int kPinDispDc = -1;
+inline constexpr int kPinDispRes = -1;
+
+inline constexpr int kPinEncA = -1;
+inline constexpr int kPinEncB = -1;
+inline constexpr int kPinEncSw = 9;  // BOOT, active low
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = 8;
+inline constexpr bool kUserLedInverted = true;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
 #elif CONFIG_NEON_BOARD_P4DEVKIT
 
 // Waveshare ESP32-P4-Module-DEV-KIT. No Eurorack jacks on the stock
@@ -280,8 +345,12 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = -1;
-inline constexpr int kPinMidiRx = -1;
+// UART1 @ 31250 on the 40-pin header. Physical pins from the Waveshare
+// silkscreen (pin 1 = 3V3, same corner as a Pi): GPIO20 = header 13,
+// GPIO21 = header 11. Do not use header TXD/RXD (pins 8/10) — that is
+// the USB-UART console (GPIO 37/38). Type A TRS, see docs/P4DEVKIT.md.
+inline constexpr int kPinMidiTx = 20;
+inline constexpr int kPinMidiRx = 21;
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -372,8 +441,8 @@ inline constexpr int kPinDispDc = -1;
 inline constexpr int kPinDispRes = -1;
 
 // No dedicated GPIO encoder / status LEDs on stock AMYboard. encoder_init
-// falls back to the NULLLAB I2C GPIO expander @ 0x24 (E0 pot, E1/E2/E3
-// EC11) when these pins are -1. -1 = no native GPIO.
+// falls back to Grove I2C: NULLLAB expander @ 0x24 (E0 pot, E1/E2/E3
+// EC11) or M5Stack Unit Encoder (U135) @ 0x40. -1 = no native GPIO.
 inline constexpr int kPinEncA = -1;
 inline constexpr int kPinEncB = -1;
 inline constexpr int kPinEncSw = -1;

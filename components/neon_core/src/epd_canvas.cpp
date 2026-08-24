@@ -80,6 +80,17 @@ int EpdCanvas::black_pixels() const {
   return n;
 }
 
+void draw_charge_icon(EpdCanvas& c, int x, int y) {
+  // Chunky battery + bolt. Static: e-paper must not animate.
+  c.fill_rect(x, y, 38, 20, true);
+  c.fill_rect(x + 2, y + 2, 34, 16, false);
+  c.fill_rect(x + 38, y + 5, 6, 10, true);
+  c.fill_rect(x + 18, y + 4, 10, 3, true);
+  c.fill_rect(x + 12, y + 7, 14, 3, true);
+  c.fill_rect(x + 16, y + 10, 10, 3, true);
+  c.fill_rect(x + 20, y + 13, 4, 3, true);
+}
+
 void draw_left_arrow(EpdCanvas& c, int cy) {
   const int tip_x = 10;
   const int half = 16;
@@ -117,8 +128,6 @@ void render_linksync_panel(EpdCanvas& c, const LinkSyncPanelStatus& s) {
     return;
   }
   c.clear();
-  c.fill_rect(0, 0, EpdCanvas::kWidth, 8, true);
-  c.fill_rect(0, EpdCanvas::kHeight - 8, EpdCanvas::kWidth, 8, true);
 
   c.draw_text(24, 24, s.title[0] != '\0' ? s.title : "link-sync", 3);
 
@@ -138,6 +147,10 @@ void render_linksync_panel(EpdCanvas& c, const LinkSyncPanelStatus& s) {
   std::snprintf(peers, sizeof(peers), "PEERS %u",
                 static_cast<unsigned>(s.peers));
   c.draw_text(400, 24, peers, 3);
+
+  if (s.usb_power) {
+    draw_charge_icon(c, 742, 18);
+  }
 
   // Physical access is the credential: print the setup AP password
   // on the glass whenever the box is offering that network.

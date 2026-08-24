@@ -157,9 +157,11 @@ Two bands are dropped rather than squeezed (`unit_y` / `ident_y` = −1): the he
 
 **Encoder navigation model**
 
-- Rotate: move focus, or adjust the focused value
-- Short press: enter / confirm / toggle
-- Long press: cancel an in-progress edit; if there is none, go back one level
+- Rotate: move focus, or adjust the focused value. On the live screen, rotate nudges tempo ±1 BPM per detent (one-encoder panels have no second knob)
+- Live screen short press: play / stop
+- Live screen double-click: open the menu
+- In a menu, short press: enter the highlighted row (BACK returns to live)
+- In a menu, long press: go back one level
 - Focus while browsing is a caret; focus while editing is a full-row inversion, so the knob's mode is never ambiguous
 - Menus are vertical lists; the tree is one level deep
 
@@ -312,15 +314,16 @@ After setup, returning to the web UI should feel like opening a larger version o
 
 | Action | Behaviour |
 |--------|-----------|
-| Rotate | Move focus, or change the focused value |
-| Short press | Enter / confirm / toggle |
-| Long press | Cancel an edit; otherwise back one level |
+| Rotate | Live: ±1 BPM. Menu: move focus, or change the focused value |
+| Short press | Live: play / stop. Menu: enter the highlighted row |
+| Double-click | Live: open the menu |
+| Long press | Live: ignored. Menu: back one level |
 
 Menu structure stays shallow:
 
 ```
 Live
-  Menu ─ Live · Outputs · Network · MIDI · System
+  Menu ─ Live · Outputs · Network · MIDI · Audio · System · Back
            Outputs ─ CLK 1..4 ─ parameter list
            Network ─ read-only (credentials need a keyboard)
            MIDI    ─ parameter list
@@ -329,7 +332,7 @@ Live
 
 The long press fires as soon as the hold threshold passes rather than on release, so the panel reacts under the finger.
 
-**Tempo is not editable from the live screen.** It is reachable through the menu instead. The live path stays fast and boring, and an encoder that changes tempo on an accidental nudge is a hazard on stage.
+**Live-screen rotate nudges tempo** ±1 BPM per detent. **Short click plays or stops.** **Double-click opens the menu** — a long press on the live screen is ignored so a noisy switch at boot cannot dive into settings. Inside the menu, short click enters the highlighted row (BACK returns home). Tempo is not a menu item; the hero is the control.
 
 ---
 

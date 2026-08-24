@@ -58,6 +58,15 @@ bool ap_start(const ApParams& params);
 // True after a successful ap_start().
 bool ap_is_up();
 
+// C3 Super Mini RF diagnostic. TX cap in 0.25 dBm units (34 = 8.5 dBm),
+// or 0 if unset. Nearby AP count from the boot listen probe, or -1.
+int8_t wifi_tx_qdBm();
+int wifi_nearby_count();
+
+// Board-specific RF limits (C3 Super Mini TX cap). Call after every
+// successful esp_wifi_start().
+void wifi_after_start();
+
 // The SSID the access point is currently advertising ("" when down).
 const char* ap_ssid();
 

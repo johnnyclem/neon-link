@@ -1,6 +1,7 @@
 #include "halesp/encoder_pcnt.hpp"
 
 #include <atomic>
+#include <cstdint>
 
 #include "driver/gpio.h"
 #include "driver/pulse_cnt.h"
@@ -9,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "halesp/gpio_expansion.hpp"
+#include "halesp/i2c_bus.hpp"
 #include "neon/input/quadrature.hpp"
 
 namespace halesp {
@@ -16,7 +18,7 @@ namespace halesp {
 namespace {
 const char* kTag = "encoder";
 
-enum class Backend : uint8_t { kNone, kPcnt, kI2cExp };
+enum class Backend : uint8_t { kNone, kPcnt, kI2cExp, kM5Unit };
 
 Backend g_backend = Backend::kNone;
 pcnt_unit_handle_t g_unit = nullptr;
@@ -31,12 +33,27 @@ bool g_long_fired = false;
 // I2C expander path: a 4 ms task samples A/B/SW so short clicks and
 // detents survive the 100 ms OLED frame. Gestures are queued for the UI.
 std::atomic<int> g_i2c_detents{0};
-std::atomic<unsigned> g_i2c_press{0};  // bit0 short, bit1 long
-constexpr unsigned kPressShort = 1u;
-constexpr unsigned kPressLong = 2u;
+std::atomic<int> g_i2c_shorts{0};
+std::atomic<int> g_i2c_longs{0};
+// Swallow click/long leftovers from I2C noise while the Grove bus and
+// the M5 STM32 settle. Rotation still counts.
+std::atomic<int64_t> g_mute_press_until_us{0};
+std::atomic<bool> g_m5_relax{false};
 
 // Flip if clockwise decrements. Some EC11 footprints swap A/B.
 constexpr bool kI2cInvert = false;
+
+// M5Stack Unit Encoder (U135): STM32F030 I2C slave on the Grove hub.
+// Register map matches github.com/m5stack/M5Unit-Encoder (write-STOP-read).
+constexpr uint8_t kM5EncAddr = 0x40;
+constexpr uint8_t kM5RegMode = 0x00;
+constexpr uint8_t kM5RegValue = 0x10;
+constexpr uint8_t kM5RegButton = 0x20;
+constexpr uint8_t kM5RegLed = 0x30;
+constexpr int kM5TimeoutMs = 20;
+constexpr bool kM5Invert = false;
+// STM32 firmware counts both quadrature edges; one mechanical detent is 2.
+constexpr int kM5CountsPerDetent = 2;
 
 bool setup_pcnt(int pin_a, int pin_b, int pin_sw) {
   pcnt_unit_config_t unit_cfg = {};
@@ -143,12 +160,12 @@ void i2c_encoder_task(void*) {
         if (pressed) {
           long_fired = false;
         } else if (!long_fired) {
-          g_i2c_press.fetch_or(kPressShort, std::memory_order_relaxed);
+          g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
         }
       }
       if (!sw_last && !long_fired && now - sw_change_us > kLongUs) {
         long_fired = true;
-        g_i2c_press.fetch_or(kPressLong, std::memory_order_relaxed);
+        g_i2c_longs.fetch_add(1, std::memory_order_relaxed);
       }
     }
 
@@ -194,6 +211,185 @@ bool setup_i2c_exp() {
                           nullptr, 0);
   return true;
 }
+
+bool m5_read_value(int16_t* value) {
+  if (value == nullptr) {
+    return false;
+  }
+  const uint8_t reg = kM5RegValue;
+  uint8_t rd[2] = {};
+  if (!i2c_write_stop_read(kM5EncAddr, &reg, 1, rd, 2, kM5TimeoutMs)) {
+    return false;
+  }
+  *value = static_cast<int16_t>(static_cast<uint16_t>(rd[0]) |
+                                (static_cast<uint16_t>(rd[1]) << 8));
+  return true;
+}
+
+bool m5_read_raw_button(uint8_t* raw) {
+  if (raw == nullptr) {
+    return false;
+  }
+  const uint8_t reg = kM5RegButton;
+  uint8_t v = 0;
+  // Official Arduino driver: write register, STOP, then read (not
+  // repeated-START). Bit 0 is the switch.
+  if (!i2c_write_stop_read(kM5EncAddr, &reg, 1, &v, 1, kM5TimeoutMs)) {
+    return false;
+  }
+  *raw = static_cast<uint8_t>(v & 1);
+  return true;
+}
+
+void m5_sample_detents(int16_t* last, int* count_rem) {
+  int16_t now_val = *last;
+  if (!m5_read_value(&now_val)) {
+    return;
+  }
+  int d = static_cast<int>(now_val) - static_cast<int>(*last);
+  *last = now_val;
+  if (kM5Invert) {
+    d = -d;
+  }
+  *count_rem += d;
+  const int steps = *count_rem / kM5CountsPerDetent;
+  *count_rem -= steps * kM5CountsPerDetent;
+  if (steps != 0) {
+    g_i2c_detents.fetch_add(steps, std::memory_order_relaxed);
+  }
+}
+
+void m5_encoder_task(void*) {
+  int16_t last = 0;
+  (void)m5_read_value(&last);
+  int count_rem = 0;
+
+  // Majority of bit0 while the shaft is untouched = idle. If we guess
+  // wrong and sit "down" for 2 s, relearn idle so clicks start working.
+  int zeros = 0;
+  int ones = 0;
+  TickType_t wake = xTaskGetTickCount();
+  for (int i = 0; i < 50; ++i) {
+    uint8_t raw = 0;
+    if (m5_read_raw_button(&raw)) {
+      if (raw) {
+        ++ones;
+      } else {
+        ++zeros;
+      }
+    }
+    m5_sample_detents(&last, &count_rem);
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));
+  }
+  uint8_t idle = (ones >= zeros) ? 1 : 0;
+  g_i2c_shorts.store(0, std::memory_order_relaxed);
+  g_i2c_longs.store(0, std::memory_order_relaxed);
+  ESP_LOGI(kTag, "M5 button idle=%u (0s=%d 1s=%d)", idle, zeros, ones);
+
+  bool down = false;
+  bool long_fired = false;
+  bool wait_idle = false;
+  int64_t down_us = 0;
+  int64_t last_short_us = 0;
+  uint8_t last_raw = idle;
+  int active_run = 0;
+  int idle_run = 0;
+  unsigned log_div = 0;
+
+  for (;;) {
+    uint8_t raw = last_raw;
+    const bool got_sw = m5_read_raw_button(&raw);
+    m5_sample_detents(&last, &count_rem);
+    if (got_sw) {
+      last_raw = raw;
+      const bool active = raw != idle;
+      if (active) {
+        ++active_run;
+        idle_run = 0;
+      } else {
+        ++idle_run;
+        active_run = 0;
+      }
+      const int64_t now = esp_timer_get_time();
+      constexpr int64_t kLongUs = 500000;
+      constexpr int64_t kRelearnUs = 2000000;
+      constexpr int kStable = 4;
+      if (g_m5_relax.exchange(false, std::memory_order_relaxed)) {
+        down = false;
+        long_fired = true;
+        wait_idle = true;
+        active_run = 0;
+        idle_run = 0;
+        ESP_LOGI(kTag, "m5 wait for release before next click");
+      }
+      if (wait_idle) {
+        if (idle_run >= kStable) {
+          wait_idle = false;
+        }
+      } else if (!down && active_run >= kStable) {
+        down = true;
+        long_fired = false;
+        down_us = now;
+        g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
+        last_short_us = now;
+        ESP_LOGI(kTag, "m5 click short (down) raw=%u idle=%u", raw, idle);
+      } else if (down && idle_run >= kStable) {
+        down = false;
+      } else if (down && !long_fired && now - down_us > kLongUs) {
+        // A double-click is two shorts; the second press can look like a
+        // 500 ms hold and would bounce the settings menu back home.
+        if (last_short_us != 0 && now - last_short_us < 1000000) {
+          long_fired = true;
+        } else {
+          long_fired = true;
+          g_i2c_longs.fetch_add(1, std::memory_order_relaxed);
+          ESP_LOGI(kTag, "m5 click long");
+        }
+      } else if (down && now - down_us > kRelearnUs) {
+        idle = raw;
+        down = false;
+        long_fired = true;
+        active_run = 0;
+        idle_run = 0;
+        g_i2c_longs.store(0, std::memory_order_relaxed);
+        g_i2c_shorts.store(0, std::memory_order_relaxed);
+        ESP_LOGW(kTag, "M5 button relearn idle=%u (was held 2s)", idle);
+      }
+    }
+
+    if ((++log_div % 250u) == 0u) {
+      ESP_LOGI(kTag, "m5 val=%d raw=%u idle=%u down=%d", static_cast<int>(last),
+               last_raw, idle, down ? 1 : 0);
+    }
+
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(2));
+  }
+}
+
+bool setup_m5_unit() {
+  if (i2c_bus() == nullptr) {
+    return false;
+  }
+  if (!i2c_probe(kM5EncAddr, 50)) {
+    return false;
+  }
+  const uint8_t mode_pkt[2] = {kM5RegMode, 0};  // 0 = Pulse
+  if (!i2c_write(kM5EncAddr, mode_pkt, sizeof(mode_pkt), kM5TimeoutMs)) {
+    ESP_LOGW(kTag, "M5 Unit Encoder @ 0x40 probe ok but mode write failed");
+    return false;
+  }
+  int16_t v = 0;
+  if (!m5_read_value(&v)) {
+    ESP_LOGW(kTag, "M5 Unit Encoder @ 0x40 present but value read failed");
+    return false;
+  }
+  g_mute_press_until_us.store(esp_timer_get_time() + 4000000,
+                              std::memory_order_relaxed);
+  ESP_LOGI(kTag, "M5 Unit Encoder @ 0x40, count=%d", static_cast<int>(v));
+  xTaskCreatePinnedToCore(m5_encoder_task, "enc_m5", 3072, nullptr, 6, nullptr,
+                          0);
+  return true;
+}
 }  // namespace
 
 bool encoder_init(int pin_a, int pin_b, int pin_sw) {
@@ -205,13 +401,19 @@ bool encoder_init(int pin_a, int pin_b, int pin_sw) {
     g_backend = Backend::kPcnt;
     return true;
   }
-  // AMYboard stock: no GPIO encoder. Fall back to the NULLLAB expander
-  // if it's on the front Grove I2C bus.
+  // AMYboard stock: no GPIO encoder. Probe I2C accessories on the front
+  // Grove bus — NULLLAB expander first, then M5Stack Unit Encoder (U135).
   if (setup_i2c_exp()) {
     g_backend = Backend::kI2cExp;
     return true;
   }
-  ESP_LOGW(kTag, "no GPIO encoder and no expander @ 0x24 — panel is display-only");
+  if (setup_m5_unit()) {
+    g_backend = Backend::kM5Unit;
+    return true;
+  }
+  ESP_LOGW(kTag,
+           "no GPIO encoder, no expander @ 0x24, no M5 Unit Encoder @ 0x40 — "
+           "panel is display-only");
   g_backend = Backend::kNone;
   g_unit = nullptr;
   g_pin_sw = -1;
@@ -219,7 +421,7 @@ bool encoder_init(int pin_a, int pin_b, int pin_sw) {
 }
 
 int encoder_take_detents() {
-  if (g_backend == Backend::kI2cExp) {
+  if (g_backend == Backend::kI2cExp || g_backend == Backend::kM5Unit) {
     return g_i2c_detents.exchange(0, std::memory_order_relaxed);
   }
   if (g_unit == nullptr) {
@@ -235,13 +437,23 @@ int encoder_take_detents() {
 }
 
 EncoderPress encoder_take_press() {
-  if (g_backend == Backend::kI2cExp) {
-    const unsigned bits =
-        g_i2c_press.exchange(0, std::memory_order_relaxed);
-    if (bits & kPressLong) {
+  if (g_backend == Backend::kI2cExp || g_backend == Backend::kM5Unit) {
+    const int64_t mute_until =
+        g_mute_press_until_us.load(std::memory_order_relaxed);
+    if (mute_until != 0 && esp_timer_get_time() < mute_until) {
+      g_i2c_shorts.store(0, std::memory_order_relaxed);
+      g_i2c_longs.store(0, std::memory_order_relaxed);
+      return EncoderPress::kNone;
+    }
+    const int longs = g_i2c_longs.exchange(0, std::memory_order_relaxed);
+    const int shorts = g_i2c_shorts.exchange(0, std::memory_order_relaxed);
+    if (longs > 0) {
       return EncoderPress::kLong;
     }
-    if (bits & kPressShort) {
+    if (shorts >= 2) {
+      return EncoderPress::kDouble;
+    }
+    if (shorts == 1) {
       return EncoderPress::kShort;
     }
     return EncoderPress::kNone;
@@ -273,6 +485,12 @@ EncoderPress encoder_take_press() {
     return EncoderPress::kLong;
   }
   return EncoderPress::kNone;
+}
+
+void encoder_clear_press() {
+  g_i2c_shorts.store(0, std::memory_order_relaxed);
+  g_i2c_longs.store(0, std::memory_order_relaxed);
+  g_m5_relax.store(true, std::memory_order_relaxed);
 }
 
 int encoder_pot() { return gpio_exp_last_adc(kGpioExpPot); }

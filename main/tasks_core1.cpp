@@ -96,8 +96,10 @@ void pulse_task(void*) {
   }
 
 #if CONFIG_NEON_LINKSYNC
-  if (kPinMidiTx >= 0 && !halesp::midi_uart_init(kPinMidiTx)) {
-    ESP_LOGE(kTag, "MIDI UART init failed on GPIO%d", kPinMidiTx);
+  if ((kPinMidiTx >= 0 || kPinMidiRx >= 0) &&
+      !halesp::midi_uart_init(kPinMidiTx, kPinMidiRx)) {
+    ESP_LOGE(kTag, "MIDI UART init failed TX=GPIO%d RX=GPIO%d", kPinMidiTx,
+             kPinMidiRx);
   }
 
   neon::midi::ClockEngine midi;
@@ -215,9 +217,9 @@ void neon_start_core1_tasks() {
   // MultiClockEngine + edge buffers + C++ frames need more than 4 KB;
   // AMYboard bring-up saw "stack overflow in task pulse" at 4096.
   xTaskCreatePinnedToCore(pulse_task, "pulse", 8192, nullptr,
-                          configMAX_PRIORITIES - 2, nullptr, 1);
+                          configMAX_PRIORITIES - 2, nullptr, kNeonCoreRt);
 #if CONFIG_NEON_BOARD_AMYBOARD
   xTaskCreatePinnedToCore(cv_mirror_task, "cv_mirror", 4096, nullptr,
-                          configMAX_PRIORITIES - 3, nullptr, 1);
+                          configMAX_PRIORITIES - 3, nullptr, kNeonCoreRt);
 #endif
 }

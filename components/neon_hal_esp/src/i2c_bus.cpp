@@ -59,7 +59,7 @@ i2c_master_dev_handle_t get_dev(uint8_t addr7) {
       return s.handle;
     }
   }
-  // Full: drop slot 0 and reuse (OLED + DAC + ADC + expander need 4).
+  // Full: drop slot 0 and reuse (OLED + DAC + ADC + expander/M5 enc).
   if (g_devs[0].handle) {
     i2c_master_bus_rm_device(g_devs[0].handle);
     g_devs[0].handle = nullptr;
@@ -137,9 +137,14 @@ bool i2c_bus_init(int sda_gpio, int scl_gpio, uint32_t hz) {
   const bool oled_3c = i2c_probe(0x3c, 20);
   const bool es8311 = i2c_probe(0x18, 20);
   const bool stc8 = i2c_probe(0x2f, 20);
-  ESP_LOGI(kTag, "I2C probe OLED 0x3d=%s 0x3c=%s ES8311 0x18=%s STC8 0x2f=%s",
+  const bool gpio_exp = i2c_probe(0x24, 20);
+  const bool m5_enc = i2c_probe(0x40, 20);
+  ESP_LOGI(kTag,
+           "I2C probe OLED 0x3d=%s 0x3c=%s ES8311 0x18=%s STC8 0x2f=%s "
+           "exp 0x24=%s m5enc 0x40=%s",
            oled_3d ? "ACK" : "nack", oled_3c ? "ACK" : "nack",
-           es8311 ? "ACK" : "nack", stc8 ? "ACK" : "nack");
+           es8311 ? "ACK" : "nack", stc8 ? "ACK" : "nack",
+           gpio_exp ? "ACK" : "nack", m5_enc ? "ACK" : "nack");
   return true;
 }
 

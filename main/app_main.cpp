@@ -67,6 +67,9 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
   ESP_LOGI(kTag, "link-sync firmware starting (Tab5 MIPI LCD) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  ESP_LOGI(kTag, "link-sync firmware starting (C3 0.42 OLED) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
 #endif
@@ -104,6 +107,8 @@ extern "C" void app_main(void) {
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-lcd");
 #elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-tab");
+#elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-c3");
 #else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
 #endif
@@ -152,6 +157,9 @@ extern "C" void app_main(void) {
   neon_start_core0_tasks();
   neon_start_link_service();
 #if !CONFIG_NEON_LINKSYNC
+  neon_start_midi_service();
+#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  // UART1 Crowtail: ClockEngine owns TRS clock; this task drains MIDI IN.
   neon_start_midi_service();
 #endif
   // Always linked: web_ui resolves /api/audio/channels against these

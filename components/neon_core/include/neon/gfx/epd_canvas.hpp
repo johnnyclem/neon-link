@@ -22,6 +22,10 @@ struct LinkSyncPanelStatus {
   char ap_ssid[33] = {};
   char ap_pass[65] = {};
   char detail[48] = {};
+  // USB-C VBUS present (CrowPanel: CH340 is VBUS-powered). The 4054
+  // CHRG pin is unconnected and BAT is not on an ADC, so this is the
+  // charging signal — not a fuel gauge.
+  bool usb_power = false;
   bool invert = false;
   // 0 live, 1 settings list, 2 editing a value, 3 power popup, 4 splash.
   uint8_t overlay = 0;

@@ -28,6 +28,7 @@
 #include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "tasks.h"
 #include "board_pins.h"
 #include "halesp/i2s_audio.hpp"
 #include "netman/net_manager.h"
@@ -743,9 +744,9 @@ void neon_start_audio_service() {
   // Below the pulse task (MAX-2) and the CV mirror (MAX-3): the I2S DMA
   // gives this loop ~11 ms of slack, and the clock outputs give none.
   xTaskCreatePinnedToCore(audio_task, "audio", 8192, nullptr,
-                          configMAX_PRIORITIES - 4, nullptr, 1);
+                          configMAX_PRIORITIES - 4, nullptr, kNeonCoreRt);
   xTaskCreatePinnedToCore(audio_ctl_task, "audio_ctl", 4096, nullptr, 5,
-                          nullptr, 0);
+                          nullptr, kNeonCoreApp);
 }
 
 // Discovery for the editor: GET /api/audio/channels. snprintf returns the

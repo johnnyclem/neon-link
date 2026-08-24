@@ -63,7 +63,7 @@ IO14  IO9
 IO16  IO15
 IO18  IO17
 IO20  IO19     ← S3 USB D+ / D− — leave free for a USB-MIDI pigtail
-IO38  IO21     ← IO21 = MIDI TX
+IO38  IO21     ← IO21 = MIDI TX, IO38 = MIDI RX (opto)
 3V3   GND
 3V3   GND
 3V3   GND
@@ -82,8 +82,13 @@ TRS. 3.3 V current loop is enough for modern optos.
 | Signal | CrowPanel | 5-pin DIN (OUT) | TRS-A (MMA) | TRS-B (old Korg) |
 |--------|-----------|-----------------|-------------|------------------|
 | TX | **IO21** → 220 Ω | pin 5 | **tip** | **ring** |
+| RX | **IO38** via opto | pin 5 (cathode) | **tip** | **ring** |
 | 3V3 | header 3V3 → 220 Ω | pin 4 | **ring** | **tip** |
 | GND | header GND | pin 2 | sleeve | sleeve |
+
+IN is not a second copy of OUT. The current loop must go through an
+opto (ittybittymidi, H11L1, or 6N137). Direct TRS-to-GPIO will not
+speak MIDI. Full adapter notes: [LINKSYNC_EPD_IDC.md](LINKSYNC_EPD_IDC.md).
 
 ### What to buy (no custom PCB required)
 
@@ -133,7 +138,30 @@ First boot: Espressif *ESP BLE Prov*, device `LSYNC-XXXX`, PoP on the
 USB console. The panel shows the SoftAP SSID + password (and
 `http://192.168.4.1`) until credentials land.
 
+## Battery / charging
+
+The CrowPanel 5.79" has a TP4054/LTC4054 (DFN8_4054A) on the BAT
+connector and will charge a single-cell 3.7 V pack from USB VBUS.
+Elecrow's own schematic (and their support reply) does **not** give
+the ESP a battery voltage:
+
+- BAT is only the connector, the 4054, a PMOS load-share, and test
+  pad P5. No resistor divider onto an ADC GPIO.
+- The 4054 **CHRG** (GHRG) pin is unconnected. There is no charge-
+  status GPIO. IO41 drives the POWER LED, it is not a sensor.
+
+So there is no honest % or millivolt reading. A charging **icon**
+(battery + bolt, top-right) still works: the CH340 is powered from
+VBUS, so UART0 RX (GPIO44) sits idle-high only while USB is plugged
+in. Plug the cable, the icon appears (ambient 5 s floor, or on the
+next wake). Unplug onto the pack, it goes away. That is USB-present,
+not “the 4054 is in CC/CV” — close enough for a studio box.
+
+Want a real fuel gauge later: 100 kΩ / 100 kΩ from P5 (BAT) to a
+header ADC (IO3 is free, ADC1_CH2) and GND. Firmware does not assume
+that jumper today.
+
 ## Out of scope (same list as the XIAO)
 
 Native USB MIDI (needs firmware + GPIO19/20 pigtail), MIDI in/thru,
-battery telemetry, audio, a second jack. The e-paper is status only.
+audio, a second jack. The e-paper is status only.

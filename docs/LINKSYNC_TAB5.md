@@ -27,7 +27,8 @@ C6 SDIO is **not** the CrowPanel map:
 Panel variant is probed at boot: ST7123 @ `0x55` vs GT911 @ `0x14`/`0x5D`
 (ILI9881C). LCD_EN is PI4IOE 0x43 P4. Touch (ST7123, INT GPIO 23) is
 enabled with LCD: tap **RUN/STOP**, **− / +** tempo, or the BPM digits
-for tap-tempo. Hold ± to repeat.
+for tap-tempo. Hold ± to repeat. The gear opens the same settings
+sections as the web editor (Outputs / Network / MIDI / Audio / System).
 
 ## Build & flash
 

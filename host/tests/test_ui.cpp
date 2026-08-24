@@ -394,8 +394,12 @@ TEST_CASE("menu navigation walks the shallow screen graph") {
   using S = neon::MenuModel::Screen;
 
   CHECK(m.screen() == S::kHome);
-  m.on_rotate(3);  // rotation on home does nothing
+  m.on_rotate(3);  // live-screen rotate nudges BPM, stays on home
   CHECK(m.screen() == S::kHome);
+  CHECK(m.take_tempo_nudge() == 3);
+  CHECK(m.take_tempo_nudge() == 0);
+  m.on_rotate(-2);
+  CHECK(m.take_tempo_nudge() == -2);
 
   m.on_click();
   CHECK(m.screen() == S::kMenu);
@@ -427,16 +431,28 @@ TEST_CASE("menu navigation walks the shallow screen graph") {
   CHECK(m.screen() == S::kHome);
   m.on_long_press();  // already home: no-op, never wraps into a menu
   CHECK(m.screen() == S::kHome);
+  m.on_click();
+  m.go_home();
+  CHECK(m.screen() == S::kHome);
+  CHECK(m.cursor() == 0);
 
   // Every menu destination is reachable and reports its own title.
-  const S expected[6] = {S::kHome,  S::kOutputs, S::kNetwork,
-                         S::kMidi,  S::kAudio,   S::kSystem};
-  for (int i = 0; i < 6; ++i) {
+  const S expected[7] = {S::kHome,  S::kOutputs, S::kNetwork, S::kMidi,
+                         S::kAudio, S::kSystem,  S::kHome};
+  for (int i = 0; i < 7; ++i) {
     neon::MenuModel nav(&cfg);
     nav.on_click();
     nav.on_rotate(i);
     nav.on_click();
     CHECK(nav.screen() == expected[i]);
+  }
+  {
+    neon::MenuModel back(&cfg);
+    back.on_click();
+    back.on_rotate(neon::MenuModel::kMenuBackItem);
+    CHECK(std::string(back.item_label(back.cursor())) == "BACK");
+    back.on_click();
+    CHECK(back.screen() == S::kHome);
   }
 
   // Cursor wraps in both directions.
@@ -510,6 +526,39 @@ TEST_CASE("reboot goes through a confirmation screen") {
   m.on_long_press();
   CHECK(m.screen() == S::kSystem);
   CHECK(m.take_action() == A::kNone);
+}
+
+TEST_CASE("touch helpers jump sections and nudge without edit mode") {
+  neon::Config cfg;
+  neon::MenuModel m(&cfg);
+  using S = neon::MenuModel::Screen;
+
+  m.go_section(S::kMidi);
+  CHECK(m.screen() == S::kMidi);
+  CHECK(m.cursor() == 0);
+  CHECK_FALSE(m.editing());
+
+  cfg.midi_clock_out = 1;
+  m.set_cursor(1);
+  m.nudge_value(-1);
+  CHECK(cfg.midi_clock_out == 0);
+  CHECK(m.take_dirty());
+
+  m.go_section(S::kSystem);
+  m.set_cursor(5);  // QUANTUM
+  m.nudge_value(1);
+  CHECK(cfg.quantum_beats == 5);
+
+  m.set_output_index(2);
+  m.go_section(S::kOutputEdit);
+  CHECK(m.output_index() == 2);
+  CHECK(m.screen() == S::kOutputEdit);
+
+  m.go_section(S::kConfirm);
+  m.set_confirm_yes(true);
+  CHECK(m.confirm_yes());
+  m.go_home();
+  CHECK(m.screen() == S::kHome);
 }
 
 // ---------------------------------------------------------------------------

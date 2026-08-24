@@ -177,6 +177,10 @@ void MenuModel::on_rotate(int detents) {
   if (detents == 0) {
     return;
   }
+  if (screen_ == Screen::kHome) {
+    tempo_nudge_ += detents;
+    return;
+  }
   if (screen_ == Screen::kConfirm) {
     confirm_yes_ = !confirm_yes_;
     return;
@@ -210,6 +214,7 @@ void MenuModel::on_click() {
     case Screen::kMenu:
       switch (cursor_) {
         case 0:
+        case kMenuBackItem:
           screen_ = Screen::kHome;
           break;
         case 1:
@@ -272,6 +277,69 @@ void MenuModel::on_click() {
   }
 }
 
+void MenuModel::go_home() {
+  screen_ = Screen::kHome;
+  cursor_ = 0;
+  editing_ = false;
+  confirm_yes_ = false;
+}
+
+void MenuModel::go_section(Screen s) {
+  editing_ = false;
+  confirm_yes_ = false;
+  switch (s) {
+    case Screen::kOutputs:
+    case Screen::kNetwork:
+    case Screen::kMidi:
+    case Screen::kAudio:
+    case Screen::kSystem:
+    case Screen::kMenu:
+    case Screen::kOutputEdit:
+    case Screen::kConfirm:
+      screen_ = s;
+      if (s != Screen::kOutputEdit) {
+        cursor_ = 0;
+      }
+      break;
+    case Screen::kHome:
+      go_home();
+      break;
+  }
+}
+
+void MenuModel::set_cursor(int index) {
+  const int n = item_count();
+  if (n <= 0) {
+    cursor_ = 0;
+    return;
+  }
+  cursor_ = clamp_int(index, 0, n - 1);
+}
+
+void MenuModel::set_output_index(int index) {
+  output_ = clamp_int(index, 0, kOutputsItems - 1);
+}
+
+void MenuModel::set_confirm_yes(bool yes) { confirm_yes_ = yes; }
+
+void MenuModel::nudge_value(int delta) {
+  if (delta == 0) {
+    return;
+  }
+  if (screen_ == Screen::kOutputEdit) {
+    adjust_output_param(cursor_, delta);
+  } else if (screen_ == Screen::kMidi) {
+    adjust_midi(cursor_, delta);
+  } else if (screen_ == Screen::kAudio) {
+    adjust_audio(cursor_, delta);
+  } else if (screen_ == Screen::kSystem) {
+    if (cursor_ == kSystemVersionItem || cursor_ == kSystemRebootItem) {
+      return;
+    }
+    adjust_system(cursor_, delta);
+  }
+}
+
 void MenuModel::on_long_press() {
   // An in-progress edit swallows the gesture: the first long press is the
   // escape from edit mode, the next one leaves the screen.
@@ -331,12 +399,18 @@ MenuModel::Action MenuModel::take_action() {
   return a;
 }
 
+int MenuModel::take_tempo_nudge() {
+  const int n = tempo_nudge_;
+  tempo_nudge_ = 0;
+  return n;
+}
+
 const char* MenuModel::item_label(int index) const {
   switch (screen_) {
     case Screen::kMenu: {
       static const char* kItems[kMenuItems] = {
           ui::kTitleLive, ui::kTitleOutputs, ui::kTitleNetwork, ui::kTitleMidi,
-          ui::kTitleAudio, ui::kTitleSystem};
+          ui::kTitleAudio, ui::kTitleSystem, ui::kTitleBack};
       return kItems[clamp_int(index, 0, kMenuItems - 1)];
     }
     case Screen::kOutputs: {

@@ -5,9 +5,13 @@
 #if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
 
 #include "board_pins.h"
+#include "driver/gpio.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
+#include "esp_lcd_touch.h"
+#include "esp_lcd_touch_gt911.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -26,6 +30,7 @@ constexpr uint8_t kStc8GpioBlPower = 3;
 constexpr uint8_t kStc8PwmBl = 0;
 
 esp_lcd_panel_handle_t g_panel = nullptr;
+esp_lcd_touch_handle_t g_touch = nullptr;
 
 bool stc8_write(uint8_t reg, uint8_t val) {
   const uint8_t pkt[2] = {reg, val};
@@ -164,9 +169,115 @@ bool lcd_rgb_blit(const uint16_t* rgb565, int x, int y, int w, int h) {
          ESP_OK;
 }
 
-bool lcd_touch_init() { return false; }
-bool lcd_touch_ok() { return false; }
-bool lcd_touch_poll(int*, int*) { return false; }
+bool lcd_touch_init() {
+  if (g_touch != nullptr) {
+    return true;
+  }
+  if (i2c_bus() == nullptr) {
+    ESP_LOGW(kTag, "touch: no I2C bus");
+    return false;
+  }
+
+  // INT low while RST rises → I2C 0x5D (Elecrow Advance 5.0"). The
+  // driver then owns neither pin so a second address try cannot double-
+  // claim GPIO 36 (HSYNC is 40; RST is 36).
+  gpio_config_t rst_int = {};
+  rst_int.mode = GPIO_MODE_OUTPUT;
+  rst_int.pin_bit_mask = (1ull << static_cast<unsigned>(kPinTouchRst)) |
+                         (1ull << static_cast<unsigned>(kPinTouchInt));
+  gpio_config(&rst_int);
+  gpio_set_level(static_cast<gpio_num_t>(kPinTouchInt), 0);
+  gpio_set_level(static_cast<gpio_num_t>(kPinTouchRst), 0);
+  vTaskDelay(pdMS_TO_TICKS(10));
+  gpio_set_level(static_cast<gpio_num_t>(kPinTouchRst), 1);
+  vTaskDelay(pdMS_TO_TICKS(60));
+  gpio_config_t int_in = {};
+  int_in.mode = GPIO_MODE_INPUT;
+  int_in.pin_bit_mask = 1ull << static_cast<unsigned>(kPinTouchInt);
+  gpio_config(&int_in);
+
+  constexpr uint8_t kAddrGt911 = 0x5d;
+  constexpr uint8_t kAddrGt911Alt = 0x14;
+  const bool ack_5d = i2c_probe(kAddrGt911, 80);
+  const bool ack_14 = i2c_probe(kAddrGt911Alt, 80);
+  ESP_LOGI(kTag, "GT911 probe 0x5D=%s 0x14=%s rst=%d int=%d",
+           ack_5d ? "ACK" : "nack", ack_14 ? "ACK" : "nack", kPinTouchRst,
+           kPinTouchInt);
+
+  esp_lcd_touch_config_t tp_cfg = {};
+  tp_cfg.x_max = static_cast<uint16_t>(kLcdW);
+  tp_cfg.y_max = static_cast<uint16_t>(kLcdH);
+  tp_cfg.rst_gpio_num = GPIO_NUM_NC;
+  tp_cfg.int_gpio_num = GPIO_NUM_NC;
+  tp_cfg.levels.reset = 0;
+  tp_cfg.levels.interrupt = 0;
+  tp_cfg.flags.swap_xy = 0;
+  tp_cfg.flags.mirror_x = 0;
+  tp_cfg.flags.mirror_y = 0;
+
+  auto make_touch_io = [](uint32_t addr) {
+    esp_lcd_panel_io_i2c_config_t io_cfg = {};
+    io_cfg.dev_addr = addr;
+    io_cfg.control_phase_bytes = 1;
+    io_cfg.lcd_cmd_bits = 16;
+    io_cfg.flags.disable_control_phase = 1;
+    io_cfg.scl_speed_hz = 100000;
+    return io_cfg;
+  };
+
+  const uint32_t addrs[2] = {
+      ack_14 && !ack_5d
+          ? static_cast<uint32_t>(ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP)
+          : static_cast<uint32_t>(ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS),
+      ack_14 && !ack_5d
+          ? static_cast<uint32_t>(ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS)
+          : static_cast<uint32_t>(ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP),
+  };
+
+  esp_err_t err = ESP_FAIL;
+  for (uint32_t addr : addrs) {
+    esp_lcd_panel_io_handle_t io = nullptr;
+    esp_lcd_panel_io_i2c_config_t io_cfg = make_touch_io(addr);
+    err = esp_lcd_new_panel_io_i2c(i2c_bus(), &io_cfg, &io);
+    if (err != ESP_OK) {
+      ESP_LOGW(kTag, "touch io @0x%02x %s", static_cast<unsigned>(addr),
+               esp_err_to_name(err));
+      continue;
+    }
+    err = esp_lcd_touch_new_i2c_gt911(io, &tp_cfg, &g_touch);
+    ESP_LOGI(kTag, "touch GT911 @0x%02x %s", static_cast<unsigned>(addr),
+             err == ESP_OK ? "ok" : esp_err_to_name(err));
+    if (err == ESP_OK && g_touch != nullptr) {
+      return true;
+    }
+    g_touch = nullptr;
+  }
+  ESP_LOGW(kTag, "touch: GT911 init failed");
+  return false;
+}
+
+bool lcd_touch_ok() { return g_touch != nullptr; }
+
+bool lcd_touch_poll(int* x, int* y) {
+  if (g_touch == nullptr) {
+    return false;
+  }
+  if (esp_lcd_touch_read_data(g_touch) != ESP_OK) {
+    return false;
+  }
+  esp_lcd_touch_point_data_t pts[1] = {};
+  uint8_t n = 0;
+  if (esp_lcd_touch_get_data(g_touch, pts, &n, 1) != ESP_OK || n == 0) {
+    return false;
+  }
+  if (x != nullptr) {
+    *x = static_cast<int>(pts[0].x);
+  }
+  if (y != nullptr) {
+    *y = static_cast<int>(pts[0].y);
+  }
+  return true;
+}
 
 }  // namespace halesp
 

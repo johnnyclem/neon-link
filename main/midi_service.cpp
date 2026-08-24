@@ -23,6 +23,7 @@
 #include "neon/midi/ble_midi_parser.hpp"
 #include "neon/midi/midi_encoder.hpp"
 #include "neon/midi/router.hpp"
+#include "neon/midi/serial_midi_parser.hpp"
 #include "neon/multi_engine.hpp"
 #include "tasks.h"
 
@@ -98,9 +99,12 @@ class Sink final : public neon::IRouterSink {
 Sink g_sink;
 neon::MidiRouter g_router({}, &g_sink);
 neon::BleMidiParser g_parser(&g_router);
+neon::SerialMidiParser g_serial(&g_router);
 
 // --- Link-derived MIDI clock on TRS -------------------------------------
+// link-sync boards emit clock from ClockEngine on the GPTimer ring instead.
 
+#if !CONFIG_NEON_LINKSYNC
 esp_timer_handle_t g_clock_timer = nullptr;
 
 bool link_clock_enabled() {
@@ -151,15 +155,27 @@ void clock_cb(void*) {
     esp_timer_start_once(g_clock_timer, 100000);
   }
 }
+#endif  // !CONFIG_NEON_LINKSYNC
 
 // --- Service task -------------------------------------------------------
 
 void midi_task(void*) {
-  halesp::midi_uart_init(kPinMidiTx);
+  if (kPinMidiTx >= 0 || kPinMidiRx >= 0) {
+    if (!halesp::midi_uart_init(kPinMidiTx, kPinMidiRx)) {
+      ESP_LOGE(kTag, "MIDI UART init failed TX=%d RX=%d", kPinMidiTx,
+               kPinMidiRx);
+    } else {
+      ESP_LOGI(kTag, "TRS MIDI UART1 31250 TX=GPIO%d RX=GPIO%d", kPinMidiTx,
+               kPinMidiRx);
+    }
+  }
 
   bool ble_running = false;
+#if !CONFIG_NEON_LINKSYNC
   bool last_playing = false;
+#endif
 
+#if !CONFIG_NEON_LINKSYNC
   const esp_timer_create_args_t targs = {
       .callback = &clock_cb,
       .arg = nullptr,
@@ -169,6 +185,7 @@ void midi_task(void*) {
   };
   esp_timer_create(&targs, &g_clock_timer);
   esp_timer_start_once(g_clock_timer, 100000);
+#endif
 
   for (;;) {
     // BLE kill switch transitions.
@@ -195,6 +212,13 @@ void midi_task(void*) {
       g_parser.feed_packet(p.data, p.len);
     }
 
+    uint8_t wire[32];
+    const int n = halesp::midi_uart_read(wire, sizeof(wire));
+    for (int i = 0; i < n; ++i) {
+      g_serial.feed(wire[i]);
+    }
+
+#if !CONFIG_NEON_LINKSYNC
     // TRS transport bytes follow the session when Link owns the stream.
     neon::TimelineSnapshot tl;
     timeline_bus().read(tl);
@@ -206,6 +230,7 @@ void midi_task(void*) {
       }
       last_playing = playing;
     }
+#endif
   }
 }
 

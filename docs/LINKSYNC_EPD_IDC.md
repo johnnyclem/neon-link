@@ -1,16 +1,18 @@
 # CrowPanel IDC → MIDI adapters
 
 Elecrow CrowPanel 5.79" (DIS08792E). The only I/O without opening the
-case is the **2×10 2.54 mm IDC** on the bottom. Firmware UART1 MIDI TX
-is **GPIO21** on that header (not GPIO4 — that is the rotary NEXT
-switch and never reaches the connector).
+case is the **2×10 2.54 mm IDC** on the bottom. Firmware UART1 MIDI is **GPIO21 TX** and **GPIO38 RX** on that
+header (not GPIO4 — that is the rotary NEXT switch and never
+reaches the connector). RX needs an optocoupler; TX does not.
 
 
 ## What you need
 - 5-pin DIN jacks, 2.54 mm pitch (breadboard / perfboard)
-- 220 Ω resistors
-- **2×10 2.54 mm male-to-Dupont** ribbon, or a 20-pin GPIO breakout, or a 2×10 male pin header pressed into the socket with jumper wires. 
-- For TRS: one 3.5 mm stereo jack (optional DPDT to swap A/B).
+- 220 Ω resistors (two for OUT; one more for IN)
+- **2×10 2.54 mm male-to-Dupont** ribbon, or a 20-pin GPIO breakout, or a 2×10 male pin header pressed into the socket with jumper wires.
+- For TRS: 3.5 mm stereo jacks (optional DPDT to swap A/B).
+- For IN/OUT on two DIN jacks: **6N138**, 1N4148, 220 Ω, 10 kΩ — see
+  [adapters/crowpanel-midi-din](../adapters/crowpanel-midi-din/README.md).
 - For USB-into-a-DAW this week: any USB-MIDI interface you already
   own (m5 nano?)
 
@@ -25,15 +27,16 @@ IO14  IO9
 IO16  IO15
 IO18  IO17
 IO20  IO19     ← ESP32-S3 USB D+ / D−. Leave free.
-IO38  IO21     ← MIDI TX
+IO38  IO21     ← MIDI RX (opto) / MIDI TX
 3V3   GND
 3V3   GND
 3V3   GND
 ```
 
 From **outside** the case the two columns are mirrored. Do not trust
-ribbon-cable pin 1 from a photo. Beep **IO21** to the silkscreen once
-(four corner screws). Any of the 3V3 / GND pairs is fine.
+ribbon-cable pin 1 from a photo. Beep **IO21** and **IO38** to the
+silkscreen once (four corner screws). Any of the 3V3 / GND pairs is
+fine. They sit on the same row — TX and RX as a pair.
 
 Do not put 5 V on a 3V3 pin.
 
@@ -59,6 +62,18 @@ Idle = TX high = no current. Start bit pulls TX low = current flows.
 That is MIDI OUT. No opto on the transmit side.
 
 DIN pins 1 and 3 are unused (no connect).
+
+## MIDI IN / OUT on two DIN jacks
+
+The circuit to build is
+[adapters/crowpanel-midi-din](../adapters/crowpanel-midi-din/README.md):
+J1 OUT (two 220 Ω, no opto), J2 IN (6N138). Pin 8 wants **5 V**; the
+IDC has none — USB VBUS or pad P2, and pull pin 6 up to **3V3**. Do
+not solder a DIN straight to IO38.
+
+The ittybittymidi (active, battery + switch) is the same IN if you
+would rather not solder the DIP: IBM tip → IO38, sleeve → GND. Passive
+IBM is not a UART.
 
 ### 5-pin DIN (breadboard jack)
 
@@ -134,23 +149,25 @@ connector the computer sees as a MIDI device once the firmware exists.
 ## First live test
 
 1. Plug the Dupont harness into the bottom IDC. Confirm 3V3 and GND
-   with a meter. Beep IO21.
-2. Wire the two 220 Ω and the DIN jack as above.
+   with a meter. Beep IO21 (TX) and IO38 (RX).
+2. Wire the two 220 Ω and the DIN **OUT** jack as above.
 3. DIN cable into a hardware synth, or DIN → USB-MIDI interface → Mac.
 4. Join `LINK-EPD-C4A8` / `link-55C4A8` (printed on the glass) so the
    box is on the same Link session as Live.
 5. Press Play. You should see 24 PPQN + Start/Stop on the receiving
    end. The e-paper will **not** tick — status only, refresh on text
    change.
+6. IN: IBM (or H11L1) into IO38/GND. A controller Start should flip
+   the glass to PLAYING; Stop to STOPPED.
 
 If the synth is silent, swap TRS tip/ring (you are on a Type-B input)
 or check that IO21 is actually the pin you think it is.
 
 ## Firmware pin
 
-`CONFIG_NEON_BOARD_LINKSYNC_EPD` sets `kPinMidiTx = 21` in
-`components/neon_board/include/board_pins.h`. Rebuild the isolated
-e-paper image if you change it:
+`CONFIG_NEON_BOARD_LINKSYNC_EPD` sets `kPinMidiTx = 21` and
+`kPinMidiRx = 38` in `components/neon_board/include/board_pins.h`.
+Rebuild the isolated e-paper image if you change it:
 
 ```bash
 idf.py -B build-linksync-epd \
