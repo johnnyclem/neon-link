@@ -264,102 +264,47 @@ void m5_encoder_task(void*) {
   (void)m5_read_value(&last);
   int count_rem = 0;
 
-  // Majority of bit0 while the shaft is untouched = idle. If we guess
-  // wrong and sit "down" for 2 s, relearn idle so clicks start working.
-  int zeros = 0;
-  int ones = 0;
-  TickType_t wake = xTaskGetTickCount();
-  for (int i = 0; i < 50; ++i) {
-    uint8_t raw = 0;
-    if (m5_read_raw_button(&raw)) {
-      if (raw) {
-        ++ones;
-      } else {
-        ++zeros;
-      }
-    }
-    m5_sample_detents(&last, &count_rem);
-    vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));
-  }
-  uint8_t idle = (ones >= zeros) ? 1 : 0;
+  // Any 0↔1 change is a click. Press+release is two edges ~100 ms apart;
+  // merge those into one short. No polarity, no "held" state, no longs —
+  // those were swallowing every click after the double-click that opens
+  // the menu.
+  uint8_t stable = 0;
+  (void)m5_read_raw_button(&stable);
+  uint8_t candidate = stable;
+  int run = 0;
+  int64_t last_short_us = 0;
+  unsigned log_div = 0;
   g_i2c_shorts.store(0, std::memory_order_relaxed);
   g_i2c_longs.store(0, std::memory_order_relaxed);
-  ESP_LOGI(kTag, "M5 button idle=%u (0s=%d 1s=%d)", idle, zeros, ones);
 
-  bool down = false;
-  bool long_fired = false;
-  bool wait_idle = false;
-  int64_t down_us = 0;
-  int64_t last_short_us = 0;
-  uint8_t last_raw = idle;
-  int active_run = 0;
-  int idle_run = 0;
-  unsigned log_div = 0;
-
+  TickType_t wake = xTaskGetTickCount();
   for (;;) {
-    uint8_t raw = last_raw;
+    (void)g_m5_relax.exchange(false, std::memory_order_relaxed);
+    uint8_t raw = candidate;
     const bool got_sw = m5_read_raw_button(&raw);
     m5_sample_detents(&last, &count_rem);
     if (got_sw) {
-      last_raw = raw;
-      const bool active = raw != idle;
-      if (active) {
-        ++active_run;
-        idle_run = 0;
-      } else {
-        ++idle_run;
-        active_run = 0;
+      if (raw != candidate) {
+        candidate = raw;
+        run = 1;
+      } else if (run < 100) {
+        ++run;
       }
-      const int64_t now = esp_timer_get_time();
-      constexpr int64_t kLongUs = 500000;
-      constexpr int64_t kRelearnUs = 2000000;
-      constexpr int kStable = 4;
-      if (g_m5_relax.exchange(false, std::memory_order_relaxed)) {
-        down = false;
-        long_fired = true;
-        wait_idle = true;
-        active_run = 0;
-        idle_run = 0;
-        ESP_LOGI(kTag, "m5 wait for release before next click");
-      }
-      if (wait_idle) {
-        if (idle_run >= kStable) {
-          wait_idle = false;
+      constexpr int kStable = 3;
+      constexpr int64_t kMergeUs = 180000;
+      if (run == kStable && candidate != stable) {
+        stable = candidate;
+        const int64_t now = esp_timer_get_time();
+        if (last_short_us == 0 || now - last_short_us > kMergeUs) {
+          g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
+          last_short_us = now;
+          ESP_LOGI(kTag, "m5 click short raw=%u", stable);
         }
-      } else if (!down && active_run >= kStable) {
-        down = true;
-        long_fired = false;
-        down_us = now;
-        g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
-        last_short_us = now;
-        ESP_LOGI(kTag, "m5 click short (down) raw=%u idle=%u", raw, idle);
-      } else if (down && idle_run >= kStable) {
-        down = false;
-      } else if (down && !long_fired && now - down_us > kLongUs) {
-        // A double-click is two shorts; the second press can look like a
-        // 500 ms hold and would bounce the settings menu back home.
-        if (last_short_us != 0 && now - last_short_us < 1000000) {
-          long_fired = true;
-        } else {
-          long_fired = true;
-          g_i2c_longs.fetch_add(1, std::memory_order_relaxed);
-          ESP_LOGI(kTag, "m5 click long");
-        }
-      } else if (down && now - down_us > kRelearnUs) {
-        idle = raw;
-        down = false;
-        long_fired = true;
-        active_run = 0;
-        idle_run = 0;
-        g_i2c_longs.store(0, std::memory_order_relaxed);
-        g_i2c_shorts.store(0, std::memory_order_relaxed);
-        ESP_LOGW(kTag, "M5 button relearn idle=%u (was held 2s)", idle);
       }
     }
 
     if ((++log_div % 250u) == 0u) {
-      ESP_LOGI(kTag, "m5 val=%d raw=%u idle=%u down=%d", static_cast<int>(last),
-               last_raw, idle, down ? 1 : 0);
+      ESP_LOGI(kTag, "m5 val=%d sw=%u", static_cast<int>(last), stable);
     }
 
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(2));
@@ -383,7 +328,7 @@ bool setup_m5_unit() {
     ESP_LOGW(kTag, "M5 Unit Encoder @ 0x40 present but value read failed");
     return false;
   }
-  g_mute_press_until_us.store(esp_timer_get_time() + 4000000,
+  g_mute_press_until_us.store(esp_timer_get_time() + 1500000,
                               std::memory_order_relaxed);
   ESP_LOGI(kTag, "M5 Unit Encoder @ 0x40, count=%d", static_cast<int>(v));
   xTaskCreatePinnedToCore(m5_encoder_task, "enc_m5", 3072, nullptr, 6, nullptr,

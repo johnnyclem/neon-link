@@ -968,6 +968,7 @@ Touch poll_touch(const Snap& s) {
   const bool down = halesp::lcd_touch_poll(&x, &y);
   const int64_t now = esp_timer_get_time();
   static bool was_down = false;
+  static bool press_in_settings = false;
   static Touch held{};
   static int down_x = 0;
   static int down_y = 0;
@@ -979,7 +980,11 @@ Touch poll_touch(const Snap& s) {
 
   if (!down) {
     Touch released{};
-    if (was_down && g_settings && !dragging) {
+    // Only the lift of a gesture that *started* on the settings panel
+    // may fire a settings hit. The gear is top-right on the live face;
+    // Close is top-right on settings — treating that same lift as Close
+    // made the panel a momentary button.
+    if (was_down && press_in_settings && !dragging) {
       const bool already =
           held.hit == Hit::kRowMinus || held.hit == Hit::kRowPlus;
       if (!already) {
@@ -988,6 +993,7 @@ Touch poll_touch(const Snap& s) {
       }
     }
     was_down = false;
+    press_in_settings = false;
     held = {};
     dragging = false;
     return released;
@@ -1001,6 +1007,7 @@ Touch poll_touch(const Snap& s) {
   }
   if (!was_down) {
     was_down = true;
+    press_in_settings = g_settings;
     held = hit;
     down_x = x;
     down_y = y;
@@ -1014,6 +1021,11 @@ Touch poll_touch(const Snap& s) {
       fire(hit);
     }
     return hit;
+  }
+
+  if (g_settings && !press_in_settings) {
+    // Finger still down after opening via the gear. Swallow it.
+    return {};
   }
 
   if (g_settings) {

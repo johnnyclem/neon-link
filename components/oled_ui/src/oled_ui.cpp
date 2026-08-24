@@ -38,9 +38,11 @@ const char* kTag = "oled_ui";
 constexpr TickType_t kFrameTicks = pdMS_TO_TICKS(100);
 constexpr int64_t kBootIgnoreUs = 3000000;
 constexpr int64_t kDoubleClickUs = 500000;
+constexpr int64_t kAfterOpenIgnoreUs = 200000;
 
 int64_t g_ui_boot_us = 0;
 int64_t g_pending_home_short_us = 0;
+int64_t g_ignore_press_until_us = 0;
 
 void toggle_transport() {
   neon::TimelineSnapshot tl{};
@@ -75,6 +77,10 @@ void open_settings(neon::MenuModel& menu) {
   halesp::encoder_clear_press();
   if (menu.screen() == neon::MenuModel::Screen::kHome) {
     menu.on_click();
+    // LIVE is row 0 and means "go home". A leftover edge from the
+    // double-click must not land there. OUTPUTS is the first real page.
+    menu.set_cursor(1);
+    g_ignore_press_until_us = esp_timer_get_time() + kAfterOpenIgnoreUs;
   }
 }
 
@@ -86,34 +92,32 @@ void handle_press(neon::MenuModel& menu, halesp::EncoderPress ev) {
   if (boot_locked()) {
     return;
   }
+  if (esp_timer_get_time() < g_ignore_press_until_us) {
+    return;
+  }
   const bool home = menu.screen() == S::kHome;
   switch (ev) {
     case halesp::EncoderPress::kDouble:
-      if (home) {
-        open_settings(menu);
-      } else {
-        menu.on_click();
-      }
-      break;
     case halesp::EncoderPress::kShort:
+    case halesp::EncoderPress::kLong:
+      g_pending_home_short_us =
+          ev == halesp::EncoderPress::kLong ? 0 : g_pending_home_short_us;
       if (home) {
-        if (g_pending_home_short_us != 0) {
+        if (ev == halesp::EncoderPress::kLong) {
+          break;
+        }
+        if (ev == halesp::EncoderPress::kDouble ||
+            g_pending_home_short_us != 0) {
           open_settings(menu);
         } else {
           g_pending_home_short_us = esp_timer_get_time();
         }
       } else {
+        // Settings and every submenu: any click selects. BACK/LIVE go home.
         g_pending_home_short_us = 0;
-        ESP_LOGI(kTag, "menu click cursor=%d", menu.cursor());
+        ESP_LOGI(kTag, "menu click screen=%d cursor=%d",
+                 static_cast<int>(menu.screen()), menu.cursor());
         menu.on_click();
-      }
-      break;
-    case halesp::EncoderPress::kLong:
-      g_pending_home_short_us = 0;
-      // Top-level settings: a leftover hold from the double-click must
-      // not count as "back". Leave via BACK / LIVE click instead.
-      if (!home && menu.screen() != S::kMenu) {
-        menu.on_long_press();
       }
       break;
     case halesp::EncoderPress::kNone:
