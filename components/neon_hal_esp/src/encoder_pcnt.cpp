@@ -291,7 +291,9 @@ void m5_encoder_task(void*) {
         ++run;
       }
       constexpr int kStable = 3;
-      constexpr int64_t kMergeUs = 180000;
+      // A real press+release on this unit is ~200 ms. 180 ms split one
+      // click into two shorts (= double-click → settings).
+      constexpr int64_t kMergeUs = 400000;
       if (run == kStable && candidate != stable) {
         stable = candidate;
         const int64_t now = esp_timer_get_time();
@@ -331,7 +333,7 @@ bool setup_m5_unit() {
   g_mute_press_until_us.store(esp_timer_get_time() + 1500000,
                               std::memory_order_relaxed);
   ESP_LOGI(kTag, "M5 Unit Encoder @ 0x40, count=%d", static_cast<int>(v));
-  xTaskCreatePinnedToCore(m5_encoder_task, "enc_m5", 3072, nullptr, 6, nullptr,
+  xTaskCreatePinnedToCore(m5_encoder_task, "enc_m5", 3072, nullptr, 10, nullptr,
                           0);
   return true;
 }

@@ -45,11 +45,14 @@ bool config_input(int gpio, CaptureKind kind) {
 }
 
 #if CONFIG_NEON_BOARD_AMYBOARD
-// ADS1015 path: poll both CV inputs ~every 1 ms and emit rising-edge
-// events when the signal crosses kThreshVolts. Good enough for external
-// tempo following (period measurement); not for sample-accurate phase.
-constexpr float kThreshVolts = 1.0f;
-constexpr TickType_t kPollTicks = pdMS_TO_TICKS(1);
+// ADS1015 path: poll both CV inputs and emit rising-edge events with
+// hysteresis. Good enough for external tempo following; not sample-accurate.
+// Unconnected AMYboard CV jacks idle around 1.2 V. A single 1 V
+// threshold treated that as a clock/reset edge at boot. Hysteresis
+// matches 5 V modular gates and ignores the floating bias.
+constexpr float kRiseVolts = 2.5f;
+constexpr float kFallVolts = 1.0f;
+constexpr TickType_t kPollTicks = pdMS_TO_TICKS(5);
 
 void ads_poll_task(void*) {
   bool clk_high = false;
@@ -57,7 +60,7 @@ void ads_poll_task(void*) {
   for (;;) {
     float v0 = 0, v1 = 0;
     if (ads1015_read_volts(0, &v0)) {
-      const bool high = v0 >= kThreshVolts;
+      const bool high = clk_high ? v0 >= kFallVolts : v0 >= kRiseVolts;
       if (high && !clk_high) {
         const CaptureEvent ev{CaptureKind::kClock, esp_timer_get_time()};
         xQueueSend(g_queue, &ev, 0);
@@ -65,7 +68,7 @@ void ads_poll_task(void*) {
       clk_high = high;
     }
     if (ads1015_read_volts(1, &v1)) {
-      const bool high = v1 >= kThreshVolts;
+      const bool high = rst_high ? v1 >= kFallVolts : v1 >= kRiseVolts;
       if (high && !rst_high) {
         const CaptureEvent ev{CaptureKind::kReset, esp_timer_get_time()};
         xQueueSend(g_queue, &ev, 0);
@@ -92,7 +95,7 @@ bool clkin_capture_init(int clk_gpio, int rst_gpio) {
       ESP_LOGW(kTag, "ADS1015 init failed; external clock disabled");
       return false;
     }
-    xTaskCreatePinnedToCore(ads_poll_task, "clkin_ads", 3072, nullptr, 8,
+    xTaskCreatePinnedToCore(ads_poll_task, "clkin_ads", 3072, nullptr, 3,
                             nullptr, 0);
     ESP_LOGI(kTag, "capturing CLK/RST IN via ADS1015 (CV1/CV2 inputs)");
     return true;
