@@ -300,23 +300,28 @@ void paint_live(const Snap& s) {
   draw_gear(gx, 14, 2, kMuted);
   text(gx + gear_px + 6, 15, "SETTINGS", 1, kMuted);
 
-  // Hero tempo, centred. "120.0" at scale 4 is 120 px wide, 28 px tall.
-  const int bpm_scale = 4;
+  // Hero tempo. Integer nudges land on whole BPM, so drop the ".0" and
+  // render the number larger (scale 6) for a glance read; only a genuinely
+  // fractional Link tempo keeps the decimal at the smaller size.
+  const bool whole = (s.milli_bpm % 1000u) == 0;
+  char big[8];
+  const char* bpm_str = s.bpm;
+  int bpm_scale = 4;
+  if (whole) {
+    std::snprintf(big, sizeof(big), "%u",
+                  static_cast<unsigned>(s.milli_bpm / 1000u));
+    bpm_str = big;
+    bpm_scale = 6;
+  }
   const int bpm_h = 7 * bpm_scale;
-  text_cx(kCx, kCy - bpm_h / 2 - 6, s.bpm, bpm_scale, kInk);
+  text_cx(kCx, kCy - bpm_h / 2 - 4, bpm_str, bpm_scale, kInk);
   text_cx(kCx, kCy + bpm_h / 2 + 2, "BPM", 1, kMuted);
 
-  // Peers, just under the tempo block: a bright pip per peer (cap 6).
-  const int npips = static_cast<int>(s.peers > 6 ? 6 : s.peers);
+  // Peer count under the tempo block.
   char peers[12];
   std::snprintf(peers, sizeof(peers), "%u LINK",
                 static_cast<unsigned>(s.peers));
-  text_cx(kCx, kCy + bpm_h / 2 + 20, peers, 1, s.peers ? kNeon : kNeonDim);
-  const int pip_span = npips * 10;
-  const int px0 = kCx - pip_span / 2 + 3;
-  for (int i = 0; i < npips; ++i) {
-    disc(px0 + i * 10, kCy + bpm_h / 2 + 40, 3, kNeon);
-  }
+  text_cx(kCx, kCy + bpm_h / 2 + 18, peers, 1, s.peers ? kNeon : kNeonDim);
 
   // Transport chip near the bottom of the dial.
   const int chip_w = 96;
