@@ -27,11 +27,11 @@ int SerialMidiParser::data_bytes_for(uint8_t status) {
   }
 }
 
-void SerialMidiParser::feed(uint8_t byte) {
+void SerialMidiParser::feed(uint8_t byte, int64_t t_us) {
   // Realtime interleaves anywhere — even between a status byte and its
   // data — and must not disturb the message being assembled.
   if (byte >= 0xf8u) {
-    sink_->on_realtime(byte);
+    sink_->on_realtime(byte, t_us);
     return;
   }
 

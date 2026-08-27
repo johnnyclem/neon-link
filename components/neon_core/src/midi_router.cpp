@@ -23,7 +23,11 @@ bool MidiRouter::channel_match(uint8_t status) const {
 void MidiRouter::on_message(const MidiMessage& m) {
   const uint8_t kind = m.status & 0xf0u;
   if (kind == 0xf0u) {
-    return;  // system common: nothing routed in v1
+    if (m.status == 0xf2u) {  // song position: LSB then MSB, 14 bits
+      sink_->midi_song_position(
+          static_cast<uint16_t>(m.data1 | (m.data2 << 7)));
+    }
+    return;  // system common: nothing else routed in v1
   }
   if (!channel_match(m.status)) {
     return;
@@ -89,7 +93,11 @@ void MidiRouter::on_message(const MidiMessage& m) {
   }
 }
 
-void MidiRouter::on_realtime(uint8_t status) {
+void MidiRouter::on_realtime(uint8_t status, int64_t t_us) {
+  if (status == 0xf8u || status == 0xfau || status == 0xfbu ||
+      status == 0xfcu) {
+    sink_->midi_clock_byte(status, t_us);
+  }
   switch (status) {
     case 0xfa:  // start
     case 0xfb:  // continue

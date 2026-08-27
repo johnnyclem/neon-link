@@ -13,10 +13,14 @@ namespace {
 struct Recorder final : public neon::IMidiSink {
   std::vector<neon::MidiMessage> messages;
   std::vector<uint8_t> realtime;
+  std::vector<int64_t> realtime_t;
   void on_message(const neon::MidiMessage& m) override {
     messages.push_back(m);
   }
-  void on_realtime(uint8_t s) override { realtime.push_back(s); }
+  void on_realtime(uint8_t s, int64_t t_us) override {
+    realtime.push_back(s);
+    realtime_t.push_back(t_us);
+  }
 };
 
 struct SinkRecorder final : public neon::IRouterSink {
@@ -52,6 +56,18 @@ struct SinkRecorder final : public neon::IRouterSink {
   }
   void transport(bool play) override { transports.push_back(play); }
   void trs_realtime(uint8_t s) override { trs.push_back(s); }
+  struct ClockCall {
+    uint8_t status;
+    int64_t t_us;
+  };
+  std::vector<ClockCall> clock_bytes;
+  std::vector<uint16_t> spps;
+  void midi_clock_byte(uint8_t s, int64_t t_us) override {
+    clock_bytes.push_back({s, t_us});
+  }
+  void midi_song_position(uint16_t sixteenths) override {
+    spps.push_back(sixteenths);
+  }
 };
 
 }  // namespace
@@ -61,7 +77,7 @@ TEST_CASE("parser: single note-on packet") {
   neon::BleMidiParser p(&rec);
   // header, timestamp, 90 3C 64
   const uint8_t pkt[] = {0x80, 0x80, 0x90, 0x3c, 0x64};
-  p.feed_packet(pkt, sizeof(pkt));
+  p.feed_packet(pkt, sizeof(pkt), 0);
   REQUIRE(rec.messages.size() == 1);
   CHECK(rec.messages[0].status == 0x90);
   CHECK(rec.messages[0].data1 == 0x3c);
@@ -76,7 +92,7 @@ TEST_CASE("parser: running status within a packet") {
   const uint8_t pkt[] = {0x80, 0x80, 0x90, 0x3c, 0x64,
                          0x3e, 0x50,              // no timestamp
                          0x81, 0x40, 0x22};       // timestamp then data
-  p.feed_packet(pkt, sizeof(pkt));
+  p.feed_packet(pkt, sizeof(pkt), 0);
   REQUIRE(rec.messages.size() == 3);
   CHECK(rec.messages[1].status == 0x90);
   CHECK(rec.messages[1].data1 == 0x3e);
@@ -89,7 +105,7 @@ TEST_CASE("parser: realtime interleaves and multiple messages") {
   neon::BleMidiParser p(&rec);
   const uint8_t pkt[] = {0x80, 0x80, 0xf8, 0x80, 0x90, 0x40, 0x40,
                          0x80, 0xfc, 0x80, 0x80, 0x40, 0x00};
-  p.feed_packet(pkt, sizeof(pkt));
+  p.feed_packet(pkt, sizeof(pkt), 0);
   REQUIRE(rec.realtime.size() == 2);
   CHECK(rec.realtime[0] == 0xf8);
   CHECK(rec.realtime[1] == 0xfc);
@@ -104,8 +120,8 @@ TEST_CASE("parser: sysex spanning packets is skipped without desync") {
   const uint8_t pkt1[] = {0x80, 0x80, 0xf0, 0x01, 0x02, 0x03};
   const uint8_t pkt2[] = {0x80, 0x04, 0x05, 0x80, 0xf7,
                           0x80, 0x90, 0x30, 0x30};
-  p.feed_packet(pkt1, sizeof(pkt1));
-  p.feed_packet(pkt2, sizeof(pkt2));
+  p.feed_packet(pkt1, sizeof(pkt1), 0);
+  p.feed_packet(pkt2, sizeof(pkt2), 0);
   REQUIRE(rec.messages.size() == 1);
   CHECK(rec.messages[0].status == 0x90);
   CHECK(rec.messages[0].data1 == 0x30);
@@ -118,15 +134,15 @@ TEST_CASE("parser: pathological input never produces garbage") {
   const uint8_t junk2[] = {0x80};                    // header only
   const uint8_t junk3[] = {0x80, 0x80, 0x90, 0x3c};  // truncated message
   const uint8_t junk4[] = {0x80, 0x12, 0x34, 0x56};  // stray data bytes
-  p.feed_packet(junk1, sizeof(junk1));
-  p.feed_packet(junk2, sizeof(junk2));
-  p.feed_packet(junk3, sizeof(junk3));
-  p.feed_packet(junk4, sizeof(junk4));
+  p.feed_packet(junk1, sizeof(junk1), 0);
+  p.feed_packet(junk2, sizeof(junk2), 0);
+  p.feed_packet(junk3, sizeof(junk3), 0);
+  p.feed_packet(junk4, sizeof(junk4), 0);
   CHECK(rec.messages.empty());
   CHECK(rec.realtime.empty());
   // Parser still healthy afterwards.
   const uint8_t ok[] = {0x80, 0x80, 0xb0, 0x10, 0x7f};
-  p.feed_packet(ok, sizeof(ok));
+  p.feed_packet(ok, sizeof(ok), 0);
   REQUIRE(rec.messages.size() == 1);
   CHECK(rec.messages[0].status == 0xb0);
 }
@@ -244,9 +260,9 @@ TEST_CASE("router: transport and clock policies") {
   neon::MidiRouter r(cfg, &sink);
 
   // Default: transport enabled, clock ignored.
-  r.on_realtime(0xfa);
-  r.on_realtime(0xf8);
-  r.on_realtime(0xfc);
+  r.on_realtime(0xfa, 0);
+  r.on_realtime(0xf8, 0);
+  r.on_realtime(0xfc, 0);
   REQUIRE(sink.transports.size() == 2);
   CHECK(sink.transports[0]);
   CHECK_FALSE(sink.transports[1]);
@@ -256,8 +272,8 @@ TEST_CASE("router: transport and clock policies") {
   // still follows while enabled).
   cfg.clock_policy = neon::MidiRouteConfig::ClockPolicy::kReplace;
   r.set_config(cfg);
-  r.on_realtime(0xf8);
-  r.on_realtime(0xfa);
+  r.on_realtime(0xf8, 0);
+  r.on_realtime(0xfa, 0);
   REQUIRE(sink.trs.size() == 2);
   CHECK(sink.trs[0] == 0xf8);
   CHECK(sink.trs[1] == 0xfa);
@@ -267,7 +283,7 @@ TEST_CASE("router: transport and clock policies") {
   // forward to TRS under the replace policy.
   cfg.transport_enabled = false;
   r.set_config(cfg);
-  r.on_realtime(0xfa);
+  r.on_realtime(0xfa, 0);
   CHECK(sink.transports.size() == 3);
   CHECK(sink.trs.size() == 3);
 }
@@ -344,4 +360,48 @@ TEST_CASE("all-notes-off panics the synth as well as the gate") {
   CHECK(sink.all_offs == 1);
   REQUIRE(sink.gates.size() == 2);
   CHECK_FALSE(sink.gates[1].on);
+}
+
+TEST_CASE("router: the clock-sync tap fires regardless of clock policy") {
+  neon::MidiRouteConfig cfg;  // default policy: kIgnore
+  cfg.transport_enabled = false;
+  SinkRecorder sink;
+  neon::MidiRouter r(cfg, &sink);
+
+  r.on_realtime(0xfa, 1000);
+  r.on_realtime(0xf8, 2000);
+  r.on_realtime(0xfc, 3000);
+  r.on_realtime(0xfe, 4000);  // active sensing: not a sync byte
+
+  // Nothing forwarded to TRS, no session transport — but the sync tap
+  // saw every clock/transport byte with its timestamp.
+  CHECK(sink.trs.empty());
+  CHECK(sink.transports.empty());
+  REQUIRE(sink.clock_bytes.size() == 3);
+  CHECK(sink.clock_bytes[0].status == 0xfa);
+  CHECK(sink.clock_bytes[0].t_us == 1000);
+  CHECK(sink.clock_bytes[1].status == 0xf8);
+  CHECK(sink.clock_bytes[1].t_us == 2000);
+  CHECK(sink.clock_bytes[2].status == 0xfc);
+  CHECK(sink.clock_bytes[2].t_us == 3000);
+}
+
+TEST_CASE("router: song position reaches the sync tap, LSB first") {
+  neon::MidiRouteConfig cfg;
+  SinkRecorder sink;
+  neon::MidiRouter r(cfg, &sink);
+  r.on_message({0xf2, 0x05, 0x02, 3});  // 0x05 | (0x02 << 7) = 261
+  REQUIRE(sink.spps.size() == 1);
+  CHECK(sink.spps[0] == 261);
+}
+
+TEST_CASE("ble parser: realtime bytes carry the packet arrival time") {
+  Recorder rec;
+  neon::BleMidiParser p(&rec);
+  // Header + timestamp + clock, timestamp + start.
+  const uint8_t pkt[] = {0x80, 0x80, 0xf8, 0x80, 0xfa};
+  p.feed_packet(pkt, sizeof(pkt), 555000);
+  REQUIRE(rec.realtime.size() == 2);
+  CHECK(rec.realtime_t[0] == 555000);
+  CHECK(rec.realtime_t[1] == 555000);
 }

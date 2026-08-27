@@ -17,9 +17,10 @@ namespace neon {
 // versions and the caller uses defaults — explicit migrations can be
 // added when there is a fleet to migrate).
 enum class ClockSource : uint8_t {
-  kAuto = 0,            // external when CLK IN is active, Link otherwise
-  kLinkMaster = 1,      // ignore CLK IN
+  kAuto = 0,            // CLK IN > MIDI clock in > session, by liveness
+  kLinkMaster = 1,      // ignore external clocks
   kExternalMaster = 2,  // follow CLK IN whenever it is active
+  kMidiMaster = 3,      // follow incoming MIDI clock whenever it is active
 };
 
 // One stored WiFi station credential. The module walks the list in order

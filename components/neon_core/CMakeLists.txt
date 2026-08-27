@@ -25,6 +25,8 @@ set(NEON_CORE_SRCS
   src/serial_midi_parser.cpp
   src/midi_encoder.cpp
   src/midi_clock_engine.cpp
+  src/midi_clock_pll.cpp
+  src/midi_sync_follower.cpp
   src/midi_router.cpp
   src/status_led.cpp
   src/transport.cpp

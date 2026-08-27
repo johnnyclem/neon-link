@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "neon/midi/sync_follower.hpp"
 #include "neon/multi_engine.hpp"
 #include "neon/timeline.hpp"
 
@@ -53,6 +54,13 @@ struct ControlCommand {
 };
 bool control_queue_push(const ControlCommand& cmd);
 bool control_queue_pop(ControlCommand* cmd);
+
+// MIDI clock-sync events: core-0 MIDI service (router sync tap, with
+// arrival timestamps) -> Link service, which owns the session and the
+// sync arbitration. Deeper than the other rings because 24 PPQN ticks
+// arrive in bursts under BLE bundling.
+bool midi_sync_queue_push(const neon::midi::SyncEvent& ev);
+bool midi_sync_queue_pop(neon::midi::SyncEvent* ev);
 
 // Live transport/tempo status published by the Link service for the
 // editor's status endpoint and the OLED.

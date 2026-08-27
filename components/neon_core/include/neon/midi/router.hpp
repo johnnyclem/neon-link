@@ -45,6 +45,17 @@ class IRouterSink {
   virtual void transport(bool play) = 0;
   virtual void trs_realtime(uint8_t status) = 0;
   virtual void program_change(uint8_t program) = 0;
+  // Clock-sync tap: every incoming clock/transport realtime byte
+  // (0xF8/FA/FB/FC) with its arrival time, and every Song Position,
+  // regardless of clock_policy — that policy governs TRS *forwarding*,
+  // while whether the module *follows* this clock is the sync arbiter's
+  // call (Config.clock_source, docs/SPIKE_MIDI_PLL.md §5.4). Defaulted
+  // no-ops so sinks with no sync path need not care.
+  virtual void midi_clock_byte(uint8_t status, int64_t t_us) {
+    (void)status;
+    (void)t_us;
+  }
+  virtual void midi_song_position(uint16_t sixteenths) { (void)sixteenths; }
 };
 
 // 1 V/oct pitch mapping: 5 V span = 60 semitones from the base note.
@@ -61,7 +72,7 @@ class MidiRouter final : public IMidiSink {
   void set_config(const MidiRouteConfig& cfg) { cfg_ = cfg; }
 
   void on_message(const MidiMessage& m) override;
-  void on_realtime(uint8_t status) override;
+  void on_realtime(uint8_t status, int64_t t_us) override;
 
  private:
   bool channel_match(uint8_t status) const;
