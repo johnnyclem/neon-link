@@ -34,6 +34,9 @@ void neon_start_core0_tasks() {
   neon_start_status_led_service();
   neon_start_c3oled_service();
   neon_start_telemetry_service();
+#elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
+  neon_start_matouch_service();
+  neon_start_telemetry_service();
 #elif CONFIG_NEON_BOARD_LINKSYNC_EPD
   neon_start_epd_service();
   neon_start_telemetry_service();

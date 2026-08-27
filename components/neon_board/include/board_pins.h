@@ -331,6 +331,69 @@ inline constexpr int kAmyCvClockChannel = 1;
 inline constexpr float kAmyGateHighVolts = 5.0f;
 inline constexpr float kAmyGateLowVolts = 0.0f;
 
+#elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
+
+// Makerfabs MaTouch ESP32-S3 1.28" ToolSet Controller / 1.28 DevKit
+// (N16R8). 240×240 round GC9A01 over SPI, a quadrature rotary encoder
+// around the bezel, and a CST816 cap-touch layer. Native USB Serial/JTAG
+// on the Type-C port. Pins are the Makerfabs MaTouch-1.28-DevKit
+// "Controller" example map (pin_config.h / Hello_world.ino) — verified
+// against the vendor source. See docs/LINKSYNC_MATOUCH.md.
+//
+//   GC9A01 SPI:  SCLK 42  MOSI 2  MISO -1  CS 1  DC 46  RES 21  BLK 45
+//   Encoder:     CLK/A 48  DT/B 47  push 17 (active-low)  motor 41
+//   CST816 I2C:  SDA 38  SCL 39  INT 40  RST 18  (unused by the POC)
+
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = -1;  // free GPIO on the expansion header
+inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+// CST816 touch bus. Not driven by the POC (encoder is the input path).
+inline constexpr int kPinI2cSda = 38;
+inline constexpr int kPinI2cScl = 39;
+
+// GC9A01 SPI panel.
+inline constexpr int kPinDispSck = 42;
+inline constexpr int kPinDispMosi = 2;
+inline constexpr int kPinDispCs = 1;
+inline constexpr int kPinDispDc = 46;
+inline constexpr int kPinDispRes = 21;
+inline constexpr int kPinDispBlk = 45;   // backlight, active HIGH
+
+// Bezel rotary encoder: PCNT ×4 quadrature + polled push button.
+inline constexpr int kPinEncA = 48;
+inline constexpr int kPinEncB = 47;
+inline constexpr int kPinEncSw = 17;   // active-low
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
 #elif CONFIG_NEON_BOARD_P4DEVKIT
 
 // Waveshare ESP32-P4-Module-DEV-KIT. No Eurorack jacks on the stock

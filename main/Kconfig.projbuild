@@ -14,6 +14,9 @@ choice NEON_BOARD
         link-sync-tab5 is M5Stack Tab5 (ESP32-P4 MIPI-DSI 720×1280).
         link-sync-c3oled is the ACEIRMC / Super Mini ESP32-C3 stamp
         with a 0.42" 72×40 OLED (docs/LINKSYNC_C3OLED.md).
+        link-sync-matouch is the Makerfabs MaTouch ESP32-S3 1.28"
+        Rotary — 240×240 round GC9A01 + rotary encoder
+        (docs/LINKSYNC_MATOUCH.md).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -31,11 +34,13 @@ config NEON_BOARD_LINKSYNC_TAB5
     bool "link-sync (M5Stack Tab5 ESP32-P4 MIPI LCD)"
 config NEON_BOARD_LINKSYNC_C3OLED
     bool "link-sync (ESP32-C3 0.42\" OLED stamp)"
+config NEON_BOARD_LINKSYNC_MATOUCH
+    bool "link-sync (MaTouch ESP32-S3 1.28\" round GC9A01 + encoder)"
 endchoice
 
 config NEON_LINKSYNC
     bool
-    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH
     help
         Shared link-sync firmware path: Link + MIDI clock. No audio.
         The XIAO uses a single LED; the e-Paper board uses the 5.79"

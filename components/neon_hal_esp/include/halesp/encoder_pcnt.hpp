@@ -13,6 +13,12 @@ bool encoder_init(int pin_a, int pin_b, int pin_sw);
 // Detents turned since the last call (signed).
 int encoder_take_detents();
 
+// PCNT counts per mechanical detent (default 4 = one full ×4 quadrature
+// cycle per detent, e.g. KY-040). Encoders that click every half cycle
+// (2 counts/detent, e.g. the MaTouch bezel) set this to 2. No effect on
+// the I2C encoder backends. Call after encoder_init().
+void encoder_set_counts_per_detent(int counts);
+
 // Gestures the UI distinguishes (DESIGN_SYSTEM.md §11). kDouble is two
 // shorts inside one UI frame; the OLED task also treats two shorts
 // within 400 ms as a double-click.

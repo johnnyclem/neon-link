@@ -3,6 +3,7 @@ idf_component_register(
        wifi.cpp link_service.cpp midi_service.cpp audio_service.cpp
        provision.cpp status_led_service.cpp epd_service.cpp
        lcd_service.cpp telemetry_service.cpp c3oled_service.cpp
+       matouch_service.cpp
   INCLUDE_DIRS .
   REQUIRES neon_core neon_hal neon_hal_esp ableton_link net_manager
            neon_board app_state oled_ui ble_midi web_ui amy_synth

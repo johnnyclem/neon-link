@@ -109,6 +109,8 @@ extern "C" void app_main(void) {
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-tab");
 #elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-c3");
+#elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-mat");
 #else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
 #endif

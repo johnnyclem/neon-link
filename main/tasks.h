@@ -38,6 +38,9 @@ void neon_start_lcd_service();
 // Core 0: ESP32-C3 stamp 72×40 OLED. No-op on other boards.
 void neon_start_c3oled_service();
 
+// Core 0: MaTouch 1.28" round GC9A01 + encoder. No-op on other boards.
+void neon_start_matouch_service();
+
 // Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
 void neon_start_telemetry_service();
 

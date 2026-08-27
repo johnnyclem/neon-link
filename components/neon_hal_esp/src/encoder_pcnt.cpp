@@ -23,6 +23,7 @@ enum class Backend : uint8_t { kNone, kPcnt, kI2cExp, kM5Unit };
 Backend g_backend = Backend::kNone;
 pcnt_unit_handle_t g_unit = nullptr;
 int g_count_rem = 0;
+int g_counts_per_detent = 4;  // ×4 decode; boards may override (e.g. 2)
 int g_pin_sw = -1;
 
 // GPIO (PCNT) switch debounce — sampled on the UI thread.
@@ -378,9 +379,16 @@ int encoder_take_detents() {
   pcnt_unit_get_count(g_unit, &count);
   pcnt_unit_clear_count(g_unit);
   const int total = count + g_count_rem;
-  const int detents = total / 4;  // x4 decode per detent
-  g_count_rem = total % 4;
+  const int cpd = g_counts_per_detent > 0 ? g_counts_per_detent : 4;
+  const int detents = total / cpd;  // counts per detent (x4 decode default)
+  g_count_rem = total % cpd;
   return detents;
+}
+
+void encoder_set_counts_per_detent(int counts) {
+  if (counts > 0) {
+    g_counts_per_detent = counts;
+  }
 }
 
 EncoderPress encoder_take_press() {
