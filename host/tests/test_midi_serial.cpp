@@ -15,9 +15,12 @@ struct Recorder final : neon::IMidiSink {
     messages.push_back(m);
   }
   std::vector<int64_t> realtime_t;
-  void on_realtime(uint8_t status, int64_t t_us) override {
+  std::vector<uint16_t> realtime_ms;
+  void on_realtime(uint8_t status, int64_t t_us,
+                   uint16_t sender_ms13) override {
     realtime.push_back(status);
     realtime_t.push_back(t_us);
+    realtime_ms.push_back(sender_ms13);
   }
 };
 
@@ -150,5 +153,8 @@ TEST_CASE("serial midi: realtime bytes carry their per-byte timestamps") {
   REQUIRE(rec.realtime.size() == 2);
   CHECK(rec.realtime_t[0] == 100);
   CHECK(rec.realtime_t[1] == 300);
+  // A serial wire has no in-band sender stamps.
+  CHECK(rec.realtime_ms[0] == neon::kNoSenderMs);
+  CHECK(rec.realtime_ms[1] == neon::kNoSenderMs);
   REQUIRE(rec.messages.size() == 1);
 }

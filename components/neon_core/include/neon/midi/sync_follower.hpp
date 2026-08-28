@@ -8,6 +8,8 @@
 
 #include <cstdint>
 
+#include "neon/midi/ble_midi_parser.hpp"  // kNoSenderMs
+#include "neon/midi/ble_time_mapper.hpp"
 #include "neon/midi/clock_pll.hpp"
 
 namespace neon {
@@ -28,6 +30,9 @@ struct SyncEvent {
   MidiClockPll::Transport transport = MidiClockPll::Transport::kDin;
   int64_t t_us = 0;
   uint16_t spp = 0;
+  // BLE-MIDI in-packet 13-bit sender stamp for realtime bytes;
+  // kNoSenderMs on transports without one.
+  uint16_t sender_ms13 = kNoSenderMs;
 };
 
 class SyncFollower {
@@ -58,9 +63,15 @@ class SyncFollower {
   Actions poll(int64_t now_us, bool allowed);
 
   const MidiClockPll& pll() const { return pll_; }
+  const BleTimeMapper& ble_mapper() const { return ble_map_; }
 
  private:
   MidiClockPll pll_;
+  // BLE ticks that carry decoded sender stamps run through the mapper:
+  // once it trusts them, the PLL sees sender-side times and the tighter
+  // kUsb gain set; a degenerate stamper (spike §8.5) never earns trust
+  // and BLE stays in its raw-arrival degraded mode.
+  BleTimeMapper ble_map_;
   bool following_ = false;
   uint32_t published_mbpm_ = 0;
   int64_t last_tempo_us_ = 0;

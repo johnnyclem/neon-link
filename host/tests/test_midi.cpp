@@ -14,12 +14,14 @@ struct Recorder final : public neon::IMidiSink {
   std::vector<neon::MidiMessage> messages;
   std::vector<uint8_t> realtime;
   std::vector<int64_t> realtime_t;
+  std::vector<uint16_t> realtime_ms;
   void on_message(const neon::MidiMessage& m) override {
     messages.push_back(m);
   }
-  void on_realtime(uint8_t s, int64_t t_us) override {
+  void on_realtime(uint8_t s, int64_t t_us, uint16_t sender_ms13) override {
     realtime.push_back(s);
     realtime_t.push_back(t_us);
+    realtime_ms.push_back(sender_ms13);
   }
 };
 
@@ -59,11 +61,13 @@ struct SinkRecorder final : public neon::IRouterSink {
   struct ClockCall {
     uint8_t status;
     int64_t t_us;
+    uint16_t sender_ms13;
   };
   std::vector<ClockCall> clock_bytes;
   std::vector<uint16_t> spps;
-  void midi_clock_byte(uint8_t s, int64_t t_us) override {
-    clock_bytes.push_back({s, t_us});
+  void midi_clock_byte(uint8_t s, int64_t t_us,
+                       uint16_t sender_ms13) override {
+    clock_bytes.push_back({s, t_us, sender_ms13});
   }
   void midi_song_position(uint16_t sixteenths) override {
     spps.push_back(sixteenths);
@@ -260,9 +264,9 @@ TEST_CASE("router: transport and clock policies") {
   neon::MidiRouter r(cfg, &sink);
 
   // Default: transport enabled, clock ignored.
-  r.on_realtime(0xfa, 0);
-  r.on_realtime(0xf8, 0);
-  r.on_realtime(0xfc, 0);
+  r.on_realtime(0xfa, 0, neon::kNoSenderMs);
+  r.on_realtime(0xf8, 0, neon::kNoSenderMs);
+  r.on_realtime(0xfc, 0, neon::kNoSenderMs);
   REQUIRE(sink.transports.size() == 2);
   CHECK(sink.transports[0]);
   CHECK_FALSE(sink.transports[1]);
@@ -272,8 +276,8 @@ TEST_CASE("router: transport and clock policies") {
   // still follows while enabled).
   cfg.clock_policy = neon::MidiRouteConfig::ClockPolicy::kReplace;
   r.set_config(cfg);
-  r.on_realtime(0xf8, 0);
-  r.on_realtime(0xfa, 0);
+  r.on_realtime(0xf8, 0, neon::kNoSenderMs);
+  r.on_realtime(0xfa, 0, neon::kNoSenderMs);
   REQUIRE(sink.trs.size() == 2);
   CHECK(sink.trs[0] == 0xf8);
   CHECK(sink.trs[1] == 0xfa);
@@ -283,7 +287,7 @@ TEST_CASE("router: transport and clock policies") {
   // forward to TRS under the replace policy.
   cfg.transport_enabled = false;
   r.set_config(cfg);
-  r.on_realtime(0xfa, 0);
+  r.on_realtime(0xfa, 0, neon::kNoSenderMs);
   CHECK(sink.transports.size() == 3);
   CHECK(sink.trs.size() == 3);
 }
@@ -368,10 +372,10 @@ TEST_CASE("router: the clock-sync tap fires regardless of clock policy") {
   SinkRecorder sink;
   neon::MidiRouter r(cfg, &sink);
 
-  r.on_realtime(0xfa, 1000);
-  r.on_realtime(0xf8, 2000);
-  r.on_realtime(0xfc, 3000);
-  r.on_realtime(0xfe, 4000);  // active sensing: not a sync byte
+  r.on_realtime(0xfa, 1000, neon::kNoSenderMs);
+  r.on_realtime(0xf8, 2000, 1234);  // BLE stamp rides along untouched
+  r.on_realtime(0xfc, 3000, neon::kNoSenderMs);
+  r.on_realtime(0xfe, 4000, neon::kNoSenderMs);  // active sensing: not a sync byte
 
   // Nothing forwarded to TRS, no session transport — but the sync tap
   // saw every clock/transport byte with its timestamp.
@@ -380,8 +384,10 @@ TEST_CASE("router: the clock-sync tap fires regardless of clock policy") {
   REQUIRE(sink.clock_bytes.size() == 3);
   CHECK(sink.clock_bytes[0].status == 0xfa);
   CHECK(sink.clock_bytes[0].t_us == 1000);
+  CHECK(sink.clock_bytes[0].sender_ms13 == neon::kNoSenderMs);
   CHECK(sink.clock_bytes[1].status == 0xf8);
   CHECK(sink.clock_bytes[1].t_us == 2000);
+  CHECK(sink.clock_bytes[1].sender_ms13 == 1234);
   CHECK(sink.clock_bytes[2].status == 0xfc);
   CHECK(sink.clock_bytes[2].t_us == 3000);
 }
@@ -404,4 +410,42 @@ TEST_CASE("ble parser: realtime bytes carry the packet arrival time") {
   REQUIRE(rec.realtime.size() == 2);
   CHECK(rec.realtime_t[0] == 555000);
   CHECK(rec.realtime_t[1] == 555000);
+  // ...and the decoded 13-bit stamp (header high bits 0, low bits 0).
+  REQUIRE(rec.realtime_ms.size() == 2);
+  CHECK(rec.realtime_ms[0] == 0);
+  CHECK(rec.realtime_ms[1] == 0);
+}
+
+TEST_CASE("ble parser: 13-bit stamps decode with in-packet low rollover") {
+  Recorder rec;
+  neon::BleMidiParser p(&rec);
+  // Header 0x82: stamp bits 12..7 = 2. Three clocks whose timestamp
+  // bytes carry lows 80, 101, then 5 — the decrease is the 7-bit field
+  // rolling over, so the high bits step to 3.
+  const uint8_t pkt[] = {0x82, 0xd0, 0xf8, 0xe5, 0xf8, 0x85, 0xf8};
+  p.feed_packet(pkt, sizeof(pkt), 0);
+  REQUIRE(rec.realtime_ms.size() == 3);
+  CHECK(rec.realtime_ms[0] == (2 << 7) + 80);
+  CHECK(rec.realtime_ms[1] == (2 << 7) + 101);
+  CHECK(rec.realtime_ms[2] == (3 << 7) + 5);
+
+  // The next packet's header re-seeds the high bits: no state leaks.
+  const uint8_t pkt2[] = {0xbf, 0x80, 0xf8};
+  p.feed_packet(pkt2, sizeof(pkt2), 0);
+  REQUIRE(rec.realtime_ms.size() == 4);
+  CHECK(rec.realtime_ms[3] == 63 << 7);
+}
+
+TEST_CASE("ble parser: a realtime byte with no stamp yet reports none") {
+  Recorder rec;
+  neon::BleMidiParser p(&rec);
+  // Open SysEx in one packet; the next packet leads with an interleaved
+  // clock byte before any timestamp byte of its own.
+  const uint8_t pkt1[] = {0x80, 0x80, 0xf0, 0x01};
+  const uint8_t pkt2[] = {0x90, 0xf8, 0x80, 0xf7};
+  p.feed_packet(pkt1, sizeof(pkt1), 0);
+  p.feed_packet(pkt2, sizeof(pkt2), 0);
+  REQUIRE(rec.realtime.size() == 1);
+  CHECK(rec.realtime[0] == 0xf8);
+  CHECK(rec.realtime_ms[0] == neon::kNoSenderMs);
 }

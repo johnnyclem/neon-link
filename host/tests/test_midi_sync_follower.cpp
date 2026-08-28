@@ -155,3 +155,55 @@ TEST_CASE("clock loss stops the following state cleanly") {
   CHECK(a.tempo_mbpm >= 99900);
   CHECK(a.tempo_mbpm <= 100100);
 }
+
+namespace {
+
+// BLE burst delivery: ticks reach the host at connection-event
+// boundaries (15 ms comb); a conforming sender stamps each with its own
+// millisecond clock, mod 8192.
+void feed_ble_tick(SyncFollower& f, int64_t sender_us, bool good_stamps) {
+  constexpr int64_t kConnIntervalUs = 15000;
+  SyncEvent ev;
+  ev.kind = SyncEvent::Kind::kTick;
+  ev.transport = neon::MidiClockPll::Transport::kBle;
+  ev.t_us = (sender_us / kConnIntervalUs + 1) * kConnIntervalUs;
+  const int64_t stamped = good_stamps ? sender_us : ev.t_us;
+  ev.sender_ms13 = static_cast<uint16_t>((stamped / 1000) % 8192);
+  f.on_event(ev);
+}
+
+}  // namespace
+
+TEST_CASE("BLE with decoded sender stamps locks like a wired source") {
+  SyncFollower f;
+  int64_t t = 0;
+  for (int i = 0; i < 480; ++i) {
+    t = i * kTick120;
+    feed_ble_tick(f, t, true);
+  }
+  // The mapper earned trust, so the PLL ran the kUsb loop on recovered
+  // sender times — honest lock, tight tempo, despite the arrival comb.
+  CHECK(f.ble_mapper().trusted());
+  CHECK(f.pll().transport() == neon::MidiClockPll::Transport::kUsb);
+  CHECK(f.pll().locked());
+  CHECK(f.pll().tempo_milli_bpm() >= 119400);
+  CHECK(f.pll().tempo_milli_bpm() <= 120600);
+  auto a = f.poll(t + 20000, true);
+  CHECK(a.following);
+}
+
+TEST_CASE("degenerate BLE stamps fall back to the raw-arrival mode") {
+  SyncFollower f;
+  for (int i = 0; i < 480; ++i) {
+    feed_ble_tick(f, i * kTick120, false);
+  }
+  // Stamps that mirror the arrival buckets add nothing: the mapper never
+  // trusts them and the PLL stays in its burst-hardened degraded mode —
+  // tempo good to a few percent, lock honestly withheld.
+  CHECK_FALSE(f.ble_mapper().trusted());
+  CHECK(f.pll().transport() == neon::MidiClockPll::Transport::kBle);
+  CHECK(f.pll().valid());
+  CHECK_FALSE(f.pll().locked());
+  CHECK(f.pll().tempo_milli_bpm() >= 116400);
+  CHECK(f.pll().tempo_milli_bpm() <= 123600);
+}
