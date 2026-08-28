@@ -149,8 +149,9 @@ compete with peer edits. `nsync::DawFollower`'s policy
 `SyncFollower` (host-tested, `test_midi_sync_follower.cpp`):
 
 - `poll()` takes a `SessionView` (the owner's last capture; the ESP32
-  loop passes its previous-iteration capture). Omitting it degrades to
-  the old pure-edge behavior, so targets without one keep working.
+  and Daisy loops pass their previous-iteration capture). Omitting it
+  degrades to the old pure-edge behavior, so targets without one keep
+  working.
 - **Level-assert while the MIDI transport runs:** tempo compares against
   the *session's* value, so a peer edit reads as divergence and is
   re-asserted under the existing 0.5 %/1 s hysteresis; a peer stop under

@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "halesp/clkin_capture.hpp"
 #include "halesp/tempo_cv_ledc.hpp"
+#include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/midi/sync_follower.hpp"
@@ -264,16 +265,10 @@ void link_service_task(void*) {
       }
     }
     ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
-    const neon::ClockSource source = neon_config().clock_source;
     const int64_t now_arb = esp_timer_get_time();
-
-    // Arbitration (docs/SPIKE_MIDI_PLL.md §5.4): CLK IN outranks MIDI
-    // clock under kAuto; each master mode pins its own source; the
-    // session is the fallback.
-    const bool follow_external =
-        (source == neon::ClockSource::kAuto ||
-         source == neon::ClockSource::kExternalMaster) &&
-        ext_clock.active(now_arb);
+    const neon::ClockArbitration arb = neon::arbitrate_clock_source(
+        neon_config().clock_source, ext_clock.active(now_arb));
+    const bool follow_external = arb.follow_clk_in;
 
     neon::midi::SyncEvent mev;
     while (midi_sync_queue_pop(&mev)) {
@@ -297,12 +292,8 @@ void link_service_task(void*) {
         }
       }
     }
-    const bool midi_allowed =
-        (source == neon::ClockSource::kAuto ||
-         source == neon::ClockSource::kMidiMaster) &&
-        !follow_external;
     const neon::midi::SyncFollower::Actions midi_act =
-        midi_follow.poll(now_arb, midi_allowed, midi_session);
+        midi_follow.poll(now_arb, arb.midi_allowed, midi_session);
 
     const bool any_external = follow_external || midi_act.following;
     if (any_external != ext_active) {

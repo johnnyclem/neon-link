@@ -4,6 +4,7 @@
 
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "neon/midi/clock_engine.hpp"
 #include "neon/midi/midi_encoder.hpp"
 
 #include "irq_lock_t41.h"
@@ -22,28 +23,11 @@ volatile int64_t g_next_tick_us = 0;
 volatile bool g_clock_on = false;
 volatile int32_t g_nudge_us = 0;
 
-// Next 24 PPQN tick strictly after now, on the nudged grid — the same
-// solve as the ESP midi service.
+// Next 24 PPQN tick strictly after now, on the nudged grid — the shared
+// integer solve (neon/midi/clock_engine.hpp), safe in the ISR.
 bool next_clock_tick_us(const neon::TimelineSnapshot& tl, int64_t now_us,
                         int64_t* out) {
-  if (tl.tempo_mpb_q32 == 0) {
-    return false;
-  }
-  const int64_t nudge = g_nudge_us;
-  const double mpb = static_cast<double>(tl.tempo_mpb_q32) / 4294967296.0;
-  const double grid_now = static_cast<double>(now_us - nudge);
-  const double b0 = static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0;
-  const double beat =
-      b0 + (grid_now - static_cast<double>(tl.origin_us)) / mpb;
-  const double tick_beats = 1.0 / 24.0;
-  const int64_t tick = static_cast<int64_t>(beat / tick_beats) + 1;
-  const double target_beat = static_cast<double>(tick) * tick_beats;
-  *out = tl.origin_us + nudge +
-         static_cast<int64_t>((target_beat - b0) * mpb);
-  if (*out <= now_us) {
-    *out = now_us + 1000;
-  }
-  return true;
+  return neon::midi::next_nudged_clock_us(tl, now_us, g_nudge_us, out);
 }
 
 void tick_isr() {

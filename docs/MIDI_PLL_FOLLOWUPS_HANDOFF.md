@@ -13,10 +13,11 @@ and every policy decision is commented in place.
 **Status (2026-08-28):** items 2, 3, 5, and 6 are done (per-item notes
 below). Item 1 remains blocked on the account-level Actions setting.
 Item 4 stays deferred — it is a product decision to make before the
-panel silkscreen conversation. Item 7's two nits stay deliberately open:
-Phase B settled that transport bytes need no sender stamps, leaving the
-`t_us` parameters a pure API-tidiness call, and the SyncEvent footprint
-only matters if a C3 target gains MIDI-in.
+panel silkscreen conversation. Item 7's first nit is resolved: Phase B
+settled that transport bytes need no times (only ticks feed the sender
+mapper), so `on_start`/`on_continue`/`on_stop` dropped their unused
+`t_us` parameters. The SyncEvent-footprint nit only matters if a C3
+target gains MIDI-in.
 
 ---
 
@@ -143,13 +144,12 @@ the feature yet:
 
 ## 7. Small code nits noticed after the fact
 
-- `neon::MidiClockPll::on_start/on_continue/on_stop` take a `t_us` that is
-  currently unused (kept for API symmetry). Either use it (validate
-  ordering vs the next tick) or drop the parameters. Phase B (now landed)
-  settled its half of the question: transport bytes do *not* need
-  sender-side stamps — only ticks feed the BLE time mapper, and the
-  transport events remain pure ordering facts — so this is purely an API
-  tidiness call now.
+- ~~`neon::MidiClockPll::on_start/on_continue/on_stop` take a `t_us` that
+  is currently unused~~ *(resolved: dropped)*. Phase B settled that
+  transport bytes do *not* need sender-side stamps — only ticks feed the
+  BLE time mapper, and transport events are pure ordering facts that take
+  effect on the next tick — so the parameters are gone and the header
+  says why.
 - `SyncEvent` is 24 bytes with padding; the queue is 64 deep (1.5 KB).
   Fine on ESP32-S3; re-check on the C3 target if the linksync-c3oled
   profile ever gains MIDI-in.

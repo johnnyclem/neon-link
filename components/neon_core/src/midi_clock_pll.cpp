@@ -156,14 +156,25 @@ void MidiClockPll::on_tick(int64_t t_us) {
   if (period > kMaxPeriodUs) {
     // The sender stalled long past any musical tempo: the grid on the
     // other side is gone, so restart from scratch. (active() catches the
-    // same condition between ticks.)
+    // same condition between ticks.) A transport fact that arrived with
+    // the new stream survives the restart: a DAW that gates its clock
+    // off while stopped delivers 0xFA and the first fresh tick together,
+    // and eating that Start here would lose the downbeat and leave the
+    // position unanchored.
+    const bool keep_start = pending_start_;
+    const bool keep_continue = pending_continue_;
+    const int64_t keep_resume = resume_song_tick_;
     reset();
+    pending_start_ = keep_start;
+    pending_continue_ = keep_continue;
+    resume_song_tick_ = keep_resume;
     pll_tick_ = 0;
     last_tick_us_ = t_us;
     times_[0] = t_us;
     time_next_ = 1;
     time_count_ = 1;
     ticks_ = 1;
+    apply_transport_pending(t_us);
     return;
   }
   last_tick_us_ = t_us;
@@ -232,19 +243,19 @@ void MidiClockPll::on_tick(int64_t t_us) {
   apply_transport_pending(t_us);
 }
 
-void MidiClockPll::on_start(int64_t) {
+void MidiClockPll::on_start() {
   pending_start_ = true;
   pending_continue_ = false;
   resume_song_tick_ = 0;
 }
 
-void MidiClockPll::on_continue(int64_t) {
+void MidiClockPll::on_continue() {
   if (!playing_) {
     pending_continue_ = true;
   }
 }
 
-void MidiClockPll::on_stop(int64_t) {
+void MidiClockPll::on_stop() {
   pending_start_ = false;
   pending_continue_ = false;
   if (playing_) {

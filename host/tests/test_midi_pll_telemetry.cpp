@@ -80,7 +80,7 @@ TEST_CASE("sample from a live PLL: seeded state, lock, and transport anchor") {
   CHECK(s.following == 0);
 
   // Start lands on the next tick; a clean beat of ticks locks the loop.
-  pll.on_start(t);
+  pll.on_start();
   for (int i = 0; i < 60; ++i, t += period) {
     pll.on_tick(t);
   }

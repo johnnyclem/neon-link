@@ -25,13 +25,13 @@ void SyncFollower::on_event(const SyncEvent& ev) {
       pll_.on_tick(t_us);
       break;
     case SyncEvent::Kind::kStart:
-      pll_.on_start(ev.t_us);
+      pll_.on_start();
       break;
     case SyncEvent::Kind::kContinue:
-      pll_.on_continue(ev.t_us);
+      pll_.on_continue();
       break;
     case SyncEvent::Kind::kStop:
-      pll_.on_stop(ev.t_us);
+      pll_.on_stop();
       break;
     case SyncEvent::Kind::kSpp:
       pll_.on_spp(ev.spp);
