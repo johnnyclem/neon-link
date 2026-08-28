@@ -6,6 +6,7 @@
 
 namespace {
 
+using neon::midi::SessionView;
 using neon::midi::SyncEvent;
 using neon::midi::SyncFollower;
 
@@ -133,6 +134,158 @@ TEST_CASE("not allowed: silent tracking, then a warm, anchored handover") {
   CHECK(a.downbeat_us >= downbeat_true - 500);
   CHECK(a.downbeat_us <= downbeat_true + 500);
   // The transport that was already running propagates on first follow.
+  REQUIRE(a.set_playing);
+  CHECK(a.playing);
+}
+
+TEST_CASE("playing: a peer tempo edit is level-corrected, rate-limited") {
+  SyncFollower f;
+  SessionView s;
+  s.valid = true;
+  s.peers = 1;
+
+  int64_t t = feed_ticks(f, 0, 48);
+  send(f, SyncEvent::Kind::kStart, t + 1000);
+  t = feed_ticks(f, t + kTick120, 24);
+  auto a = f.poll(t, true, s);
+  REQUIRE(a.set_tempo);
+  s.tempo_mbpm = a.tempo_mbpm;  // session converges on our publish
+  s.playing = true;
+  const int64_t t_pub = t;
+
+  // Session in agreement: quiet.
+  t = feed_ticks(f, t + kTick120, 24);
+  a = f.poll(t, true, s);
+  CHECK_FALSE(a.set_tempo);
+
+  // A peer edits the session to 150 BPM. While the MIDI transport runs
+  // the sender is authoritative (spike §8.4): the follower re-asserts
+  // its tempo — but never inside the rate-limit gap.
+  s.tempo_mbpm = 150000;
+  a = f.poll(t + 1000, true, s);
+  CHECK_FALSE(a.set_tempo);
+
+  bool corrected = false;
+  for (int i = 0; i < 6 && !corrected; ++i) {
+    t = feed_ticks(f, t + kTick120, 24);
+    a = f.poll(t, true, s);
+    if (a.set_tempo) {
+      corrected = true;
+      CHECK(t - t_pub >= SyncFollower::kTempoGapUs);
+      CHECK(a.tempo_mbpm >= 119900);
+      CHECK(a.tempo_mbpm <= 120100);
+    }
+  }
+  REQUIRE(corrected);
+}
+
+TEST_CASE("stopped: peer edits stand; a MIDI tempo move still writes") {
+  SyncFollower f;
+  SessionView s;
+  s.valid = true;
+  s.peers = 1;
+  s.playing = true;  // peers are free to run their own transport
+
+  int64_t t = feed_ticks(f, 0, 48);  // free-running clock: not playing
+  auto a = f.poll(t, true, s);
+  REQUIRE(a.set_tempo);
+  s.tempo_mbpm = a.tempo_mbpm;
+
+  // A peer edits the session tempo. The MIDI transport is stopped, so
+  // only edges write: the edit stands, and the peers' running transport
+  // is left alone.
+  s.tempo_mbpm = 150000;
+  for (int i = 0; i < 4; ++i) {
+    t = feed_ticks(f, t + kTick120, 24);
+    a = f.poll(t, true, s);
+    CHECK_FALSE(a.set_tempo);
+    CHECK_FALSE(a.set_playing);
+  }
+
+  // A genuine tempo move on the MIDI side is still an edge write.
+  bool republished = false;
+  for (int i = 0; i < 8 && !republished; ++i) {
+    t = feed_ticks(f, t + 25000, 14, 25000);  // 100 BPM
+    a = f.poll(t, true, s);
+    if (a.set_tempo) {
+      republished = true;
+      CHECK(a.tempo_mbpm >= 99000);
+      CHECK(a.tempo_mbpm <= 121000);  // may fire mid-slew
+    }
+  }
+  REQUIRE(republished);
+}
+
+TEST_CASE("playing: a peer stop is corrected while the sender runs") {
+  SyncFollower f;
+  SessionView s;
+  s.valid = true;
+  s.peers = 1;
+
+  int64_t t = feed_ticks(f, 0, 48);
+  send(f, SyncEvent::Kind::kStart, t + 1000);
+  t = feed_ticks(f, t + kTick120, 1);
+  auto a = f.poll(t, true, s);
+  REQUIRE(a.set_playing);
+  CHECK(a.playing);
+  REQUIRE(a.set_tempo);
+  s.tempo_mbpm = a.tempo_mbpm;
+  s.playing = true;
+
+  t = feed_ticks(f, t + kTick120, 24);
+  a = f.poll(t, true, s);
+  CHECK_FALSE(a.set_playing);
+
+  // A peer stops the session under a running MIDI transport: no edge on
+  // the MIDI side, but the sender is authoritative — held, rate-limited.
+  s.playing = false;
+  t = feed_ticks(f, t + kTick120, 24);
+  a = f.poll(t, true, s);
+  REQUIRE(a.set_playing);
+  CHECK(a.playing);
+  const int64_t t_hold = t;
+
+  t = feed_ticks(f, t + kTick120, 4);  // ~80 ms later: inside the gap
+  a = f.poll(t, true, s);
+  CHECK_FALSE(a.set_playing);
+
+  t = feed_ticks(f, t + kTick120, 48);  // past the gap, still stopped
+  a = f.poll(t, true, s);
+  REQUIRE(a.set_playing);
+  CHECK(a.playing);
+  CHECK(t - t_hold >= SyncFollower::kTempoGapUs);
+}
+
+TEST_CASE("require_peer: silent while alone, warm handover on a peer") {
+  SyncFollower f;
+  f.set_require_peer(true);
+  SessionView s;
+  s.valid = true;
+  s.peers = 0;
+
+  int64_t t = feed_ticks(f, 0, 48);
+  send(f, SyncEvent::Kind::kStart, t + 1000);
+  t = feed_ticks(f, t + kTick120, 24);
+  const int64_t downbeat_true = t - 23 * kTick120;
+
+  // Alone there is nothing to bridge: every write is held.
+  auto a = f.poll(t, true, s);
+  CHECK_FALSE(a.following);
+  CHECK_FALSE(a.set_tempo);
+  CHECK_FALSE(a.anchor_downbeat);
+  CHECK_FALSE(a.set_playing);
+
+  // A peer joins: republish from the warm estimate, downbeat included.
+  s.peers = 1;
+  t = feed_ticks(f, t + kTick120, 24);
+  a = f.poll(t, true, s);
+  CHECK(a.following);
+  REQUIRE(a.set_tempo);
+  CHECK(a.tempo_mbpm >= 119900);
+  CHECK(a.tempo_mbpm <= 120100);
+  REQUIRE(a.anchor_downbeat);
+  CHECK(a.downbeat_us >= downbeat_true - 500);
+  CHECK(a.downbeat_us <= downbeat_true + 500);
   REQUIRE(a.set_playing);
   CHECK(a.playing);
 }

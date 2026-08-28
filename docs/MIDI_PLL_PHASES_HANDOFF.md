@@ -118,16 +118,32 @@ this phase is service glue, not estimator work:
   clock-thru or clock-regeneration is wanted; regeneration is what the
   PLL gives for free, thru is what `ClockPolicy::kReplace` already does.
 
-## Phase D — Authority interplay with Link peers (spike §8.4)
+## Phase D — Authority interplay with Link peers (spike §8.4) ✅ done
 
 When the module follows MIDI *and* has Link peers, its `set_tempo` writes
-compete with peer edits. The follower's rate limiting is the first
-defense; if fighting is observed on the bench (tempo ping-pong in the
-session), adopt `nsync::DawFollower`'s policy verbatim
-(`components/neon_sync/src/daw_follower.cpp`): level-assert while the
-MIDI transport *runs* (the sender is authoritative), edges-only while
-stopped, optional `require_peer`. This is deliberately deferred until the
-bench shows it's needed — don't build it speculatively.
+compete with peer edits. `nsync::DawFollower`'s policy
+(`components/neon_sync/src/daw_follower.cpp`) is now adopted in
+`SyncFollower` (host-tested, `test_midi_sync_follower.cpp`):
+
+- `poll()` takes a `SessionView` (the owner's last capture; the ESP32
+  loop passes its previous-iteration capture). Omitting it degrades to
+  the old pure-edge behavior, so targets without one keep working.
+- **Level-assert while the MIDI transport runs:** tempo compares against
+  the *session's* value, so a peer edit reads as divergence and is
+  re-asserted under the existing 0.5 %/1 s hysteresis; a peer stop under
+  a running sender is corrected back to playing, rate-limited.
+- **Edges-only while stopped:** the comparison reference stays our own
+  last publish, so peer edits stand between MIDI tempo moves, and peers'
+  transports are never touched.
+- **`require_peer`** (`set_require_peer`, default off — here the session
+  is also the local timeline, so following must work alone): when on,
+  all writes are held at zero peers, with a warm, downbeat-preserving
+  handover when one joins. Not yet exposed in config; wire it to a
+  stored field if a bridging use case ever wants it persisted.
+
+What remains bench-side: confirm on real hardware (Phase A rig, with a
+peer riding the session tempo) that the correction cadence feels right;
+the knobs are the same `kHysteresisDen`/`kTempoGapUs` pair.
 
 ## Phase E — Optional/opportunistic
 

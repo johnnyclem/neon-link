@@ -24,9 +24,16 @@ void SyncFollower::on_event(const SyncEvent& ev) {
   }
 }
 
-SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed) {
+SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed,
+                                         const SessionView& session) {
   Actions a;
-  const bool live = allowed && pll_.active(now_us) && pll_.valid();
+  // require_peer holds writes exactly like an arbiter veto: silent warm
+  // tracking, then a from-scratch republish (pending downbeat included)
+  // once a peer shows up. Only meaningful when the caller supplies
+  // session state — without it there is no peer count to trust.
+  const bool peer_gated = require_peer_ && session.valid && session.peers == 0;
+  const bool live =
+      allowed && !peer_gated && pll_.active(now_us) && pll_.valid();
   if (!live) {
     if (following_) {
       // Handover or loss: forget what was published so a later re-follow
@@ -45,6 +52,7 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed) {
   following_ = true;
   a.following = true;
 
+  const bool playing = pll_.playing();
   const uint32_t mbpm = pll_.tempo_milli_bpm();
   if (published_mbpm_ == 0) {
     a.set_tempo = true;
@@ -52,10 +60,19 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed) {
     published_mbpm_ = mbpm;
     last_tempo_us_ = now_us;
   } else {
-    const int64_t diff = static_cast<int64_t>(mbpm) -
-                         static_cast<int64_t>(published_mbpm_);
+    // Authority policy (spike §8.4, DawFollower's shape): while the MIDI
+    // transport runs the sender owns the tempo, so the comparison is
+    // against the *session's* value — a peer edit reads as divergence
+    // and is corrected. While stopped (or with no session view) the
+    // reference is our own last publish, so only a genuine MIDI tempo
+    // move writes and peer edits stand in between. Both directions ride
+    // the same hysteresis band and rate limit.
+    const uint32_t ref = (playing && session.valid) ? session.tempo_mbpm
+                                                    : published_mbpm_;
+    const int64_t diff =
+        static_cast<int64_t>(mbpm) - static_cast<int64_t>(ref);
     const int64_t abs_diff = diff < 0 ? -diff : diff;
-    if (abs_diff * kHysteresisDen > published_mbpm_ &&
+    if (abs_diff * kHysteresisDen > ref &&
         now_us - last_tempo_us_ >= kTempoGapUs) {
       a.set_tempo = true;
       a.tempo_mbpm = mbpm;
@@ -70,7 +87,6 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed) {
     a.downbeat_us = downbeat;
   }
 
-  const bool playing = pll_.playing();
   if (!have_playing_) {
     // First poll while following: propagate a running transport, but a
     // merely free-running clock must not stop a playing session.
@@ -84,6 +100,15 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed) {
     sent_playing_ = playing;
     a.set_playing = true;
     a.playing = playing;
+  } else if (playing && session.valid && !session.playing &&
+             now_us - last_hold_us_ >= kTempoGapUs) {
+    // Level-assert the transport while the sender runs: a peer stopping
+    // the session under a running MIDI transport is corrected,
+    // rate-limited. The stopped direction stays edges-only — while the
+    // MIDI transport is stopped, peers are free to play.
+    a.set_playing = true;
+    a.playing = true;
+    last_hold_us_ = now_us;
   }
 
   return a;
