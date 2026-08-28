@@ -36,7 +36,8 @@ void BleMidiParser::deliver(uint8_t status, uint8_t d1, uint8_t d2) {
   sink_->on_message(m);
 }
 
-void BleMidiParser::feed_packet(const uint8_t* data, size_t len) {
+void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
+                                int64_t rx_us) {
   if (len < 2 || (data[0] & 0x80u) == 0) {
     return;  // missing/invalid packet header
   }
@@ -55,7 +56,7 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len) {
         continue;
       }
       if ((b & 0x80u) != 0 && b >= 0xf8u) {
-        sink_->on_realtime(b);  // realtime may interleave inside SysEx
+        sink_->on_realtime(b, rx_us);  // realtime may interleave inside SysEx
         ++i;
         continue;
       }
@@ -85,7 +86,7 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len) {
       const uint8_t s = data[i];
       if ((s & 0x80u) != 0) {
         if (s >= 0xf8u) {
-          sink_->on_realtime(s);
+          sink_->on_realtime(s, rx_us);
           ++i;
           continue;
         }

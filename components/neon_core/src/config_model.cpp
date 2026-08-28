@@ -84,7 +84,8 @@ void config_sanitize(Config* cfg) {
   clamp<uint32_t>(&cfg->quantum_beats, 1, 16);
   cfg->engine.quantum_beats = cfg->quantum_beats;
   if (cfg->clock_source != ClockSource::kLinkMaster &&
-      cfg->clock_source != ClockSource::kExternalMaster) {
+      cfg->clock_source != ClockSource::kExternalMaster &&
+      cfg->clock_source != ClockSource::kMidiMaster) {
     cfg->clock_source = ClockSource::kAuto;
   }
   clamp<uint32_t>(&cfg->clock_in_ppqn, 1, 96);

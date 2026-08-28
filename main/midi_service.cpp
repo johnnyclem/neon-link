@@ -32,6 +32,8 @@ namespace {
 const char* kTag = "midi_svc";
 
 struct Packet {
+  int64_t rx_us;  // arrival stamp taken in the NimBLE callback, before
+                  // the queue adds its own (unknowable) latency
   uint8_t len;
   uint8_t data[64];
 };
@@ -40,6 +42,7 @@ QueueHandle_t g_packets = nullptr;
 
 void on_ble_packet(const uint8_t* data, size_t len) {
   Packet p;
+  p.rx_us = esp_timer_get_time();
   p.len = static_cast<uint8_t>(len > sizeof(p.data) ? sizeof(p.data) : len);
   std::memcpy(p.data, data, p.len);
   xQueueSend(g_packets, &p, 0);  // drop on overflow; never block NimBLE
@@ -94,6 +97,44 @@ class Sink final : public neon::IRouterSink {
   void program_change(uint8_t program) override {
     neon_preset_recall(program % kPresetSlots);
   }
+
+  // Clock-sync tap -> the Link service's follower. Tagged with the
+  // transport currently being parsed so the PLL picks matching gains.
+  void set_clock_source_tag(neon::MidiClockPll::Transport t) {
+    clock_src_ = t;
+  }
+  void midi_clock_byte(uint8_t status, int64_t t_us) override {
+    neon::midi::SyncEvent ev;
+    switch (status) {
+      case 0xf8:
+        ev.kind = neon::midi::SyncEvent::Kind::kTick;
+        break;
+      case 0xfa:
+        ev.kind = neon::midi::SyncEvent::Kind::kStart;
+        break;
+      case 0xfb:
+        ev.kind = neon::midi::SyncEvent::Kind::kContinue;
+        break;
+      case 0xfc:
+        ev.kind = neon::midi::SyncEvent::Kind::kStop;
+        break;
+      default:
+        return;
+    }
+    ev.transport = clock_src_;
+    ev.t_us = t_us;
+    midi_sync_queue_push(ev);  // drop on overflow: ticks self-heal
+  }
+  void midi_song_position(uint16_t sixteenths) override {
+    neon::midi::SyncEvent ev;
+    ev.kind = neon::midi::SyncEvent::Kind::kSpp;
+    ev.transport = clock_src_;
+    ev.spp = sixteenths;
+    midi_sync_queue_push(ev);
+  }
+
+ private:
+  neon::MidiClockPll::Transport clock_src_ = neon::MidiClockPll::Transport::kBle;
 };
 
 Sink g_sink;
@@ -209,13 +250,22 @@ void midi_task(void*) {
 
     Packet p;
     while (xQueueReceive(g_packets, &p, pdMS_TO_TICKS(20)) == pdTRUE) {
-      g_parser.feed_packet(p.data, p.len);
+      g_sink.set_clock_source_tag(neon::MidiClockPll::Transport::kBle);
+      g_parser.feed_packet(p.data, p.len, p.rx_us);
     }
 
     uint8_t wire[32];
     const int n = halesp::midi_uart_read(wire, sizeof(wire));
-    for (int i = 0; i < n; ++i) {
-      g_serial.feed(wire[i]);
+    if (n > 0) {
+      // Per-byte arrival estimate: drain time minus the 320 µs each
+      // still-queued byte spent behind this one on the 31250-baud wire
+      // (docs/SPIKE_MIDI_PLL.md §6.1).
+      const int64_t t_drain = esp_timer_get_time();
+      g_sink.set_clock_source_tag(neon::MidiClockPll::Transport::kDin);
+      for (int i = 0; i < n; ++i) {
+        g_serial.feed(wire[i],
+                      t_drain - static_cast<int64_t>(n - 1 - i) * 320);
+      }
     }
 
 #if !CONFIG_NEON_LINKSYNC

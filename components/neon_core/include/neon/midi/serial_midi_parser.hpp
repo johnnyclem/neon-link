@@ -22,8 +22,9 @@ class SerialMidiParser {
  public:
   explicit SerialMidiParser(IMidiSink* sink) : sink_(sink) {}
 
-  // Feed one wire byte.
-  void feed(uint8_t byte);
+  // Feed one wire byte with its arrival time (drain time minus the
+  // 320 µs/byte the FIFO already held, at the caller's discretion).
+  void feed(uint8_t byte, int64_t t_us);
 
  private:
   static int data_bytes_for(uint8_t status);

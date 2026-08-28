@@ -14,6 +14,25 @@ path currently carries a timestamp**, and a PLL cannot lock to events that
 have no arrival time. Fix the plumbing, port the `SampleClock` servo to the
 beat domain, and the rest is tuning.
 **Date:** 2026-08-27
+**Implementation status (2026-08-27):** phase 1 and the DIN/BLE plumbing have
+landed. `neon::MidiClockPll` (`components/neon_core/include/neon/midi/clock_pll.hpp`)
+implements the two-loop servo as a per-tick PI pair (the integral folded in
+per tick so tempo ramps track with constant lag), seeded/reseeded by a
+least-squares slope over the last nine tick timestamps — a period median,
+as first sketched in §5.2, is poisoned by BLE burst arrivals.
+`neon::midi::SyncFollower` (`sync_follower.hpp`) wraps it with the publish
+hysteresis and rate limiting of §5.4. Timestamps flow per §6.1: parsers
+take arrival times (`IMidiSink::on_realtime(status, t_us)`), the UART drain
+back-dates by 320 µs/byte, BLE stamps at the NimBLE callback (in-packet
+13-bit timestamps still undecoded — §8.5 stands), and the router's
+`midi_clock_byte`/`midi_song_position` tap feeds a queue the Link service
+arbitrates under `clock_source` (new `kMidiMaster`; `kAuto` order is
+CLK IN > MIDI > session). Host tests: `test_midi_clock_pll.cpp`,
+`test_midi_sync_follower.cpp`. Still open: the §9.3 bench acceptance run,
+BLE timestamp decoding, the editor UI for the new clock source, and the
+Teensy/Daisy internal-timeline publish path — the near-term chores are
+handed off in `MIDI_PLL_FOLLOWUPS_HANDOFF.md` and the remaining phases in
+`MIDI_PLL_PHASES_HANDOFF.md`.
 
 ---
 

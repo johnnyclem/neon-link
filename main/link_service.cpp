@@ -14,6 +14,7 @@
 #include "halesp/tempo_cv_ledc.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
+#include "neon/midi/sync_follower.hpp"
 #include "neon/tempo_cv.hpp"
 #include "neon/transport.hpp"
 
@@ -133,6 +134,7 @@ void link_service_task(void*) {
   if (!halesp::clkin_capture_init(kPinClkIn, kPinRstIn)) {
     ESP_LOGW(kTag, "CLK/RST IN capture init failed");
   }
+  neon::midi::SyncFollower midi_follow;
   bool ext_active = false;
 
   neon::TimelineSnapshot prev{};
@@ -239,14 +241,35 @@ void link_service_task(void*) {
     }
     ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
     const neon::ClockSource source = neon_config().clock_source;
+    const int64_t now_arb = esp_timer_get_time();
+
+    // Arbitration (docs/SPIKE_MIDI_PLL.md §5.4): CLK IN outranks MIDI
+    // clock under kAuto; each master mode pins its own source; the
+    // session is the fallback.
     const bool follow_external =
-        source != neon::ClockSource::kLinkMaster &&
-        ext_clock.active(esp_timer_get_time());
-    if (follow_external != ext_active) {
+        (source == neon::ClockSource::kAuto ||
+         source == neon::ClockSource::kExternalMaster) &&
+        ext_clock.active(now_arb);
+
+    neon::midi::SyncEvent mev;
+    while (midi_sync_queue_pop(&mev)) {
+      midi_follow.on_event(mev);
+    }
+    const bool midi_allowed =
+        (source == neon::ClockSource::kAuto ||
+         source == neon::ClockSource::kMidiMaster) &&
+        !follow_external;
+    const neon::midi::SyncFollower::Actions midi_act =
+        midi_follow.poll(now_arb, midi_allowed);
+
+    const bool any_external = follow_external || midi_act.following;
+    if (any_external != ext_active) {
       ESP_LOGI(kTag, "external clock %s",
-               follow_external ? "active: following CLK IN" : "lost");
-      ext_active = follow_external;
-      app_status_set_ext_clock(follow_external);
+               !any_external          ? "lost"
+               : follow_external      ? "active: following CLK IN"
+                                      : "active: following MIDI clock");
+      ext_active = any_external;
+      app_status_set_ext_clock(any_external);
     }
     if (follow_external) {
       uint32_t mbpm = 0;
@@ -267,6 +290,22 @@ void link_service_task(void*) {
       int64_t scratch_p = 0;
       ext_clock.take_tempo_update(&scratch_t);
       ext_clock.take_phase_request(&scratch_p);
+    }
+    if (midi_act.set_tempo) {
+      ESP_LOGI(kTag, "MIDI tempo -> %u.%03u BPM",
+               static_cast<unsigned>(midi_act.tempo_mbpm / 1000),
+               static_cast<unsigned>(midi_act.tempo_mbpm % 1000));
+      session.set_tempo(static_cast<double>(midi_act.tempo_mbpm) / 1000.0);
+    }
+    if (midi_act.anchor_downbeat) {
+      ESP_LOGI(kTag, "MIDI start: anchoring downbeat");
+      session.request_beat_at_time(midi_act.downbeat_us);
+    }
+    if (midi_act.set_playing) {
+      ESP_LOGI(kTag, "MIDI transport -> %s",
+               midi_act.playing ? "play" : "stop");
+      session.set_playing(midi_act.playing);
+      local_playing = midi_act.playing;
     }
 
     const neon::ActiveNet net = netman::preference().active();

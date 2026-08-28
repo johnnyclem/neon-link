@@ -66,6 +66,8 @@ const char* source_str(ClockSource s) {
       return "link";
     case ClockSource::kExternalMaster:
       return "external";
+    case ClockSource::kMidiMaster:
+      return "midi";
     default:
       return "auto";
   }
@@ -488,6 +490,8 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     cfg->clock_source = ClockSource::kLinkMaster;
   } else if (str_eq(src, "external")) {
     cfg->clock_source = ClockSource::kExternalMaster;
+  } else if (str_eq(src, "midi")) {
+    cfg->clock_source = ClockSource::kMidiMaster;
   }
   get_u32(root, "clock_in_ppqn", &cfg->clock_in_ppqn);
   get_u32(root, "tempo_milli_bpm", &cfg->tempo_milli_bpm);

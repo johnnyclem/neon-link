@@ -14,12 +14,16 @@ struct Recorder final : neon::IMidiSink {
   void on_message(const neon::MidiMessage& m) override {
     messages.push_back(m);
   }
-  void on_realtime(uint8_t status) override { realtime.push_back(status); }
+  std::vector<int64_t> realtime_t;
+  void on_realtime(uint8_t status, int64_t t_us) override {
+    realtime.push_back(status);
+    realtime_t.push_back(t_us);
+  }
 };
 
 void feed(neon::SerialMidiParser& p, std::initializer_list<uint8_t> bytes) {
   for (uint8_t b : bytes) {
-    p.feed(b);
+    p.feed(b, 0);
   }
 }
 
@@ -133,4 +137,18 @@ TEST_CASE("serial midi: a status byte aborts a half-assembled message") {
   REQUIRE(rec.messages.size() == 1);
   CHECK(rec.messages[0].status == 0xb0);
   CHECK(rec.messages[0].data1 == 7);
+}
+
+TEST_CASE("serial midi: realtime bytes carry their per-byte timestamps") {
+  Recorder rec;
+  neon::SerialMidiParser p(&rec);
+  p.feed(0xf8, 100);
+  p.feed(0x90, 200);  // realtime timing must survive mid-message bytes
+  p.feed(0xf8, 300);
+  p.feed(60, 400);
+  p.feed(100, 500);
+  REQUIRE(rec.realtime.size() == 2);
+  CHECK(rec.realtime_t[0] == 100);
+  CHECK(rec.realtime_t[1] == 300);
+  REQUIRE(rec.messages.size() == 1);
 }

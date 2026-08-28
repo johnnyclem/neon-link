@@ -166,7 +166,7 @@ void drain_rx(USART_TypeDef* regs, int64_t now_us) {
     if (b == neon::midi::kClock) {
       push_clock(now_us);
     }
-    g_parser.feed(b);
+    g_parser.feed(b, now_us);
   }
 }
 

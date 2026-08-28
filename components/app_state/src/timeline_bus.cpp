@@ -19,6 +19,11 @@ QueueHandle_t control_queue() {
   static QueueHandle_t q = xQueueCreate(16, sizeof(ControlCommand));
   return q;
 }
+
+QueueHandle_t midi_sync_queue() {
+  static QueueHandle_t q = xQueueCreate(64, sizeof(neon::midi::SyncEvent));
+  return q;
+}
 }  // namespace
 
 neon::SeqLock<neon::TimelineSnapshot>& timeline_bus() {
@@ -57,6 +62,14 @@ bool control_queue_push(const ControlCommand& cmd) {
 
 bool control_queue_pop(ControlCommand* cmd) {
   return xQueueReceive(control_queue(), cmd, 0) == pdTRUE;
+}
+
+bool midi_sync_queue_push(const neon::midi::SyncEvent& ev) {
+  return xQueueSend(midi_sync_queue(), &ev, 0) == pdTRUE;
+}
+
+bool midi_sync_queue_pop(neon::midi::SyncEvent* ev) {
+  return xQueueReceive(midi_sync_queue(), ev, 0) == pdTRUE;
 }
 
 void app_status_set_transport(bool playing) {
