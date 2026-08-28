@@ -3,6 +3,7 @@
 // pulse engine whenever the session state materially changes.
 
 #include <cstddef>
+#include <cstdio>
 
 #include "ablink/session.hpp"
 #include "esp_log.h"
@@ -15,6 +16,8 @@
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/midi/sync_follower.hpp"
+#include "neon/telemetry/emitter.hpp"
+#include "neon/telemetry/midi_pll_csv.hpp"
 #include "neon/tempo_cv.hpp"
 #include "neon/transport.hpp"
 
@@ -136,6 +139,13 @@ void link_service_task(void*) {
   }
   neon::midi::SyncFollower midi_follow;
   bool ext_active = false;
+  // Per-tick PLL telemetry (docs/MIDI_PLL_PHASES_HANDOFF.md Phase E),
+  // behind the same debug.telemetry_uart_csv flag as the 1 Hz TEL stream
+  // but tagged "PLL," so both can share the console UART. ticks_per_line
+  // 1: the whole point is one row per 0xF8 (~48 rows/s at 120 BPM —
+  // a few KB/s, well inside the console baud).
+  neon::TelemetryTicker pll_ticker(/*ticks_per_line=*/1);
+  bool midi_following = false;
 
   neon::TimelineSnapshot prev{};
   bool have_prev = false;
@@ -254,6 +264,24 @@ void link_service_task(void*) {
     neon::midi::SyncEvent mev;
     while (midi_sync_queue_pop(&mev)) {
       midi_follow.on_event(mev);
+      if (mev.kind == neon::midi::SyncEvent::Kind::kTick) {
+        const neon::TelemetryTick tt =
+            pll_ticker.tick(neon_config().telemetry_uart_csv != 0);
+        char buf[128];
+        if (tt.want_header &&
+            neon::midi_pll_telemetry_csv_header(buf, sizeof(buf)) != 0) {
+          printf("PLL,%s\n", buf);
+        }
+        if (tt.want_line) {
+          // `following` is last poll's verdict — at most 10 ms stale,
+          // fine for a yes/no analysis column.
+          const neon::MidiPllTelemetrySample s = neon::midi_pll_telemetry_sample(
+              midi_follow.pll(), mev.t_us, midi_following);
+          if (neon::midi_pll_telemetry_csv_line(s, buf, sizeof(buf)) != 0) {
+            printf("PLL,%s\n", buf);
+          }
+        }
+      }
     }
     const bool midi_allowed =
         (source == neon::ClockSource::kAuto ||
@@ -261,6 +289,7 @@ void link_service_task(void*) {
         !follow_external;
     const neon::midi::SyncFollower::Actions midi_act =
         midi_follow.poll(now_arb, midi_allowed);
+    midi_following = midi_act.following;
 
     const bool any_external = follow_external || midi_act.following;
     if (any_external != ext_active) {
