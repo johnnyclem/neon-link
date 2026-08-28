@@ -120,10 +120,14 @@ extern "C" void app_main(void) {
       cfg.ble_enabled = 0;
       dirty = true;
     }
+#if !CONFIG_NEON_AUDIO
+    // No audio engine in this build — a stale enabled bit from an image
+    // that had one would leave the editor claiming audio that never runs.
     if (cfg.audio.enabled != 0) {
       cfg.audio.enabled = 0;
       dirty = true;
     }
+#endif
     if (cfg.telemetry_uart_csv == 0) {
       cfg.telemetry_uart_csv = 1;
       dirty = true;

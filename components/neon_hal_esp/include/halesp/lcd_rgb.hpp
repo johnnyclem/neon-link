@@ -27,6 +27,16 @@ void lcd_rgb_backlight(uint8_t duty);
 // Draw a full-screen RGB565 buffer (native panel endian, already swapped).
 bool lcd_rgb_blit(const uint16_t* rgb565, int x, int y, int w, int h);
 
+// Double-buffered scanout (RGB panel only). next_frame() hands out the
+// back buffer to compose the next full frame into; present() queues the
+// flip and blocks until the frame that was in flight has fully left the
+// panel, so the buffer the following next_frame() returns is no longer
+// being scanned. nullptr / false where the panel has no internal double
+// buffer (Tab5 DSI) — callers fall back to an own buffer + lcd_rgb_blit,
+// which copies into scanout mid-refresh and can tear.
+uint16_t* lcd_rgb_next_frame();
+bool lcd_rgb_present();
+
 // Capacitive panel. Tab5: ST7123 @ 0x55 (GT911 fallback).
 // CrowPanel Advance 5.0": GT911 on I2C 45/46, RST 36, INT 42.
 bool lcd_touch_init();

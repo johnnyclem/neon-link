@@ -11,10 +11,11 @@ tick. SoftAP is the provision path (no on-chip BLE).
 |---|---|
 | SoC | ESP32-P4NRW32 **rev v1.3**, 16 MB flash, 32 MB HEX PSRAM |
 | Radio | ESP32-C6 over SDIO (ESP-Hosted 1.4) |
-| Panel | 800×480 RGB565, ~25 MHz PCLK |
+| Panel | 800×480 RGB565, ~25 MHz PCLK, double-buffered scanout |
 | Console | CH343 on the UART USB-C (`/dev/cu.wchusbserial*`) |
 | Touch | GT911 on I2C 45/46, RST GPIO 36, INT GPIO 42 |
 | Backlight | STC8H1K28 @ `0x2F` PWM |
+| Speakers | 2×3 W on dual NS4168 I2S amps — LRCK 21, BCLK 22, SDOUT 23 |
 
 C6 SDIO is **not** the Waveshare Function-EV map:
 
@@ -64,7 +65,12 @@ Does not overwrite the S3 / e-paper `sdkconfig`.
 
 The **800×480 panel** is the Tab5 neon face in landscape: near-black
 void, cyan tubes, hot-pink **STOP**. No encoders — drive it from the
-glass.
+glass. Controls sit in a left column (hero BPM, − / +, transport); the
+right side is the **beat stage** — big, bright, and in motion while the
+transport runs, dim and still while it is stopped, so run-state reads at
+a glance without parsing the button text. **SYSTEM > BEAT DISP / BEAT
+STYLE** pick the animation (giant number / pie / pendulum / pulse), same
+as the OLED's full-screen beat page.
 
 | Hit | Action |
 |-----|--------|
@@ -72,6 +78,16 @@ glass.
 | **−** / **+** | nudge ±1 BPM (hold to repeat) |
 | **RUN** / **STOP** | transport toggle |
 | Gear (top right) | settings — same sections as the web editor |
+
+## Speakers — metronome click
+
+The panel's two 3 W speakers hang off dual NS4168 I2S amps (LRCK 21,
+BCLK 22, SDOUT 23 — no MCLK, no codec registers). The build carries the
+audio engine; the click is opt-in from the glass or the web editor:
+**AUDIO > AUDIO ON**, then **METRONOME ON**. CLICK sets the level, SOUND
+picks the voice, and the click follows the transport — speakers tick only
+while the panel shows a running clock. I2S stays down (G6) until the
+engine is enabled, so a silent unit costs nothing.
 
 Settings tabs match the web UI: **OUTPUTS**, **NETWORK**, **MIDI**,
 **AUDIO**, **SYSTEM**. Tap a row to cycle/toggle; **−** / **+** on a

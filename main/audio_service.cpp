@@ -140,10 +140,17 @@ neon::ClickConfig click_config(const neon::AudioEngineConfig& cfg) {
   c.sound = cfg.metro_sound;
   c.gain = cfg.metro_gain;
   c.accent = cfg.metro_accent != 0;
+#if CONFIG_NEON_LINKSYNC
+  // The glass RUN/STOP is the transport on these units and the speakers
+  // are the output; a metronome that keeps ticking while the panel shows
+  // stopped reads as a bug.
+  c.follow_transport = true;
+#else
   // The unit often shows STOP while Live is playing (start/stop sync).
   // Gating the click on transport left LINE OUT silent for every mix
   // that depended on the metronome. Tick the Link beat grid instead.
   c.follow_transport = false;
+#endif
   return c;
 }
 
