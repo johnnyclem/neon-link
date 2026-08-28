@@ -18,12 +18,14 @@
 #include "neon/timeline.hpp"
 #include "neon/config/model.hpp"
 #include "neon/transport.hpp"
+#include "neon/ui/hero_font_gen.hpp"
 #include "neon/ui/menu_model.hpp"
 #include "neon/ui/theme_gen.hpp"
 #include "netman/net_manager.h"
 #include "provision.h"
 #include "wifi.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -111,6 +113,91 @@ void text_cx(uint16_t* fb, int cx, int y, const char* s, int scale,
   text(fb, cx - text_width(s, scale) / 2, y, s, scale, c);
 }
 
+// Draw at most max_w px of `s`. Device names, SSIDs and passwords are
+// user-sized; unclipped they ran into whatever was right of them.
+void text_clip(uint16_t* fb, int x, int y, const char* s, int scale,
+               uint16_t c, int max_w) {
+  if (s == nullptr || scale < 1) {
+    return;
+  }
+  char buf[64];
+  int n = max_w / (6 * scale);
+  if (n <= 0) {
+    return;
+  }
+  if (n > static_cast<int>(sizeof(buf)) - 1) {
+    n = sizeof(buf) - 1;
+  }
+  int i = 0;
+  for (; i < n && s[i] != '\0'; ++i) {
+    buf[i] = s[i];
+  }
+  buf[i] = '\0';
+  text(fb, x, y, buf, scale, c);
+}
+
+// ---- hero numerals (design/fonts/hero.json seven-segment) --------------
+// The BPM readout and the giant beat digit use these instead of scaled
+// 5×7 — at panel scale the body font reads as chunky blocks.
+
+const neon::ui::HeroGlyph* hero_glyph(char ch) {
+  for (const auto& g : neon::ui::kHeroGlyphs) {
+    if (g.ch == ch) {
+      return &g;
+    }
+  }
+  return nullptr;
+}
+
+int hero_width(const char* s, int cell) {
+  int w = 0;
+  for (const char* p = s; *p != '\0'; ++p) {
+    const auto* g = hero_glyph(*p);
+    if (g == nullptr) {
+      continue;
+    }
+    if (w != 0) {
+      w += neon::ui::kHeroTracking * cell;
+    }
+    w += g->width * cell;
+  }
+  return w;
+}
+
+void hero_text(uint16_t* fb, int x, int y, const char* s, int cell,
+               uint16_t c) {
+  int cx = x;
+  bool first = true;
+  for (const char* p = s; *p != '\0'; ++p) {
+    const auto* g = hero_glyph(*p);
+    if (g == nullptr) {
+      continue;
+    }
+    if (!first) {
+      cx += neon::ui::kHeroTracking * cell;
+    }
+    first = false;
+    for (int col = 0; col < g->width; ++col) {
+      const uint32_t bits = g->cols[col];
+      int row = 0;
+      while (row < neon::ui::kHeroHeight) {
+        if ((bits >> row) & 1u) {
+          int run = row + 1;
+          while (run < neon::ui::kHeroHeight && ((bits >> run) & 1u)) {
+            ++run;
+          }
+          fill(fb, cx + col * cell, y + row * cell, cell, (run - row) * cell,
+               c);
+          row = run;
+        } else {
+          ++row;
+        }
+      }
+    }
+    cx += g->width * cell;
+  }
+}
+
 void frame(uint16_t* fb, int x, int y, int w, int h, uint16_t c, int t) {
   fill(fb, x, y, w, t, c);
   fill(fb, x, y + h - t, w, t, c);
@@ -133,6 +220,8 @@ struct Snap {
   uint32_t in_beat = 0;  // 0..999 milli-beats inside the current beat
   uint32_t peers = 0;
   bool playing = false;
+  uint8_t big_beat = 1;
+  uint8_t beat_style = 0;
   bool provisioned = false;
   bool wifi_up = false;
   bool setup_ap = false;
@@ -166,6 +255,8 @@ Snap snapshot() {
   s.beat = neon::beat_number(s.phase, s.quantum);
   s.in_beat = s.phase % 1000u;
   s.playing = tl.playing != 0;
+  s.big_beat = cfg.big_beat_display;
+  s.beat_style = static_cast<uint8_t>(cfg.beat_style);
   s.peers = tl.num_peers;
   s.provisioned = neon_wifi_has_credentials();
   s.wifi_up = neon_wifi_sta_got_ip();
@@ -200,50 +291,6 @@ Snap snapshot() {
   return s;
 }
 
-void paint_footer(uint16_t* fb, const Snap& s, int foot_y, int pad) {
-  constexpr int kW = halesp::kLcdW;
-  constexpr int kH = halesp::kLcdH;
-  const int compact = (kH - foot_y) < 120;
-  const int y1 = foot_y + (compact ? 12 : 16);
-  const int y2 = foot_y + (compact ? 40 : 48);
-  fill(fb, 0, foot_y, kW, kH - foot_y, kSurface);
-  fill(fb, 0, foot_y, kW, 2, kNeonDim);
-  const neon::Config& cfg = neon_config();
-  if (s.show_ap) {
-    text(fb, pad, y1, "SETUP AP", 2, kNeon);
-    text(fb, pad, y2, s.ap_ssid[0] ? s.ap_ssid : "LINK-LCD", 3, kInk);
-    const char* pass = cfg.ap_pass;
-    const int pass_w = text_width(pass, 3);
-    text(fb, kW - pad - pass_w, y2, pass, 3, kInk);
-    text(fb, kW - pad - text_width("http://192.168.4.1", 2), y1,
-         "http://192.168.4.1", 2, kMuted);
-  } else if (!s.provisioned) {
-    text(fb, pad, foot_y + (compact ? 28 : 36), "NO WIFI", 3, kMuted);
-    text(fb, pad + text_width("NO WIFI  ", 3), foot_y + (compact ? 32 : 40),
-         "SoftAP did not start", 2, kMuted);
-  } else {
-    const char* net = s.wifi_up ? neon_wifi_current_ssid() : "CONNECTING";
-    text(fb, pad, y1, s.wifi_up ? "STA" : "NET", 2, kNeon);
-    text(fb, pad, y2, net[0] ? net : "-", 3, kInk);
-    text(fb, kW - pad - text_width("MIDI CLOCK  24 PPQN", 2), y2,
-         "MIDI CLOCK  24 PPQN", 2, kMuted);
-  }
-}
-
-void paint_header(uint16_t* fb, const Snap& s, int accent_h, int pad,
-                  int right_reserve) {
-  constexpr int kW = halesp::kLcdW;
-  fill(fb, 0, 0, kW, accent_h, s.playing ? kNeon : kNeonDim);
-  text(fb, pad, 18 + accent_h, s.name, 3, kInk);
-  char peers[24];
-  std::snprintf(peers, sizeof(peers), "%u", static_cast<unsigned>(s.peers));
-  const int peers_w = text_width(peers, 3);
-  const int right = kW - pad - right_reserve;
-  text(fb, right - peers_w, 18 + accent_h, peers, 3, kNeon);
-  text(fb, right - peers_w - text_width("PEERS ", 2) - 8, 24 + accent_h,
-       "PEERS", 2, kMuted);
-}
-
 enum class Hit : uint8_t {
   kNone,
   kMinus,
@@ -267,35 +314,43 @@ struct Touch {
 };
 
 #if CONFIG_NEON_BOARD_LINKSYNC_TAB5
-// 720×1280 portrait — fat hit targets, hero BPM, phase strip.
+// 720×1280 portrait — fat hit targets, hero BPM, beat stage, phase strip.
 namespace lay {
 constexpr int kW = halesp::kLcdW;
 constexpr int kH = halesp::kLcdH;
 constexpr int kPad = 32;
-constexpr int kTapX = 48;
-constexpr int kTapY = 96;
-constexpr int kTapW = kW - 96;
-constexpr int kTapH = 220;
-constexpr int kBtnW = 228;
-constexpr int kBtnH = 156;
+constexpr int kHeadH = 64;
+constexpr int kTapX = kPad;
+constexpr int kTapY = 80;
+constexpr int kTapW = kW - 2 * kPad;
+constexpr int kTapH = 232;
+constexpr int kBtnW = 280;
+constexpr int kBtnH = 150;
 constexpr int kMinusX = kPad;
-constexpr int kMinusY = 340;
+constexpr int kMinusY = 332;
 constexpr int kPlusX = kW - kPad - kBtnW;
 constexpr int kPlusY = kMinusY;
 constexpr int kTrX = kPad;
-constexpr int kTrY = 524;
+constexpr int kTrY = 502;
 constexpr int kTrW = kW - 2 * kPad;
-constexpr int kTrH = 188;
-constexpr int kBarY = 740;
-constexpr int kBarH = 22;
-constexpr int kFootH = 140;
-constexpr int kBpmScale = 18;
+constexpr int kTrH = 170;
+constexpr int kStageX = kPad;
+constexpr int kStageY = 692;
+constexpr int kStageW = kW - 2 * kPad;
+constexpr int kStageH = 440;
+constexpr int kBarY = 1148;
+constexpr int kBarH = 18;
+constexpr int kFootY = 1180;
+constexpr int kFootLine1 = 1188;
+constexpr int kFootLine2 = 1224;
+constexpr int kFootScale = 3;
+constexpr int kBpmCell = 6;
 constexpr int kTapLabelScale = 3;
 constexpr int kTrScale = 8;
-constexpr int kBtnScale = 10;
+constexpr int kBtnScale = 8;
 constexpr int kGearS = 56;
 constexpr int kGearX = kW - kPad - kGearS;
-constexpr int kGearY = 18;
+constexpr int kGearY = 4;
 constexpr int kSetHeadH = 64;
 constexpr int kSetTabH = 64;
 constexpr int kSetRowH = 80;
@@ -303,35 +358,44 @@ constexpr int kSetCloseW = 80;
 constexpr int kSetNudgeW = 80;
 }  // namespace lay
 #else
-// CrowPanel 800×480 landscape — same tubes, same hits, no encoder.
+// CrowPanel 800×480 landscape. Controls in a left column, the beat stage
+// on the right, one status band at the bottom — nothing shares pixels.
 namespace lay {
 constexpr int kW = halesp::kLcdW;
 constexpr int kH = halesp::kLcdH;
 constexpr int kPad = 24;
+constexpr int kHeadH = 48;
 constexpr int kTapX = kPad;
-constexpr int kTapY = 52;
-constexpr int kTapW = kW - 2 * kPad;
-constexpr int kTapH = 120;
-constexpr int kBtnW = 240;
-constexpr int kBtnH = 100;
+constexpr int kTapY = 60;
+constexpr int kTapW = 484;
+constexpr int kTapH = 126;
+constexpr int kBtnW = 190;
+constexpr int kBtnH = 90;
 constexpr int kMinusX = kPad;
-constexpr int kMinusY = 180;
-constexpr int kPlusX = kW - kPad - kBtnW;
+constexpr int kMinusY = 204;
+constexpr int kPlusX = kTapX + kTapW - kBtnW;
 constexpr int kPlusY = kMinusY;
 constexpr int kTrX = kPad;
-constexpr int kTrY = 292;
-constexpr int kTrW = kW - 2 * kPad;
-constexpr int kTrH = 80;
-constexpr int kBarY = 384;
-constexpr int kBarH = 16;
-constexpr int kFootH = 80;
-constexpr int kBpmScale = 12;
+constexpr int kTrY = 312;
+constexpr int kTrW = kTapW;
+constexpr int kTrH = 90;
+constexpr int kStageX = 528;
+constexpr int kStageY = 60;
+constexpr int kStageW = kW - kPad - kStageX;
+constexpr int kStageH = 342;
+constexpr int kBarY = 412;
+constexpr int kBarH = 12;
+constexpr int kFootY = 432;
+constexpr int kFootLine1 = 436;
+constexpr int kFootLine2 = 458;
+constexpr int kFootScale = 2;
+constexpr int kBpmCell = 4;
 constexpr int kTapLabelScale = 2;
 constexpr int kTrScale = 6;
-constexpr int kBtnScale = 8;
-constexpr int kGearS = 44;
+constexpr int kBtnScale = 6;
+constexpr int kGearS = 40;
 constexpr int kGearX = kW - kPad - kGearS;
-constexpr int kGearY = 8;
+constexpr int kGearY = 4;
 constexpr int kSetHeadH = 44;
 constexpr int kSetTabH = 48;
 constexpr int kSetRowH = 52;
@@ -555,17 +619,334 @@ void paint_gear(uint16_t* fb, int x, int y, int scale, uint16_t c) {
   }
 }
 
+void paint_header(uint16_t* fb, const Snap& s) {
+  constexpr int kW = lay::kW;
+  constexpr int kPad = lay::kPad;
+  // Fixed 4 px rail: the beat stage carries the motion now, so the header
+  // stops pulsing (the growing rail used to push the name into the BPM
+  // plate on beat 1).
+  fill(fb, 0, 0, kW, 4, s.playing ? kNeon : kNeonDim);
+  const int ty = (lay::kHeadH - 14) / 2 + 4;
+  char peers[24];
+  std::snprintf(peers, sizeof(peers), "%u", static_cast<unsigned>(s.peers));
+  const int peers_w = text_width(peers, 3);
+  const int right = lay::kGearX - 16;
+  text(fb, right - peers_w, ty - 4, peers, 3, kNeon);
+  const int label_x = right - peers_w - text_width("PEERS", 2) - 10;
+  text(fb, label_x, ty, "PEERS", 2, kMuted);
+  text_clip(fb, kPad, ty, s.name, 2, kInk, label_x - kPad - 12);
+}
+
+void paint_footer(uint16_t* fb, const Snap& s) {
+  constexpr int kW = lay::kW;
+  constexpr int kPad = lay::kPad;
+  const int sc = lay::kFootScale;
+  const int y1 = lay::kFootLine1;
+  const int y2 = lay::kFootLine2;
+  const neon::Config& cfg = neon_config();
+  const int half = kW / 2;
+  if (s.show_ap) {
+    const char* url = "192.168.4.1";
+    const int url_w = text_width(url, sc);
+    text(fb, kPad, y1, "SETUP AP", sc, kNeon);
+    text_clip(fb, kPad + text_width("SETUP AP  ", sc), y1,
+              s.ap_ssid[0] ? s.ap_ssid : "LINK-LCD", sc, kInk,
+              kW - 2 * kPad - text_width("SETUP AP  ", sc) - url_w - 16);
+    text(fb, kW - kPad - url_w, y1, url, sc, kMuted);
+    text(fb, kPad, y2, "PASS", sc, kMuted);
+    text_clip(fb, kPad + text_width("PASS  ", sc), y2, cfg.ap_pass, sc, kInk,
+              kW - 2 * kPad - text_width("PASS  ", sc));
+  } else if (!s.provisioned) {
+    text(fb, kPad, y1, "NO WIFI", sc, kNeon);
+    text(fb, kPad, y2, "SoftAP did not start", sc, kMuted);
+  } else {
+    const char* net = s.wifi_up ? (s.wifi_ssid[0] ? s.wifi_ssid : "-")
+                                : "CONNECTING";
+    const char* midi = "MIDI CLOCK 24 PPQN";
+    const int midi_w = text_width(midi, sc);
+    text(fb, kPad, y1, s.wifi_up ? "STA" : "NET", sc, kNeon);
+    text_clip(fb, kPad + text_width("STA  ", sc), y1, net, sc, kInk,
+              kW - kPad - midi_w - 16 - (kPad + text_width("STA  ", sc)));
+    text(fb, kW - kPad - midi_w, y1, midi, sc, kMuted);
+    text(fb, kPad, y2, "IP", sc, kMuted);
+    text(fb, kPad + text_width("IP  ", sc), y2, s.ip[0] ? s.ip : "-", sc,
+         kInk);
+    text_clip(fb, half + 24, y2, s.firmware, sc, kMuted, kW - kPad - half - 24);
+  }
+}
+
+// ---- beat stage ---------------------------------------------------------
+// The "is it running" panel: bright, big, and in motion while the
+// transport runs; dim and still while it is stopped. Honors SYSTEM >
+// BEAT DISP / BEAT STYLE like the OLED's full-screen beat page.
+
+void stage_dots(uint16_t* fb, int cx, int y, uint32_t q, uint32_t beat,
+                bool playing) {
+  if (q < 2 || q > 12) {
+    return;
+  }
+  constexpr int kSize = 10;
+  constexpr int kGap = 12;
+  const int total =
+      static_cast<int>(q) * kSize + (static_cast<int>(q) - 1) * kGap;
+  int x = cx - total / 2;
+  for (uint32_t i = 1; i <= q; ++i) {
+    uint16_t c = kSurface2;
+    if (playing && i == beat) {
+      c = beat == 1 ? kHot : kNeon;
+    } else if (playing && i < beat) {
+      c = kNeonDim;
+    }
+    fill(fb, x, y, kSize, kSize, c);
+    x += kSize + kGap;
+  }
+}
+
+// Ink bounds of a hero string in cell units, so a seven-segment "1"
+// (ink only in the right columns) centers on what is drawn, not on the
+// glyph box.
+void hero_ink_bounds(const char* s, int* lo, int* hi) {
+  *lo = 0;
+  *hi = 0;
+  int at = 0;
+  int min_c = 1 << 20;
+  int max_c = -1;
+  bool first = true;
+  for (const char* p = s; *p != '\0'; ++p) {
+    const auto* g = hero_glyph(*p);
+    if (g == nullptr) {
+      continue;
+    }
+    if (!first) {
+      at += neon::ui::kHeroTracking;
+    }
+    first = false;
+    for (int col = 0; col < g->width; ++col) {
+      if (g->cols[col] != 0) {
+        if (at + col < min_c) {
+          min_c = at + col;
+        }
+        if (at + col > max_c) {
+          max_c = at + col;
+        }
+      }
+    }
+    at += g->width;
+  }
+  if (max_c >= 0) {
+    *lo = min_c;
+    *hi = max_c + 1;
+  }
+}
+
+void stage_number(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
+                  int ah) {
+  char d[8];
+  std::snprintf(d, sizeof(d), "%u", static_cast<unsigned>(s.beat));
+  int ink_lo = 0;
+  int ink_hi = 0;
+  hero_ink_bounds(d, &ink_lo, &ink_hi);
+  const int ink_w = ink_hi - ink_lo;
+  int cell = ah / neon::ui::kHeroHeight;
+  if (ink_w > 0 && cell * ink_w > iw) {
+    cell = iw / ink_w;
+  }
+  if (cell < 1) {
+    cell = 1;
+  }
+  const bool flash = s.in_beat < 140;
+  if (flash) {
+    fill(fb, ix, iy, iw, ah, kSurface);
+  }
+  const int x = ix + (iw - ink_w * cell) / 2 - ink_lo * cell;
+  const int y = iy + (ah - neon::ui::kHeroHeight * cell) / 2;
+  hero_text(fb, x, y, d, cell, s.beat == 1 ? kHot : kNeon);
+}
+
+void stage_pie(uint16_t* fb, const Snap& s, int ix, int iy, int iw, int ah) {
+  const int cx = ix + iw / 2;
+  const int cy = iy + ah / 2;
+  int r = (iw < ah ? iw : ah) / 2 - 4;
+  if (r < 12) {
+    return;
+  }
+  const uint32_t q = s.quantum != 0 ? s.quantum : 4;
+  const float frac = (static_cast<float>(s.beat - 1) +
+                      static_cast<float>(s.in_beat) / 1000.0f) /
+                     static_cast<float>(q);
+  const float th = frac * 6.2831853f;
+  // Sector test with integer cross products (12 o'clock, clockwise) —
+  // atan2 per pixel would eat the frame budget at this radius.
+  const int ex = static_cast<int>(std::sin(th) * 256.0f);
+  const int ey = static_cast<int>(-std::cos(th) * 256.0f);
+  const bool wide = frac > 0.5f;
+  const int r2 = r * r;
+  const int ri2 = (r - 3) * (r - 3);
+  for (int py = -r; py <= r; ++py) {
+    uint16_t* row = fb + (cy + py) * halesp::kLcdW + cx;
+    for (int px = -r; px <= r; ++px) {
+      const int d2 = px * px + py * py;
+      if (d2 > r2) {
+        continue;
+      }
+      if (d2 >= ri2) {
+        row[px] = kNeonDim;
+        continue;
+      }
+      const int ce = px * ey - py * ex;
+      const bool in = wide ? !((ex * py - ey * px) >= 0 && px <= 0)
+                           : (px >= 0 && ce >= 0);
+      if (in) {
+        row[px] = kNeon;
+      }
+    }
+  }
+  fill(fb, cx - 4, cy - 4, 8, 8, kInk);
+}
+
+void stage_pendulum(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
+                    int ah) {
+  const int px0 = ix + iw / 2;
+  const int py0 = iy + 12;
+  // Rod length bounded by height AND by the swing staying inside the
+  // stage: sin(0.55) ≈ 0.523, plus the bob radius. The bob writes rows
+  // directly, so this is a hard bound, not a cosmetic one.
+  int len = ah - 44;
+  const int len_x = ((iw / 2 - 20) * 100) / 53;
+  if (len_x < len) {
+    len = len_x;
+  }
+  if (len < 24) {
+    return;
+  }
+  // Cosine swing, one tick per beat, like the OLED pendulum. `phase` is
+  // continuous milli-beats so the bob is in motion every frame.
+  const float beats = static_cast<float>(s.phase) / 1000.0f;
+  const float theta = -0.55f * std::cos(3.14159265f * beats);
+  const int bx =
+      px0 + static_cast<int>(std::sin(theta) * static_cast<float>(len));
+  const int by =
+      py0 + static_cast<int>(std::cos(theta) * static_cast<float>(len));
+  // Swing extremes so the eye has rails to track against.
+  const int tx = static_cast<int>(std::sin(0.55f) * static_cast<float>(len));
+  const int ty = py0 + static_cast<int>(std::cos(0.55f) *
+                                        static_cast<float>(len));
+  fill(fb, px0 - tx - 2, ty + 20, 4, 14, kBorder);
+  fill(fb, px0 + tx - 2, ty + 20, 4, 14, kBorder);
+  constexpr int kSteps = 26;
+  for (int i = 0; i <= kSteps; ++i) {
+    const int xi = px0 + ((bx - px0) * i) / kSteps;
+    const int yi = py0 + ((by - py0) * i) / kSteps;
+    fill(fb, xi - 3, yi - 3, 6, 6, kNeonDim);
+  }
+  fill(fb, px0 - 5, py0 - 5, 10, 10, kInk);
+  constexpr int kBob = 16;
+  const uint16_t bc = (s.beat == 1 && s.in_beat < 140) ? kHot : kNeon;
+  for (int dy = -kBob; dy <= kBob; ++dy) {
+    uint16_t* row = fb + (by + dy) * halesp::kLcdW + bx;
+    for (int dx = -kBob; dx <= kBob; ++dx) {
+      if (dx * dx + dy * dy <= kBob * kBob) {
+        row[dx] = bc;
+      }
+    }
+  }
+}
+
+void stage_pulse(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
+                 int ah) {
+  const int cx = ix + iw / 2;
+  const int cy = iy + ah / 2;
+  const int r_max = (iw < ah ? iw : ah) / 2 - 4;
+  if (r_max < 16) {
+    return;
+  }
+  const int r = 10 + static_cast<int>(
+                         (static_cast<uint32_t>(r_max - 10) * s.in_beat) /
+                         1000u);
+  const bool attack = s.in_beat < 220;
+  const int disc = s.beat == 1 ? 26 : 18;
+  const int disc2 = disc * disc;
+  const int outer_lo = (r_max - 3) * (r_max - 3);
+  const int outer_hi = r_max * r_max;
+  const int ring_lo = (r - 3) * (r - 3);
+  const int ring_hi = r * r;
+  const uint16_t disc_c = s.beat == 1 ? kHot : kNeon;
+  for (int py = -r_max; py <= r_max; ++py) {
+    uint16_t* row = fb + (cy + py) * halesp::kLcdW + cx;
+    for (int px = -r_max; px <= r_max; ++px) {
+      const int d2 = px * px + py * py;
+      if (d2 > outer_hi) {
+        continue;
+      }
+      if (attack && d2 <= disc2) {
+        row[px] = disc_c;
+      } else if (d2 >= outer_lo) {
+        row[px] = kBorder;
+      } else if (d2 >= ring_lo && d2 <= ring_hi) {
+        row[px] = kNeon;
+      }
+    }
+  }
+}
+
+void paint_stage(uint16_t* fb, const Snap& s) {
+  const int x = lay::kStageX;
+  const int y = lay::kStageY;
+  const int w = lay::kStageW;
+  const int h = lay::kStageH;
+  const bool flash = s.playing && s.in_beat < 140;
+  frame(fb, x, y, w, h, s.playing ? (flash ? kInk : kNeon) : kBorder, 3);
+  const int ix = x + 10;
+  const int iy = y + 10;
+  const int iw = w - 20;
+  const uint32_t q = s.quantum != 0 ? s.quantum : 4;
+  const int dots_y = y + h - 22;
+  stage_dots(fb, x + w / 2, dots_y, q, s.beat, s.playing);
+  const int ah = dots_y - 10 - iy;
+  if (ah < 40 || iw < 40) {
+    return;
+  }
+  if (!s.playing) {
+    // Parked: a dim dash, no motion. The running stage is bright and
+    // moving — the difference reads across the room.
+    const int cell_h = ah / neon::ui::kHeroHeight;
+    const int cell_w = iw / neon::ui::kHeroMaxWidth;
+    int cell = cell_h < cell_w ? cell_h : cell_w;
+    if (cell < 1) {
+      cell = 1;
+    }
+    const int gw = hero_width("-", cell);
+    hero_text(fb, ix + (iw - gw) / 2,
+              iy + (ah - neon::ui::kHeroHeight * cell) / 2, "-", cell,
+              kSurface2);
+    return;
+  }
+  if (s.big_beat == 0) {
+    return;  // dots + flashing frame only
+  }
+  switch (static_cast<neon::BeatStyle>(s.beat_style)) {
+    case neon::BeatStyle::kPie:
+      stage_pie(fb, s, ix, iy, iw, ah);
+      break;
+    case neon::BeatStyle::kPendulum:
+      stage_pendulum(fb, s, ix, iy, iw, ah);
+      break;
+    case neon::BeatStyle::kPulse:
+      stage_pulse(fb, s, ix, iy, iw, ah);
+      break;
+    default:
+      stage_number(fb, s, ix, iy, iw, ah);
+      break;
+  }
+}
+
 void paint_face(uint16_t* fb, const Snap& s, Touch pressed) {
   constexpr int kW = lay::kW;
   constexpr int kH = lay::kH;
   constexpr int kPad = lay::kPad;
   fill(fb, 0, 0, kW, kH, kBg);
 
-  int rail = 6;
-  if (s.playing && s.beat == 1 && s.in_beat < 180) {
-    rail = 6 + static_cast<int>((180 - s.in_beat) * 10 / 180);
-  }
-  paint_header(fb, s, rail, kPad, lay::kGearS + 12);
+  paint_header(fb, s);
 
   const int gear_scale = lay::kGearS >= 56 ? 6 : 5;
   const int gear_px = 7 * gear_scale;
@@ -579,45 +960,42 @@ void paint_face(uint16_t* fb, const Snap& s, Touch pressed) {
     paint_gear(fb, gx, gy, gear_scale, kInk);
   }
 
-  const int bpm_h = 7 * lay::kBpmScale;
-  const int bpm_w = text_width(s.bpm, lay::kBpmScale);
-  const int bpm_x = kW / 2 - bpm_w / 2;
-  const int label_h = 7 * lay::kTapLabelScale + 12;
-  const int bpm_y = lay::kTapY + (lay::kTapH - bpm_h - label_h) / 2;
-  const int plate_x = bpm_x - 16;
-  const int plate_y = bpm_y - 12;
-  const int plate_w = bpm_w + 32;
-  const int plate_h = bpm_h + 24;
-  fill(fb, plate_x, plate_y, plate_w, plate_h, kBg);
-  const int bpm_pulse =
-      s.playing ? 4 + static_cast<int>((255 - (s.in_beat * 255) / 1000) / 40)
-                : 3;
-  frame(fb, plate_x, plate_y, plate_w, plate_h, kNeon, bpm_pulse);
-  text(fb, bpm_x, bpm_y, s.bpm, lay::kBpmScale, kInk);
-  text_cx(fb, kW / 2, bpm_y + bpm_h + 10, "TAP  BPM", lay::kTapLabelScale,
-          kMuted);
+  // BPM hero (tap-tempo zone). Seven-segment numerals, not scaled 5×7.
+  const int bpm_w = hero_width(s.bpm, lay::kBpmCell);
+  const int bpm_h = neon::ui::kHeroHeight * lay::kBpmCell;
+  const int label_h = 7 * lay::kTapLabelScale;
+  const int bpm_x = lay::kTapX + (lay::kTapW - bpm_w) / 2;
+  const int bpm_y = lay::kTapY + (lay::kTapH - bpm_h - label_h - 8) / 2;
+  if (pressed.hit == Hit::kTap) {
+    frame(fb, lay::kTapX, lay::kTapY, lay::kTapW, lay::kTapH, kNeon, 2);
+  }
+  hero_text(fb, bpm_x, bpm_y, s.bpm, lay::kBpmCell, kInk);
+  text_cx(fb, lay::kTapX + lay::kTapW / 2, bpm_y + bpm_h + 8, "TAP TEMPO",
+          lay::kTapLabelScale, kMuted);
 
   paint_btn(fb, lay::kMinusX, lay::kMinusY, lay::kBtnW, lay::kBtnH, "-",
             lay::kBtnScale, pressed.hit == Hit::kMinus, false);
   paint_btn(fb, lay::kPlusX, lay::kPlusY, lay::kBtnW, lay::kBtnH, "+",
             lay::kBtnScale, pressed.hit == Hit::kPlus, false);
-  text_cx(fb, kW / 2, lay::kMinusY + (lay::kBtnH - 14) / 2, "TEMPO", 2,
-          kMuted);
+  text_cx(fb, lay::kTapX + lay::kTapW / 2,
+          lay::kMinusY + (lay::kBtnH - 14) / 2, "BPM", 2, kMuted);
 
   const bool tr_press = pressed.hit == Hit::kTransport;
+  const int tr_cx = lay::kTrX + lay::kTrW / 2;
   const int tr_ty = lay::kTrY + (lay::kTrH - 7 * lay::kTrScale) / 2;
   if (s.playing) {
     fill_cut(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH,
              tr_press ? kInk : kHot);
-    const int pulse = 4 + static_cast<int>((255 - (s.in_beat * 255) / 1000) / 40);
-    frame(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH, kInk, pulse);
-    text_cx(fb, kW / 2, tr_ty, "STOP", lay::kTrScale, kBg);
+    frame(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH, kInk, 4);
+    text_cx(fb, tr_cx, tr_ty, "STOP", lay::kTrScale, kBg);
   } else {
     fill_cut(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH,
              tr_press ? kInk : kNeon);
     frame(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH, kInk, 4);
-    text_cx(fb, kW / 2, tr_ty, "RUN", lay::kTrScale, kBg);
+    text_cx(fb, tr_cx, tr_ty, "RUN", lay::kTrScale, kBg);
   }
+
+  paint_stage(fb, s);
 
   const int bar_y = lay::kBarY;
   const int bar_w = kW - 2 * kPad;
@@ -649,7 +1027,7 @@ void paint_face(uint16_t* fb, const Snap& s, Touch pressed) {
     fill(fb, tx, bar_y - 4, 3, bar_h + 8, kBorder);
   }
 
-  paint_footer(fb, s, kH - lay::kFootH, kPad);
+  paint_footer(fb, s);
 }
 
 void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
@@ -1070,25 +1448,44 @@ void lcd_task(void*) {
   }
   g_cfg = neon_config();
   apply_backlight(g_cfg.display_brightness);
-  auto* fb = static_cast<uint16_t*>(heap_caps_malloc(
-      static_cast<size_t>(halesp::kLcdW) * halesp::kLcdH * sizeof(uint16_t),
-      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (fb == nullptr) {
-    ESP_LOGE(kTag, "no PSRAM for %dx%d framebuffer", halesp::kLcdW,
-             halesp::kLcdH);
-    vTaskDelete(nullptr);
-    return;
+  // Compose straight into the panel's back buffer where the HAL offers
+  // one (RGB path): no full-frame copy racing the scanout, and the flip
+  // lands on a frame boundary so large repaints (RUN↔STOP) cannot tear.
+  const bool dbuf = halesp::lcd_rgb_next_frame() != nullptr;
+  uint16_t* own_fb = nullptr;
+  if (!dbuf) {
+    own_fb = static_cast<uint16_t*>(heap_caps_malloc(
+        static_cast<size_t>(halesp::kLcdW) * halesp::kLcdH * sizeof(uint16_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (own_fb == nullptr) {
+      ESP_LOGE(kTag, "no PSRAM for %dx%d framebuffer", halesp::kLcdW,
+               halesp::kLcdH);
+      vTaskDelete(nullptr);
+      return;
+    }
   }
-  ESP_LOGI(kTag, "live panel %dx%d touch=%d", halesp::kLcdW, halesp::kLcdH,
-           halesp::lcd_touch_ok() ? 1 : 0);
+  ESP_LOGI(kTag, "live panel %dx%d touch=%d %s", halesp::kLcdW, halesp::kLcdH,
+           halesp::lcd_touch_ok() ? 1 : 0,
+           dbuf ? "double-buffered" : "blit");
   for (;;) {
     const Snap s = snapshot();
     const Touch pressed = poll_touch(s);
-    paint(fb, s, pressed);
-    if (!halesp::lcd_rgb_blit(fb, 0, 0, halesp::kLcdW, halesp::kLcdH)) {
-      ESP_LOGW(kTag, "blit failed");
+    if (dbuf) {
+      uint16_t* fb = halesp::lcd_rgb_next_frame();
+      paint(fb, s, pressed);
+      if (!halesp::lcd_rgb_present()) {
+        ESP_LOGW(kTag, "present failed");
+      }
+      // present() already blocked to the frame boundary (~60 Hz); one
+      // tick keeps touch responsive and lands the loop near 30 fps.
+      vTaskDelay(pdMS_TO_TICKS(15));
+    } else {
+      paint(own_fb, s, pressed);
+      if (!halesp::lcd_rgb_blit(own_fb, 0, 0, halesp::kLcdW, halesp::kLcdH)) {
+        ESP_LOGW(kTag, "blit failed");
+      }
+      vTaskDelay(pdMS_TO_TICKS(40));  // ~25 Hz
     }
-    vTaskDelay(pdMS_TO_TICKS(40));  // ~25 Hz
   }
 }
 

@@ -13,7 +13,23 @@ CONFIG_NEON_BOARD_LINKSYNC_P4LCD=y
 # CONFIG_NEON_BOARD_P4DEVKIT is not set
 # CONFIG_NEON_BOARD_LINKSYNC is not set
 # CONFIG_NEON_BOARD_LINKSYNC_EPD is not set
-# CONFIG_NEON_AUDIO is not set
+
+# Onboard 2×3 W speakers on dual NS4168 I2S amps: the optional metronome
+# click (Settings > AUDIO). No codec registers, no MCLK, output only.
+CONFIG_NEON_AUDIO=y
+# CONFIG_NEON_AUDIO_INPUT is not set
+CONFIG_NEON_I2S_MCLK=-1
+CONFIG_NEON_I2S_BCLK=22
+CONFIG_NEON_I2S_LRCLK=21
+CONFIG_NEON_I2S_DOUT=23
+CONFIG_NEON_I2S_DIN=-1
+
+# Keep the RGB scanout alive through flash writes (NVS commits): the
+# bounce-buffer refill must run from IRAM or the panel drops lines the
+# moment a config change hits flash — the start/stop-time glitches.
+CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
+CONFIG_GDMA_CTRL_FUNC_IN_IRAM=y
+CONFIG_GDMA_ISR_IRAM_SAFE=y
 
 # This CrowPanel is P4 rev v1.3. IDF 5.5 defaults to v3.1+ and will
 # refuse to flash (or brick) a v1.3 part unless this pair is set.

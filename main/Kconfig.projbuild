@@ -42,10 +42,11 @@ config NEON_LINKSYNC
     bool
     default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH
     help
-        Shared link-sync firmware path: Link + MIDI clock. No audio.
-        The XIAO uses a single LED; the e-Paper board uses the 5.79"
-        panel; the P4 LCD board paints the same status live; the C3
-        stamp uses the onboard 72×40 OLED.
+        Shared link-sync firmware path: Link + MIDI clock. The XIAO uses
+        a single LED; the e-Paper board uses the 5.79" panel; the P4 LCD
+        board paints the same status live (and can click its onboard
+        speakers when NEON_AUDIO is on); the C3 stamp uses the onboard
+        72×40 OLED.
 
 config NEON_AUDIO
     bool "Audio engine (I2S out, metronome, pulses as audio)"
@@ -82,6 +83,7 @@ menu "I2S pin map"
     depends on NEON_AUDIO
 
 comment "-1 disables a pin. AMYBOARD = PCM3060 LINE; P4DEVKIT = ES8311 jack."
+comment "LINKSYNC_P4LCD = dual NS4168 speaker amps (no MCLK, no input)."
 comment "Audio stays silent (and says so) until DOUT/BCLK/LRCLK are set."
 
 config NEON_I2S_MCLK
@@ -94,18 +96,21 @@ config NEON_I2S_BCLK
     int "BCLK (bit clock)"
     default 8 if NEON_BOARD_AMYBOARD
     default 12 if NEON_BOARD_P4DEVKIT
+    default 22 if NEON_BOARD_LINKSYNC_P4LCD
     default -1
 
 config NEON_I2S_LRCLK
     int "LRCLK / WS (word select)"
     default 2 if NEON_BOARD_AMYBOARD
     default 10 if NEON_BOARD_P4DEVKIT
+    default 21 if NEON_BOARD_LINKSYNC_P4LCD
     default -1
 
 config NEON_I2S_DOUT
     int "DOUT (ESP → DAC)"
     default 6 if NEON_BOARD_AMYBOARD
     default 9 if NEON_BOARD_P4DEVKIT
+    default 23 if NEON_BOARD_LINKSYNC_P4LCD
     default -1
 
 config NEON_I2S_DIN

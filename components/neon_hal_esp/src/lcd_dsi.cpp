@@ -268,6 +268,11 @@ bool lcd_rgb_blit(const uint16_t* rgb565, int x, int y, int w, int h) {
          ESP_OK;
 }
 
+// No double-buffered scanout on the DSI path yet; lcd_service falls back
+// to composing in its own buffer and blitting.
+uint16_t* lcd_rgb_next_frame() { return nullptr; }
+bool lcd_rgb_present() { return false; }
+
 bool lcd_touch_init() {
   if (g_touch != nullptr) {
     return true;

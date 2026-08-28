@@ -6,6 +6,7 @@
 
 #include "board_pins.h"
 #include "driver/gpio.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -15,6 +16,7 @@
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "halesp/i2c_bus.hpp"
 
@@ -22,6 +24,24 @@ namespace halesp {
 namespace {
 
 const char* kTag = "lcd_rgb";
+
+// Scanout double buffer. The UI composes into g_fbs[g_draw_fb] and
+// present() flips at a frame boundary — see lcd_rgb_present().
+uint16_t* g_fbs[2] = {nullptr, nullptr};
+int g_draw_fb = 0;
+SemaphoreHandle_t g_frame_done = nullptr;
+
+// on_frame_buf_complete: the frame in flight has been fully queued out
+// of its frame buffer, so the off-screen buffer is safe to draw into.
+// IRAM so a flash erase (NVS commit) cannot stall it — see
+// LCD_RGB_ISR_IRAM_SAFE.
+IRAM_ATTR bool on_frame_done(esp_lcd_panel_handle_t,
+                             const esp_lcd_rgb_panel_event_data_t*,
+                             void* user) {
+  BaseType_t woken = pdFALSE;
+  xSemaphoreGiveFromISR(static_cast<SemaphoreHandle_t>(user), &woken);
+  return woken == pdTRUE;
+}
 
 constexpr uint8_t kStc8Addr = 0x2F;
 constexpr uint8_t kStc8RegGpio = 0x18;
@@ -102,7 +122,11 @@ bool lcd_rgb_init() {
   esp_lcd_rgb_panel_config_t cfg = {};
   cfg.data_width = 16;
   cfg.dma_burst_size = 64;
-  cfg.num_fbs = 1;
+  // Two scanout buffers so the UI never writes into the frame the panel
+  // is reading. With num_fbs=1 every draw_bitmap was a ~768 KB PSRAM
+  // memcpy racing the bounce ISR — a visible half-frame tear whenever a
+  // large region changed (RUN↔STOP repaints the whole transport tube).
+  cfg.num_fbs = 2;
   cfg.bounce_buffer_size_px = 20 * kLcdW;
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;
   cfg.disp_gpio_num = -1;
@@ -149,6 +173,28 @@ bool lcd_rgb_init() {
     ESP_LOGE(kTag, "panel reset/init failed");
     return false;
   }
+
+  void* fb0 = nullptr;
+  void* fb1 = nullptr;
+  if (esp_lcd_rgb_panel_get_frame_buffer(g_panel, 2, &fb0, &fb1) == ESP_OK &&
+      fb0 != nullptr && fb1 != nullptr) {
+    g_fbs[0] = static_cast<uint16_t*>(fb0);
+    g_fbs[1] = static_cast<uint16_t*>(fb1);
+    g_draw_fb = 1;  // fb0 is what the panel scans out first
+    g_frame_done = xSemaphoreCreateBinary();
+    esp_lcd_rgb_panel_event_callbacks_t cbs = {};
+    cbs.on_frame_buf_complete = on_frame_done;
+    if (g_frame_done == nullptr ||
+        esp_lcd_rgb_panel_register_event_callbacks(g_panel, &cbs,
+                                                   g_frame_done) != ESP_OK) {
+      ESP_LOGW(kTag, "no frame-done callback; falling back to blit");
+      g_fbs[0] = nullptr;
+      g_fbs[1] = nullptr;
+    }
+  } else {
+    ESP_LOGW(kTag, "no double frame buffer; falling back to blit");
+  }
+
   (void)esp_lcd_panel_disp_on_off(g_panel, true);
   lcd_rgb_backlight(100);  // Elecrow PWM is 0–100 percent
   ESP_LOGI(kTag, "RGB 800x480 up");
@@ -167,6 +213,26 @@ bool lcd_rgb_blit(const uint16_t* rgb565, int x, int y, int w, int h) {
   }
   return esp_lcd_panel_draw_bitmap(g_panel, x, y, x + w, y + h, rgb565) ==
          ESP_OK;
+}
+
+uint16_t* lcd_rgb_next_frame() { return g_fbs[0] ? g_fbs[g_draw_fb] : nullptr; }
+
+bool lcd_rgb_present() {
+  if (g_panel == nullptr || g_fbs[0] == nullptr) {
+    return false;
+  }
+  // draw_bitmap with one of the panel's own frame buffers is a zero-copy
+  // flip: the driver just retargets scanout at the next frame boundary.
+  xSemaphoreTake(g_frame_done, 0);  // drop a stale frame-done
+  if (esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kLcdW, kLcdH,
+                                g_fbs[g_draw_fb]) != ESP_OK) {
+    return false;
+  }
+  g_draw_fb ^= 1;
+  // The frame in flight still reads the old front buffer; wait for it to
+  // finish so the next next_frame() is genuinely off-screen. ~17 ms max.
+  xSemaphoreTake(g_frame_done, pdMS_TO_TICKS(40));
+  return true;
 }
 
 bool lcd_touch_init() {
@@ -289,6 +355,8 @@ bool lcd_rgb_ldos() { return false; }
 bool lcd_rgb_init() { return false; }
 void lcd_rgb_backlight(uint8_t) {}
 bool lcd_rgb_blit(const uint16_t*, int, int, int, int) { return false; }
+uint16_t* lcd_rgb_next_frame() { return nullptr; }
+bool lcd_rgb_present() { return false; }
 bool lcd_touch_init() { return false; }
 bool lcd_touch_ok() { return false; }
 bool lcd_touch_poll(int*, int*) { return false; }
