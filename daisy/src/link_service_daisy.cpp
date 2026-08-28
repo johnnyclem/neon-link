@@ -70,10 +70,17 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
         g_latch.request(tl, now, !g_local_playing);
         break;
       case ControlCommand::Kind::kPlayNow:
-        g_latch.request(tl, now, true, /*quantized=*/false);
-        break;
       case ControlCommand::Kind::kStopNow:
-        g_latch.request(tl, now, false, /*quantized=*/false);
+        // A MIDI 0xFA/0xFC also reaches the follower through the sync
+        // tap; while it owns transport its edge-tracked set_playing is
+        // the one write the session gets, and the router's unquantized
+        // duplicate is dropped. Panel commands (from_midi clear) pass.
+        if (cmd.from_midi && g_midi_follow.following()) {
+          break;
+        }
+        g_latch.request(tl, now,
+                        cmd.kind == ControlCommand::Kind::kPlayNow,
+                        /*quantized=*/false);
         break;
       case ControlCommand::Kind::kSetTempo:
         next.tempo_milli_bpm =

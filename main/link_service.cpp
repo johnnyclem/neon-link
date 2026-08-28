@@ -175,10 +175,18 @@ void link_service_task(void*) {
             latch.request(tl, now, !local_playing);
             break;
           case ControlCommand::Kind::kPlayNow:
-            latch.request(tl, now, true, /*quantized=*/false);
-            break;
           case ControlCommand::Kind::kStopNow:
-            latch.request(tl, now, false, /*quantized=*/false);
+            // A MIDI 0xFA/0xFC also reaches the follower through the sync
+            // tap; while it owns transport its edge-tracked set_playing is
+            // the one write the session gets, and the router's unquantized
+            // duplicate is dropped. Panel/editor commands (from_midi
+            // clear) always pass.
+            if (cmd.from_midi && midi_follow.following()) {
+              break;
+            }
+            latch.request(tl, now,
+                          cmd.kind == ControlCommand::Kind::kPlayNow,
+                          /*quantized=*/false);
             break;
           case ControlCommand::Kind::kSetTempo:
             next.tempo_milli_bpm =

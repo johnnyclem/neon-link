@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "neon/config/json.hpp"
+#include "neon/config/model.hpp"
 
 namespace {
 std::string encode(const neon::Config& cfg) {
@@ -249,6 +250,24 @@ TEST_CASE("unknown fields are ignored, out-of-range values sanitized") {
   CHECK(cfg.engine.clocks[0].shuffle_pct == 75);
   CHECK(cfg.engine.latency_us == 50000);
   CHECK(cfg.clock_in_ppqn == 96);
+}
+
+TEST_CASE("clock_source \"midi\" round-trips and survives sanitize") {
+  neon::Config a;
+  a.clock_source = neon::ClockSource::kMidiMaster;
+  const std::string json = encode(a);
+  CHECK(json.find("\"clock_source\":\"midi\"") != std::string::npos);
+
+  neon::Config b;
+  REQUIRE(neon::config_from_json(json.c_str(), json.size(), &b));
+  CHECK(b.clock_source == neon::ClockSource::kMidiMaster);
+
+  neon::config_sanitize(&b);
+  CHECK(b.clock_source == neon::ClockSource::kMidiMaster);
+
+  // Stored-blob downgrade: an older firmware reading a new blob sees a raw
+  // enum value outside its whitelist and sanitizes it to kAuto — the
+  // intended graceful degrade. Nothing to assert from this side.
 }
 
 TEST_CASE("enum strings decode case-sensitively and reject unknowns") {

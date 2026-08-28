@@ -51,6 +51,11 @@ struct ControlCommand {
   };
   Kind kind;
   int32_t arg;
+  // Set by the MIDI router's transport sink. An incoming 0xFA/0xFC also
+  // reaches the sync follower through the clock tap; while the follower
+  // owns transport, the Link service drops this unquantized duplicate but
+  // still honours panel/editor commands, which leave the flag clear.
+  uint8_t from_midi;
 };
 bool control_queue_push(const ControlCommand& cmd);
 bool control_queue_pop(ControlCommand* cmd);

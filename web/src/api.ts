@@ -16,7 +16,7 @@ export type OutputRole =
   | "reset_start"
   | "reset_stop";
 export type ApPolicy = "fallback" | "always" | "off";
-export type ClockSource = "auto" | "link" | "external";
+export type ClockSource = "auto" | "link" | "external" | "midi";
 export type ClockPolicy = "ignore" | "replace" | "merge";
 export type NetworkKind = "ethernet" | "wifi" | "none";
 export type AudioRole =
