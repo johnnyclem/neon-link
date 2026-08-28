@@ -174,7 +174,14 @@ the knobs are the same `kHysteresisDen`/`kTempoGapUs` pair.
   UART, so they already ride the DIN path with DIN gains; the `kUsb` gain
   set only becomes reachable if a native USB host/device MIDI-in ever
   lands. No work now; the enum is ready.
-- **Telemetry:** a `midi_pll` CSV emitter (residual, tempo, lock state per
-  tick) through `components/neon_core/src/telemetry/` would make Phase A
-  measurable without a scope and future regressions visible. Cheap and
-  worth doing during Phase A rather than after.
+- **Telemetry:** ✅ done. The `midi_pll` CSV emitter (residual, tempo,
+  lock state per tick) lives in
+  `components/neon_core/{include/neon/telemetry/midi_pll_csv.hpp,
+  src/telemetry/midi_pll_csv.cpp}` (host-tested,
+  `host/tests/test_midi_pll_telemetry.cpp`). The ESP32 link service
+  prints one `PLL,<row>` per 0xF8 on the console UART behind the same
+  `debug.telemetry_uart_csv` flag as the 1 Hz `TEL,` stream; capture with
+  `tools/studio_mode/uart_telemetry_logger.py --prefix PLL`. Columns:
+  `t_us,tick,transport,residual_us,tempo_milli_bpm,locked,playing,
+  beat_valid,following` — everything Phase A's grid-error and relock
+  criteria need without a scope.

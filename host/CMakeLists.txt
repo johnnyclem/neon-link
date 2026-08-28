@@ -62,6 +62,7 @@ add_executable(neon_tests
   tests/test_quadrature.cpp
   tests/test_telemetry_csv.cpp
   tests/test_telemetry_emitter.cpp
+  tests/test_midi_pll_telemetry.cpp
   tests/test_nsync_wire.cpp
   tests/test_nsync_clock.cpp
   tests/test_nsync_node.cpp

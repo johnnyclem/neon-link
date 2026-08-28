@@ -35,7 +35,11 @@ depends on were added alongside this directory:
   always the shipped, correct behavior; `"legacy"` exists only to make the
   regression checkable.
 - `debug.telemetry_uart_csv` (bool) turns on the `TEL,...` CSV stream on
-  the console UART. Off by default.
+  the console UART. Off by default. The same flag also enables the
+  per-tick `PLL,...` MIDI clock PLL stream
+  (docs/MIDI_PLL_PHASES_HANDOFF.md Phase E) whenever MIDI clock is
+  arriving; capture it separately with
+  `uart_telemetry_logger.py --prefix PLL`.
 - `GET /api/scan` entries now include `channel`, for the histogram in §6.
 
 None of this needs a special firmware build — it's config, set through the
