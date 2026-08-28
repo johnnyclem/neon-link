@@ -14,8 +14,9 @@ and every policy decision is commented in place.
 below). Item 1 remains blocked on the account-level Actions setting.
 Item 4 stays deferred — it is a product decision to make before the
 panel silkscreen conversation. Item 7's two nits stay deliberately open:
-the `t_us` parameters wait on the BLE timestamp decision (phases doc §B),
-and the SyncEvent footprint only matters if a C3 target gains MIDI-in.
+Phase B settled that transport bytes need no sender stamps, leaving the
+`t_us` parameters a pure API-tidiness call, and the SyncEvent footprint
+only matters if a C3 target gains MIDI-in.
 
 ---
 
@@ -109,7 +110,8 @@ defer freely, but decide before the panel silkscreen conversation.
 > while following" would also have swallowed deliberate panel/editor
 > transport clicks, which the follower (edge-tracked) would never
 > re-assert. `following()` is the new portable accessor, host-tested in
-> `test_midi_sync_follower.cpp`.
+> `test_midi_sync_follower.cpp`. The same gate now sits in the Daisy
+> service too, where Phase C introduced the identical double path.
 
 Known, benign double-path from PR #40: with `transport_enabled` on, an
 incoming 0xFA takes **two** routes — `MidiRouter` → `Sink::transport()` →
@@ -143,9 +145,11 @@ the feature yet:
 
 - `neon::MidiClockPll::on_start/on_continue/on_stop` take a `t_us` that is
   currently unused (kept for API symmetry). Either use it (validate
-  ordering vs the next tick) or drop the parameters — decide once the BLE
-  timestamp work (phases doc §B) settles whether transport bytes need
-  their own times.
+  ordering vs the next tick) or drop the parameters. Phase B (now landed)
+  settled its half of the question: transport bytes do *not* need
+  sender-side stamps — only ticks feed the BLE time mapper, and the
+  transport events remain pure ordering facts — so this is purely an API
+  tidiness call now.
 - `SyncEvent` is 24 bytes with padding; the queue is 64 deep (1.5 KB).
   Fine on ESP32-S3; re-check on the C3 target if the linksync-c3oled
   profile ever gains MIDI-in.

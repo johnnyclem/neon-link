@@ -41,20 +41,11 @@ inline bool tx_byte(uint8_t b) {
   return true;
 }
 
-// --- MIDI-clock follow ring (poll() -> link service, both main loop) --
-constexpr uint32_t kClockRing = 64;
-int64_t g_clock_ring[kClockRing];
-uint32_t g_clock_head = 0;
-uint32_t g_clock_tail = 0;
-
-void push_clock(int64_t t_us) {
-  const uint32_t next = (g_clock_head + 1) % kClockRing;
-  if (next == g_clock_tail) {
-    return;  // full: drop, the estimator recovers from gaps
-  }
-  g_clock_ring[g_clock_head] = t_us;
-  g_clock_head = next;
-}
+// The link service's MIDI clock follower (it owns the arbitration and
+// the session; registration in linksvc::init). Both the UART drain and
+// the follower's consumer run on the main loop, so the sync tap calls
+// on_event directly.
+neon::midi::SyncFollower* g_sync = nullptr;
 
 // --- Router sink: routing decisions become module actions -------------
 // Mirrors the ESP midi service's sink, minus what this hardware lacks.
@@ -107,6 +98,44 @@ class Sink final : public neon::IRouterSink {
   void program_change(uint8_t program) override {
     neon_preset_recall(program % kPresetSlots);
   }
+
+  // Clock-sync tap -> the link service's SyncFollower (this input is a
+  // TRS UART, so the PLL runs the DIN gain set).
+  void midi_clock_byte(uint8_t status, int64_t t_us) override {
+    if (g_sync == nullptr) {
+      return;
+    }
+    neon::midi::SyncEvent ev;
+    switch (status) {
+      case neon::midi::kClock:
+        ev.kind = neon::midi::SyncEvent::Kind::kTick;
+        break;
+      case neon::midi::kStart:
+        ev.kind = neon::midi::SyncEvent::Kind::kStart;
+        break;
+      case neon::midi::kContinue:
+        ev.kind = neon::midi::SyncEvent::Kind::kContinue;
+        break;
+      case neon::midi::kStop:
+        ev.kind = neon::midi::SyncEvent::Kind::kStop;
+        break;
+      default:
+        return;
+    }
+    ev.transport = neon::MidiClockPll::Transport::kDin;
+    ev.t_us = t_us;
+    g_sync->on_event(ev);
+  }
+  void midi_song_position(uint16_t sixteenths) override {
+    if (g_sync == nullptr) {
+      return;
+    }
+    neon::midi::SyncEvent ev;
+    ev.kind = neon::midi::SyncEvent::Kind::kSpp;
+    ev.transport = neon::MidiClockPll::Transport::kDin;
+    ev.spp = sixteenths;
+    g_sync->on_event(ev);
+  }
 };
 
 Sink g_sink;
@@ -154,8 +183,9 @@ void tick_isr(void*) {
 // Drain the RX data register from the main loop. At 31250 baud a byte
 // is 320 µs on the wire and the loop passes far more often than that;
 // the one real gap is the blocking QSPI persist (~100 ms worst), where
-// dropped bytes cost a resynced parser and a clock-estimator hiccup —
-// both self-healing.
+// dropped bytes cost a resynced parser and a PLL residual spike — both
+// self-healing. The parser timestamps every byte with the drain time;
+// realtime clock bytes reach the follower through the router sync tap.
 void drain_rx(USART_TypeDef* regs, int64_t now_us) {
   // A latched overrun/framing/noise error blocks further reception
   // until cleared.
@@ -164,9 +194,6 @@ void drain_rx(USART_TypeDef* regs, int64_t now_us) {
   }
   while (regs->ISR & USART_ISR_RXNE_RXFNE) {
     const uint8_t b = static_cast<uint8_t>(regs->RDR);
-    if (b == neon::midi::kClock) {
-      push_clock(now_us);
-    }
     g_parser.feed(b, now_us);
   }
 }
@@ -253,13 +280,8 @@ void poll(int64_t now_us) {
   }
 }
 
-bool pop_clock(int64_t* t_us) {
-  if (g_clock_tail == g_clock_head) {
-    return false;
-  }
-  *t_us = g_clock_ring[g_clock_tail];
-  g_clock_tail = (g_clock_tail + 1) % kClockRing;
-  return true;
+void set_sync_follower(neon::midi::SyncFollower* follower) {
+  g_sync = follower;
 }
 
 }  // namespace miditrs

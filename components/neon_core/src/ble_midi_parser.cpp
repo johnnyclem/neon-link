@@ -46,6 +46,25 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
   // packet may continue SysEx from the previous one.
   uint8_t running = 0;
 
+  // 13-bit sender clock: the header carries bits 12..7, each timestamp
+  // byte bits 6..0. The low bits count monotonically within a packet, so
+  // a decrease means the 7-bit field rolled over and the high bits
+  // increment (mod 64 — the full value wraps at 8.192 s; unwrapping is
+  // the mapper's job, not the parser's).
+  uint8_t ts_high = data[0] & 0x3fu;
+  uint16_t ts_ms = kNoSenderMs;  // most recent stamp decoded in this packet
+  bool ts_seen = false;
+  uint8_t ts_last_low = 0;
+  const auto decode_ts = [&](uint8_t byte) {
+    const uint8_t low = byte & 0x7fu;
+    if (ts_seen && low < ts_last_low) {
+      ts_high = (ts_high + 1) & 0x3fu;
+    }
+    ts_seen = true;
+    ts_last_low = low;
+    ts_ms = static_cast<uint16_t>((static_cast<uint16_t>(ts_high) << 7) | low);
+  };
+
   while (i < len) {
     const uint8_t b = data[i];
 
@@ -56,7 +75,9 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
         continue;
       }
       if ((b & 0x80u) != 0 && b >= 0xf8u) {
-        sink_->on_realtime(b, rx_us);  // realtime may interleave inside SysEx
+        // Realtime may interleave inside SysEx; its timestamp byte (if
+        // any) was decoded on the previous iteration.
+        sink_->on_realtime(b, rx_us, ts_ms);
         ++i;
         continue;
       }
@@ -66,6 +87,7 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
         // timestamp, else abort SysEx and reprocess.
         if (i + 1 < len &&
             (data[i + 1] == 0xf7u || data[i + 1] >= 0xf8u)) {
+          decode_ts(b);
           ++i;
           continue;
         }
@@ -79,6 +101,7 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
     if ((b & 0x80u) != 0) {
       // Timestamp byte; the next byte should be a status or (running
       // status) a data byte.
+      decode_ts(b);
       ++i;
       if (i >= len) {
         break;
@@ -86,7 +109,7 @@ void BleMidiParser::feed_packet(const uint8_t* data, size_t len,
       const uint8_t s = data[i];
       if ((s & 0x80u) != 0) {
         if (s >= 0xf8u) {
-          sink_->on_realtime(s, rx_us);
+          sink_->on_realtime(s, rx_us, ts_ms);
           ++i;
           continue;
         }

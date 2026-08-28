@@ -4,6 +4,7 @@
 #include "app_state/timeline_bus.h"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
+#include "neon/midi/sync_follower.hpp"
 #include "neon/tempo_cv.hpp"
 #include "neon/transport.hpp"
 
@@ -22,9 +23,13 @@ constexpr int64_t kCapturePeriodUs = 10000;  // 10 ms, like the ESP task
 neon::TapTempo g_tap;
 neon::TransportLatch g_latch;
 neon::ExtClockEstimator g_ext_clock;
-// Incoming MIDI clock is the second external tempo source (fixed
-// 24 PPQN). The CLK IN jack outranks it when both are alive.
-neon::ExtClockEstimator g_midi_clock;
+// Incoming MIDI clock is the second external sync source: the router's
+// sync tap (midi_daisy.cpp) feeds this follower's PLL, and its actions
+// steer the session. The CLK IN jack outranks it when both are alive.
+neon::midi::SyncFollower g_midi_follow;
+// This capture's arbitration verdict, consumed by the publish stage:
+// while following, the PLL model is published as the snapshot.
+bool g_midi_following = false;
 bool g_local_playing = false;
 bool g_ext_active = false;
 int64_t g_next_capture_us = 0;
@@ -65,10 +70,17 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
         g_latch.request(tl, now, !g_local_playing);
         break;
       case ControlCommand::Kind::kPlayNow:
-        g_latch.request(tl, now, true, /*quantized=*/false);
-        break;
       case ControlCommand::Kind::kStopNow:
-        g_latch.request(tl, now, false, /*quantized=*/false);
+        // A MIDI 0xFA/0xFC also reaches the follower through the sync
+        // tap; while it owns transport its edge-tracked set_playing is
+        // the one write the session gets, and the router's unquantized
+        // duplicate is dropped. Panel commands (from_midi clear) pass.
+        if (cmd.from_midi && g_midi_follow.following()) {
+          break;
+        }
+        g_latch.request(tl, now,
+                        cmd.kind == ControlCommand::Kind::kPlayNow,
+                        /*quantized=*/false);
         break;
       case ControlCommand::Kind::kSetTempo:
         next.tempo_milli_bpm =
@@ -127,46 +139,56 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
       g_ext_clock.on_reset(ev.t_us);
     }
   }
-  int64_t midi_tick_us = 0;
-  while (miditrs::pop_clock(&midi_tick_us)) {
-    g_midi_clock.on_pulse(midi_tick_us);
-  }
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
 
-  // The CLK IN jack outranks MIDI clock when both are alive: the jack is
-  // this module's native sync, and a beat-locked drum machine sending
-  // both would otherwise fight itself.
-  const bool jack = g_ext_clock.active(now);
-  const bool midi = g_midi_clock.active(now);
+  // Arbitration (docs/SPIKE_MIDI_PLL.md §5.4): CLK IN outranks MIDI
+  // clock under kAuto — the jack is this module's native sync, and a
+  // beat-locked drum machine sending both would otherwise fight itself.
+  // Each master mode pins its own source; the session is the fallback.
+  // While not allowed, the follower's PLL keeps tracking silently so a
+  // handover starts from a warm estimate.
   const neon::ClockSource source = neon_config().clock_source;
-  const bool follow =
-      source != neon::ClockSource::kLinkMaster && (jack || midi);
+  const bool jack = (source == neon::ClockSource::kAuto ||
+                     source == neon::ClockSource::kExternalMaster) &&
+                    g_ext_clock.active(now);
+  const bool midi_allowed = (source == neon::ClockSource::kAuto ||
+                             source == neon::ClockSource::kMidiMaster) &&
+                            !jack;
+  const neon::midi::SyncFollower::Actions midi_act =
+      g_midi_follow.poll(now, midi_allowed);
+  g_midi_following = midi_act.following;
+
+  const bool follow = jack || midi_act.following;
   if (follow != g_ext_active) {
     g_ext_active = follow;
     app_status_set_ext_clock(follow);
   }
-  neon::ExtClockEstimator& lead = jack ? g_ext_clock : g_midi_clock;
-  neon::ExtClockEstimator& idle = jack ? g_midi_clock : g_ext_clock;
-  if (follow) {
+  if (jack) {
     uint32_t mbpm = 0;
-    if (lead.take_tempo_update(&mbpm)) {
+    if (g_ext_clock.take_tempo_update(&mbpm)) {
       session.set_tempo(static_cast<double>(mbpm) / 1000.0);
     }
-    // Phase anchoring stays the RST IN jack's alone — MIDI clock has no
-    // downbeat message (Start already restarts beat 0 via the transport).
     int64_t downbeat_us = 0;
-    if (jack && g_ext_clock.take_phase_request(&downbeat_us)) {
+    if (g_ext_clock.take_phase_request(&downbeat_us)) {
       session.request_beat_at_time(downbeat_us);
     }
   } else {
+    // Consume stale one-shots so they don't fire on reactivation.
     uint32_t scratch_t = 0;
-    lead.take_tempo_update(&scratch_t);
+    int64_t scratch_p = 0;
+    g_ext_clock.take_tempo_update(&scratch_t);
+    g_ext_clock.take_phase_request(&scratch_p);
   }
-  uint32_t scratch_t = 0;
-  int64_t scratch_p = 0;
-  idle.take_tempo_update(&scratch_t);
-  g_ext_clock.take_phase_request(&scratch_p);
-  g_midi_clock.take_phase_request(&scratch_p);
+  if (midi_act.set_tempo) {
+    session.set_tempo(static_cast<double>(midi_act.tempo_mbpm) / 1000.0);
+  }
+  if (midi_act.anchor_downbeat) {
+    session.request_beat_at_time(midi_act.downbeat_us);
+  }
+  if (midi_act.set_playing) {
+    session.set_playing(midi_act.playing);
+    g_local_playing = midi_act.playing;
+  }
 }
 
 }  // namespace
@@ -174,7 +196,7 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
 void init(int64_t now_us) {
   clkin::init(kPinClkIn, kPinRstIn);
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
-  g_midi_clock.set_input_ppqn(24);  // MIDI clock is 24 PPQN by definition
+  miditrs::set_sync_follower(&g_midi_follow);
 
   auto& session = daisy_session();
   apply_session_settings(session);
@@ -203,6 +225,29 @@ void poll(int64_t now_us) {
 
   hal::LinkState state;
   if (session.capture(state)) {
+    // While following MIDI clock with no peers, the PLL *is* the session
+    // (docs/MIDI_PLL_PHASES_HANDOFF.md Phase C): its model maps 1:1 onto
+    // the snapshot, so the outputs ride the continuous estimate instead
+    // of the hysteretic set_tempo steps the session was steered with.
+    // With Link peers (the netlink build) the session consensus owns the
+    // grid and the steered capture stands, like the ESP path.
+    neon::MidiClockPll::Model m{};
+    if (g_midi_following && state.num_peers == 0 &&
+        g_midi_follow.pll().model(&m)) {
+      state.tempo_bpm =
+          60000000.0 / (static_cast<double>(m.tempo_mpb_q32) / 4294967296.0);
+      if (m.beat_valid) {
+        // Position, not just tempo: unlike the Link path (which only
+        // anchors the downbeat), the model's musical position is exact —
+        // SPP and bar position land on the sender's grid.
+        state.origin_us = m.origin_us;
+        state.beat_at_origin =
+            static_cast<double>(m.beat_at_origin_q32) / 4294967296.0;
+        state.playing = m.playing;
+      }
+      // While !beat_valid (free clock, no Start yet): tempo only — the
+      // captured session phase keeps the local beat continuous.
+    }
     neon::TimelineSnapshot snap;
     if (neon::build_snapshot(state, g_have_prev ? &g_prev : nullptr, snap)) {
       timeline_bus().publish(snap);

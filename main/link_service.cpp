@@ -135,6 +135,13 @@ void link_service_task(void*) {
     ESP_LOGW(kTag, "CLK/RST IN capture init failed");
   }
   neon::midi::SyncFollower midi_follow;
+  // The session as of the previous loop's capture (10 ms stale at most),
+  // feeding the follower's Link-authority policy (spike §8.4): while the
+  // MIDI transport runs, peer tempo edits and peer stops are corrected;
+  // while stopped, peer edits stand. require_peer stays at its default
+  // (off) — this module's session is also its local timeline, so MIDI
+  // follow must work with zero peers.
+  neon::midi::SessionView midi_session;
   bool ext_active = false;
 
   neon::TimelineSnapshot prev{};
@@ -268,7 +275,7 @@ void link_service_task(void*) {
          source == neon::ClockSource::kMidiMaster) &&
         !follow_external;
     const neon::midi::SyncFollower::Actions midi_act =
-        midi_follow.poll(now_arb, midi_allowed);
+        midi_follow.poll(now_arb, midi_allowed, midi_session);
 
     const bool any_external = follow_external || midi_act.following;
     if (any_external != ext_active) {
@@ -335,7 +342,13 @@ void link_service_task(void*) {
       ap_recommended_logged = true;
     }
     hal::LinkState state;
+    midi_session = {};
     if (session.capture(state)) {
+      midi_session.valid = true;
+      midi_session.tempo_mbpm =
+          static_cast<uint32_t>(state.tempo_bpm * 1000.0 + 0.5);
+      midi_session.playing = state.playing;
+      midi_session.peers = state.num_peers;
       neon::TimelineSnapshot snap;
       if (neon::build_snapshot(state, have_prev ? &prev : nullptr, snap)) {
         timeline_bus().publish(snap);

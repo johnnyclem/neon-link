@@ -31,7 +31,7 @@ void SerialMidiParser::feed(uint8_t byte, int64_t t_us) {
   // Realtime interleaves anywhere — even between a status byte and its
   // data — and must not disturb the message being assembled.
   if (byte >= 0xf8u) {
-    sink_->on_realtime(byte, t_us);
+    sink_->on_realtime(byte, t_us, kNoSenderMs);  // no in-band stamps on a wire
     return;
   }
 
