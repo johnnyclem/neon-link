@@ -301,6 +301,7 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   a.big_beat_display = 0;
   a.beat_style = neon::BeatStyle::kPie;
   a.midi_trs_type = 1;
+  a.color_theme = neon::ColorTheme::kAmber;
 
   std::vector<uint8_t> buf(neon::config_blob_size());
   REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
@@ -323,6 +324,7 @@ TEST_CASE("new settings survive an encode/decode round trip") {
   CHECK(b.big_beat_display == 0);
   CHECK(b.beat_style == neon::BeatStyle::kPie);
   CHECK(b.midi_trs_type == 1);
+  CHECK(b.color_theme == neon::ColorTheme::kAmber);
 }
 
 TEST_CASE("a v2 config blob keeps wifi and defaults the big beat flag") {
@@ -356,6 +358,7 @@ TEST_CASE("a v2 config blob keeps wifi and defaults the big beat flag") {
 TEST_CASE("out-of-range roles, tempo, and retries are clamped") {
   neon::Config cfg;
   cfg.beat_style = static_cast<neon::BeatStyle>(99);
+  cfg.color_theme = static_cast<neon::ColorTheme>(99);
   cfg.engine.clocks[0].role = static_cast<neon::OutputRole>(99);
   cfg.tempo_milli_bpm = 1;
   cfg.wifi_retries = 0;
@@ -363,6 +366,7 @@ TEST_CASE("out-of-range roles, tempo, and retries are clamped") {
   cfg.ap_channel = 99;
   neon::config_sanitize(&cfg);
   CHECK(cfg.beat_style == neon::BeatStyle::kNumber);
+  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
   CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kClock);
   CHECK(cfg.tempo_milli_bpm == neon::kMinMilliBpm);
   CHECK(cfg.wifi_retries == 1);
@@ -468,6 +472,30 @@ TEST_CASE("a v3 config blob keeps its settings and defaults the audio block") {
   CHECK(b.audio.metro_gain == neon::kUnityGainByte);
   CHECK(b.audio.la_jitter_ms == 60);
   CHECK(b.audio.la_sub_channel_id[0] == '\0');
+}
+
+TEST_CASE("a v8 config blob defaults the colour theme to teal") {
+  neon::Config a;
+  a.color_theme = neon::ColorTheme::kPaper;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 8;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.color_theme == neon::ColorTheme::kTeal);
 }
 
 TEST_CASE("a v6 config blob defaults the beat style to number") {

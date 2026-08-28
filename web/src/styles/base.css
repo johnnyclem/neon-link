@@ -792,6 +792,61 @@ a.button {
   margin-top: var(--space-2);
 }
 
+/* ---- colour themes ----------------------------------------------------- */
+
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--border-solid);
+  background: var(--border);
+  border: var(--border-solid) solid var(--border);
+}
+
+@media (min-width: 640px) {
+  .theme-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.theme-pick {
+  appearance: none;
+  background: var(--surface);
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  min-height: var(--touch-min);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  text-align: left;
+}
+
+.theme-pick[aria-checked="true"] {
+  color: var(--neon);
+  background: var(--surface-2);
+}
+
+.theme-pick__swatch {
+  display: flex;
+  height: 16px;
+  width: 100%;
+  border: var(--border-hair) solid var(--border);
+}
+
+.theme-pick__swatch i {
+  flex: 1;
+  display: block;
+}
+
+.theme-pick__label {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-token);
+  text-transform: uppercase;
+}
+
 /* ---- AMYboard jack field ----------------------------------------------- */
 
 /*

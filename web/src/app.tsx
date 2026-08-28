@@ -12,6 +12,7 @@ import { Midi } from "./routes/Midi";
 import { Audio } from "./routes/Audio";
 import { System } from "./routes/System";
 import { Setup } from "./routes/Setup";
+import { applyTheme, isThemeId } from "./theme";
 
 export interface PageProps {
   cfg: Config;
@@ -38,6 +39,12 @@ export function App() {
       .then(setCfg)
       .catch((e: Error) => setLoadError(e.message));
   }, []);
+
+  useEffect(() => {
+    if (cfg && isThemeId(cfg.color_theme)) {
+      applyTheme(cfg.color_theme);
+    }
+  }, [cfg?.color_theme]);
 
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;

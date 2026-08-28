@@ -58,6 +58,7 @@ const MOCK_CONFIG = {
   display_brightness: 200,
   big_beat_display: true,
   beat_style: "number",
+  color_theme: "teal",
   tempo_milli_bpm: 120000,
   wifi: { networks: [], retries: 3, ssid: "", pass: "" },
   ap: {

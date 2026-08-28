@@ -915,6 +915,33 @@ TEST_CASE("system menu cycles beat styles") {
   CHECK(cfg.beat_style == neon::BeatStyle::kNumber);
 }
 
+TEST_CASE("system menu cycles colour themes") {
+  neon::Config cfg;
+  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
+  neon::MenuModel m(&cfg);
+  m.on_click();
+  m.on_rotate(5);
+  m.on_click();
+  m.on_rotate(12);  // COLOUR
+  CHECK(std::string(m.item_label(m.cursor())) == "COLOUR");
+  char buf[16];
+  m.item_value(m.cursor(), buf, sizeof(buf));
+  CHECK(std::string(buf) == "TEAL");
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kPhosphor);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kAmber);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kMagenta);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kPaper);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kVoid);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
+}
+
 TEST_CASE("giant beat fills the panel with white numerals on black") {
   auto render_beat = [](uint32_t phase) {
     neon::UiStatus st;

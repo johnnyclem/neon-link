@@ -149,6 +149,9 @@ void config_sanitize(Config* cfg) {
   if (cfg->beat_style >= BeatStyle::kCount) {
     cfg->beat_style = BeatStyle::kNumber;
   }
+  if (cfg->color_theme >= ColorTheme::kCount) {
+    cfg->color_theme = ColorTheme::kTeal;
+  }
   cfg->midi_trs_type = cfg->midi_trs_type ? 1 : 0;
 
   AudioConfig& a = cfg->audio;
@@ -402,6 +405,10 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   }
   if (h.version < 8) {
     out->midi_trs_type = 0;
+  }
+  if (h.version < 9) {
+    // color_theme sits in what was v8 tail padding after midi_trs_type.
+    out->color_theme = ColorTheme::kTeal;
   }
   config_sanitize(out);
   return true;

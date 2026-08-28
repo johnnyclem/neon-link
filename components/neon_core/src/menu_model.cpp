@@ -79,6 +79,23 @@ const char* beat_style_name(BeatStyle s) {
   }
 }
 
+const char* color_theme_name(ColorTheme t) {
+  switch (t) {
+    case ColorTheme::kVoid:
+      return "VOID";
+    case ColorTheme::kPhosphor:
+      return "PHOS";
+    case ColorTheme::kAmber:
+      return "AMBER";
+    case ColorTheme::kMagenta:
+      return "MAG";
+    case ColorTheme::kPaper:
+      return "PAPER";
+    default:
+      return "TEAL";
+  }
+}
+
 const char* audio_role_name(AudioRole r) {
   switch (r) {
     case AudioRole::kMetronome:
@@ -441,7 +458,7 @@ const char* MenuModel::item_label(int index) const {
       static const char* kItems[kSystemItems] = {
           "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
           "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
-          "SS SYNC",  "BRIGHT",   "BEAT",     "STYLE",
+          "SS SYNC",  "BRIGHT",   "BEAT",     "STYLE",    "COLOUR",
           "VERSION",  "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
@@ -578,6 +595,9 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         break;
       case 11:
         std::snprintf(buf, cap, "%s", beat_style_name(cfg_->beat_style));
+        break;
+      case 12:
+        std::snprintf(buf, cap, "%s", color_theme_name(cfg_->color_theme));
         break;
       default:
         break;
@@ -836,6 +856,12 @@ void MenuModel::adjust_system(int index, int delta) {
       const int n = static_cast<int>(BeatStyle::kCount);
       cfg_->beat_style = static_cast<BeatStyle>(
           wrap_int(static_cast<int>(cfg_->beat_style) + delta, n));
+      break;
+    }
+    case 12: {
+      const int n = static_cast<int>(ColorTheme::kCount);
+      cfg_->color_theme = static_cast<ColorTheme>(
+          wrap_int(static_cast<int>(cfg_->color_theme) + delta, n));
       break;
     }
     default:

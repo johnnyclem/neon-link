@@ -5,6 +5,7 @@
  */
 
 :root {
+  color-scheme: dark;
   /* colour */
   --bg: #0B0C0F; /* Page background */
   --surface: #14161A; /* Cards, panels */
@@ -13,6 +14,7 @@
   --text: #E8EAED; /* Primary text */
   --text-muted: #8B909A; /* Secondary labels */
   --neon: #00F0FF; /* Primary accent — Link active, focus, key actions */
+  --hero: #00F0FF; /* Hero tempo digits — large, always visible */
   --neon-dim: #00A8B3; /* Secondary accent / hover */
   --magenta: #FF2D95; /* Alerts, BLE active, special states */
   --yellow: #F5C518; /* Warnings, attention */
@@ -39,7 +41,7 @@
   /* type */
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'NEON Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
-  --text-hero: 64px;
+  --text-hero: 83px;
   --text-title: 24px;
   --text-subtitle: 18px;
   --text-body: 15px;
@@ -103,4 +105,106 @@
   --phase-bar-aspect: 8.0;
   --phase-bar-inset-ratio: 0.1875;
   --phase-bar-tick-ratio: 0.1875;
+}
+
+[data-theme="void"] {
+  color-scheme: dark;
+  --bg: #0B0C0F; /* Page background */
+  --surface: #14161A; /* Cards, panels */
+  --surface-2: #1C1F26; /* Elevated / selected */
+  --border: #2A2E38; /* Hairlines, dividers */
+  --text: #E8EAED; /* Primary text */
+  --text-muted: #8B909A; /* Secondary labels */
+  --neon: #00F0FF; /* Primary accent — Link active, focus, key actions */
+  --hero: #00F0FF; /* Hero tempo digits — large, always visible */
+  --neon-dim: #00A8B3; /* Secondary accent / hover */
+  --magenta: #FF2D95; /* Alerts, BLE active, special states */
+  --yellow: #F5C518; /* Warnings, attention */
+  --success: #3DFF9A; /* Connected / running */
+  --danger: #FF4D4D; /* Errors, disconnect */
+}
+
+[data-theme="teal"] {
+  color-scheme: dark;
+  --bg: #0A1A1E; /* Page background */
+  --surface: #12262C; /* Cards, panels */
+  --surface-2: #1A343C; /* Elevated / selected */
+  --border: #2E5860; /* Hairlines, dividers */
+  --text: #D6E6EA; /* Primary text */
+  --text-muted: #8AADB4; /* Secondary labels */
+  --neon: #5ED4DC; /* Primary accent — Link active, focus, key actions */
+  --hero: #7EE0E6; /* Hero tempo digits — large, always visible */
+  --neon-dim: #3AA0A8; /* Secondary accent / hover */
+  --magenta: #FF5AA8; /* Alerts, BLE active, special states */
+  --yellow: #E8C040; /* Warnings, attention */
+  --success: #4AE89A; /* Connected / running */
+  --danger: #FF6A6A; /* Errors, disconnect */
+}
+
+[data-theme="phosphor"] {
+  color-scheme: dark;
+  --bg: #07110A; /* Page background */
+  --surface: #0E1C12; /* Cards, panels */
+  --surface-2: #16281A; /* Elevated / selected */
+  --border: #2A4A34; /* Hairlines, dividers */
+  --text: #D4E8D6; /* Primary text */
+  --text-muted: #8AAA90; /* Secondary labels */
+  --neon: #3DFF9A; /* Primary accent — Link active, focus, key actions */
+  --hero: #6CFFB0; /* Hero tempo digits — large, always visible */
+  --neon-dim: #22B86A; /* Secondary accent / hover */
+  --magenta: #FF4DA6; /* Alerts, BLE active, special states */
+  --yellow: #F5C518; /* Warnings, attention */
+  --success: #3DFF9A; /* Connected / running */
+  --danger: #FF5A5A; /* Errors, disconnect */
+}
+
+[data-theme="amber"] {
+  color-scheme: dark;
+  --bg: #14100A; /* Page background */
+  --surface: #1E1810; /* Cards, panels */
+  --surface-2: #2A2216; /* Elevated / selected */
+  --border: #4A3C24; /* Hairlines, dividers */
+  --text: #F2E6D0; /* Primary text */
+  --text-muted: #B09A74; /* Secondary labels */
+  --neon: #FFB020; /* Primary accent — Link active, focus, key actions */
+  --hero: #FFC24A; /* Hero tempo digits — large, always visible */
+  --neon-dim: #C48418; /* Secondary accent / hover */
+  --magenta: #FF4D8A; /* Alerts, BLE active, special states */
+  --yellow: #FFD060; /* Warnings, attention */
+  --success: #8CD46A; /* Connected / running */
+  --danger: #FF6A4D; /* Errors, disconnect */
+}
+
+[data-theme="magenta"] {
+  color-scheme: dark;
+  --bg: #140A12; /* Page background */
+  --surface: #1E1018; /* Cards, panels */
+  --surface-2: #2A1824; /* Elevated / selected */
+  --border: #4A2A40; /* Hairlines, dividers */
+  --text: #F0E0EA; /* Primary text */
+  --text-muted: #B090A0; /* Secondary labels */
+  --neon: #FF5AB0; /* Primary accent — Link active, focus, key actions */
+  --hero: #FF7AC4; /* Hero tempo digits — large, always visible */
+  --neon-dim: #D04090; /* Secondary accent / hover */
+  --magenta: #FF2D95; /* Alerts, BLE active, special states */
+  --yellow: #F5C518; /* Warnings, attention */
+  --success: #3DFF9A; /* Connected / running */
+  --danger: #FF5A6A; /* Errors, disconnect */
+}
+
+[data-theme="paper"] {
+  color-scheme: light;
+  --bg: #F3EEE6; /* Page background */
+  --surface: #FFFBF5; /* Cards, panels */
+  --surface-2: #E6DFD4; /* Elevated / selected */
+  --border: #C4BBAE; /* Hairlines, dividers */
+  --text: #1A1814; /* Primary text */
+  --text-muted: #5C564C; /* Secondary labels */
+  --neon: #007278; /* Primary accent — Link active, focus, key actions */
+  --hero: #00646C; /* Hero tempo digits — large, always visible */
+  --neon-dim: #0A8A94; /* Secondary accent / hover */
+  --magenta: #C4006A; /* Alerts, BLE active, special states */
+  --yellow: #8A6400; /* Warnings, attention */
+  --success: #0A7A48; /* Connected / running */
+  --danger: #C42828; /* Errors, disconnect */
 }

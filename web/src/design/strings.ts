@@ -126,6 +126,10 @@ export const strings = {
     "system": {
       "device": "SYSTEM",
       "web": "System"
+    },
+    "back": {
+      "device": "BACK",
+      "web": "Back"
     }
   },
   "brand": {

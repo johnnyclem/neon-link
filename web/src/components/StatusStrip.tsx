@@ -29,7 +29,7 @@ export function StatusStrip({ status, offline }: { status: Status | null; offlin
           {strings.brand.device} <span class="brand__mark">LINK</span>
         </span>
 
-        <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={34} />
+        <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={44} />
 
         <PhaseBar
           phase={phase}

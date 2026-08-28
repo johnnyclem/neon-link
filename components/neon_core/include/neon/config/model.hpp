@@ -108,6 +108,18 @@ enum class BeatStyle : uint8_t {
   kCount = 4,
 };
 
+// Colour palettes for colour LCDs (MaTouch GC9A01, and the web editor).
+// Order matches design/tokens.json `themes` / neon::ui::kColorThemeId.
+enum class ColorTheme : uint8_t {
+  kVoid = 0,
+  kTeal = 1,
+  kPhosphor = 2,
+  kAmber = 3,
+  kMagenta = 4,
+  kPaper = 5,
+  kCount = 6,
+};
+
 struct Config {
   EngineConfig engine;
 
@@ -200,10 +212,15 @@ struct Config {
   // Appended in v8. TRS MIDI jack convention shown on the e-paper face.
   // 0 = Type A (MMA), 1 = Type B. Does not rewire the physical jack.
   uint8_t midi_trs_type = 0;
+
+  // Appended in v9. Colour LCD / web palette. Teal is the default on the
+  // MaTouch dial so the hero BPM is not pure white on a near-black void.
+  // A v8 blob decodes with this set to kTeal — see config_decode.
+  ColorTheme color_theme = ColorTheme::kTeal;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 8;
+inline constexpr uint16_t kConfigVersion = 9;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

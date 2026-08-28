@@ -46,7 +46,7 @@ Both surfaces obey the same ranking of information:
 
 ### 3.1 Colour (Web)
 
-Dark-first interface. Neon accents are used sparingly and with purpose.
+Dark-first interface. Neon accents are used sparingly and with purpose. The table is the default **Void** palette; System → Panel offers the same token names remapped through selectable themes (Teal, Phosphor, Amber, Magenta, Paper). The 1-bit device panel is unchanged.
 
 | Token | Hex | Usage |
 |-------|-----|-------|
@@ -57,15 +57,16 @@ Dark-first interface. Neon accents are used sparingly and with purpose.
 | `--text` | `#E8EAED` | Primary text |
 | `--text-muted` | `#8B909A` | Secondary labels |
 | `--neon` | `#00F0FF` | Primary accent (Link active, focus, key actions) |
+| `--hero` | `#00F0FF` | Hero tempo digits |
 | `--neon-dim` | `#00A8B3` | Secondary accent / hover |
 | `--magenta` | `#FF2D95` | Alerts, BLE active, special states |
 | `--yellow` | `#F5C518` | Warnings, "attention" |
 | `--success` | `#3DFF9A` | Connected / running |
 | `--danger` | `#FF4D4D` | Errors, disconnect |
 
-**Accent rule**: Neon cyan is the "system is alive / Link is present" colour. Magenta is reserved for wireless/BLE personality. Do not rainbow the UI.
+**Accent rule**: Inside a given palette, one accent means "the system is alive / Link is present". Magenta stays the wireless/BLE accent. The UI does not rainbow itself — the user picks one theme.
 
-Contrast targets for every text/background pair are declared alongside the palette in `design/tokens.json` and asserted by `scripts/check_contrast.py` in CI. Changing a colour without meeting its target fails the build rather than quietly degrading legibility.
+Contrast targets for every text/background pair are declared alongside the palette in `design/tokens.json` and asserted by `scripts/check_contrast.py` in CI against **every** theme. Changing a colour without meeting its target fails the build rather than quietly degrading legibility.
 
 ### 3.2 Monochrome (Device 128×128)
 

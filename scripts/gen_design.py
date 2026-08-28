@@ -184,17 +184,51 @@ def hero_preview(spec: dict, raster: "dict[str, tuple[int, list[int]]]") -> str:
 # ---------------------------------------------------------------------------
 
 
+THEME_SKIP = {"$comment", "default"}
+
+
+def color_hexes(block: dict) -> "dict[str, str]":
+    """Accept either `{hex, use}` entries (the default palette) or bare hex strings (themes)."""
+    out: dict[str, str] = {}
+    for name, entry in strip_meta(block).items():
+        out[name] = entry["hex"] if isinstance(entry, dict) else entry
+    return out
+
+
+def theme_ids(themes: dict) -> list[str]:
+    return [name for name in themes if name not in THEME_SKIP]
+
+
+def resolved_theme_colors(tokens: dict, theme_id: str) -> "dict[str, str]":
+    default = color_hexes(tokens["color"])
+    theme = tokens.get("themes", {}).get(theme_id, {})
+    if "color" in theme:
+        merged = dict(default)
+        merged.update(color_hexes(theme["color"]))
+        return merged
+    return default
+
+
+def emit_color_vars(out: list[str], colors: "dict[str, str]", uses: "dict[str, str]") -> None:
+    for name, hexv in colors.items():
+        use = uses.get(name, "")
+        comment = f" /* {use} */" if use else ""
+        out.append(f"  --{name}: {hexv};{comment}")
+
+
 def emit_tokens_css(tokens: dict) -> str:
     colors = strip_meta(tokens["color"])
     space = strip_meta(tokens["space"])
     typ = tokens["type"]
     motion = strip_meta(tokens["motion"])
     device = strip_meta(tokens["device"])
+    uses = {name: entry["use"] for name, entry in colors.items()}
+    default_hexes = {name: entry["hex"] for name, entry in colors.items()}
 
     out = [banner("/*"), ":root {"]
+    out.append("  color-scheme: dark;")
     out.append("  /* colour */")
-    for name, entry in colors.items():
-        out.append(f"  --{name}: {entry['hex']}; /* {entry['use']} */")
+    emit_color_vars(out, default_hexes, uses)
 
     out.append("")
     out.append("  /* spacing - 4px grid, shared with the device layout */")
@@ -242,14 +276,40 @@ def emit_tokens_css(tokens: dict) -> str:
     out.append(f"  --phase-bar-inset-ratio: {tokens['phase_bar']['inset_ratio']};")
     out.append(f"  --phase-bar-tick-ratio: {tokens['phase_bar']['tick_ratio']};")
     out.append("}")
+
+    themes = tokens.get("themes") or {}
+    for tid in theme_ids(themes):
+        theme = themes[tid]
+        scheme = theme.get("scheme", "dark")
+        hexes = resolved_theme_colors(tokens, tid)
+        out.append("")
+        out.append(f'[data-theme="{tid}"] {{')
+        out.append(f"  color-scheme: {scheme};")
+        emit_color_vars(out, hexes, uses)
+        out.append("}")
+
     return "\n".join(out) + "\n"
 
 
 def emit_tokens_ts(tokens: dict) -> str:
-    colors = {name: entry["hex"] for name, entry in strip_meta(tokens["color"]).items()}
+    color_block = strip_meta(tokens["color"])
+    colors = {name: entry["hex"] for name, entry in color_block.items()}
+    themes_in = tokens.get("themes") or {}
+    default_id = themes_in.get("default", "void")
+    themes_out = {}
+    order = []
+    for tid in theme_ids(themes_in):
+        theme = themes_in[tid]
+        order.append(tid)
+        themes_out[tid] = {
+            "label": theme["label"],
+            "note": theme.get("note", ""),
+            "scheme": theme.get("scheme", "dark"),
+            "color": resolved_theme_colors(tokens, tid),
+        }
     payload = {
         "color": colors,
-        "colorUse": {name: entry["use"] for name, entry in strip_meta(tokens["color"]).items()},
+        "colorUse": {name: entry["use"] for name, entry in color_block.items()},
         "space": strip_meta(tokens["space"]),
         "type": {
             "size": tokens["type"]["size"],
@@ -261,6 +321,9 @@ def emit_tokens_ts(tokens: dict) -> str:
         "phaseBar": strip_meta(tokens["phase_bar"]),
         "touchMin": tokens["touch"]["min"],
         "contrastPairs": tokens["contrast"]["pairs"],
+        "defaultTheme": default_id,
+        "themeOrder": order,
+        "themes": themes_out,
     }
     body = json.dumps(payload, indent=2)
     return (
@@ -268,7 +331,88 @@ def emit_tokens_ts(tokens: dict) -> str:
         + "\n"
         + f"export const tokens = {body} as const;\n\n"
         + "export type ColorName = keyof typeof tokens.color;\n"
+        + "export type ThemeId = keyof typeof tokens.themes;\n"
     )
+
+
+def hex_rgb(hex_color: str) -> tuple[int, int, int]:
+    value = hex_color.lstrip("#")
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def emit_palettes_hpp(tokens: dict) -> str:
+    """RGB888 palettes for colour LCDs (MaTouch GC9A01). Same tokens as the web."""
+    themes_in = tokens.get("themes") or {}
+    ids = theme_ids(themes_in)
+    keys = [
+        ("bg", "bg"),
+        ("surface", "surface"),
+        ("surface2", "surface-2"),
+        ("neon", "neon"),
+        ("neon_dim", "neon-dim"),
+        ("text", "text"),
+        ("text_muted", "text-muted"),
+        ("magenta", "magenta"),
+        ("hero", "hero"),
+    ]
+    out = [
+        banner("//"),
+        "",
+        "#pragma once",
+        "",
+        "#include <cstdint>",
+        "",
+        "namespace neon::ui {",
+        "",
+        "struct Rgb {",
+        "  uint8_t r;",
+        "  uint8_t g;",
+        "  uint8_t b;",
+        "};",
+        "",
+        "struct ColorPalette {",
+    ]
+    for field, _ in keys:
+        out.append(f"  Rgb {field};")
+    out.append("};")
+    out.append("")
+    out.append(f"inline constexpr int kColorThemeCount = {len(ids)};")
+    out.append("")
+    id_list = ", ".join(f'"{tid}"' for tid in ids)
+    out.append(f"inline constexpr const char* kColorThemeId[kColorThemeCount] = {{{id_list}}};")
+    out.append("")
+    labels = []
+    for tid in ids:
+        label = themes_in[tid]["label"].upper()
+        if len(label) > 8:
+            label = label[:4]
+        labels.append(f'"{label}"')
+    out.append(
+        "inline constexpr const char* kColorThemeLabel[kColorThemeCount] = {"
+        + ", ".join(labels)
+        + "};"
+    )
+    out.append("")
+    out.append("inline constexpr ColorPalette kColorPalettes[kColorThemeCount] = {")
+    for tid in ids:
+        colors = resolved_theme_colors(tokens, tid)
+        parts = []
+        for field, token in keys:
+            r, g, b = hex_rgb(colors[token])
+            parts.append(f"{{{r}, {g}, {b}}}")
+        out.append(f"    {{{', '.join(parts)}}},  // {tid}")
+    out.append("};")
+    out.append("")
+    out.append("inline const ColorPalette& color_palette(uint8_t theme) {")
+    out.append("  if (theme >= kColorThemeCount) {")
+    out.append("    theme = 0;")
+    out.append("  }")
+    out.append("  return kColorPalettes[theme];")
+    out.append("}")
+    out.append("")
+    out.append("}  // namespace neon::ui")
+    out.append("")
+    return "\n".join(out)
 
 
 def emit_strings_ts(strings: dict) -> str:
@@ -615,6 +759,15 @@ def main() -> int:
     args = parser.parse_args()
 
     tokens = load_json(DESIGN / "tokens.json")
+    themes = tokens.get("themes") or {}
+    default_theme = themes.get("default")
+    if default_theme and default_theme not in theme_ids(themes):
+        raise SystemExit(f"themes.default '{default_theme}' is not a declared theme")
+    required = set(color_hexes(tokens["color"]))
+    for tid in theme_ids(themes):
+        missing = required - set(resolved_theme_colors(tokens, tid))
+        if missing:
+            raise SystemExit(f"theme '{tid}' is missing colour tokens: {', '.join(sorted(missing))}")
     strings = load_json(DESIGN / "strings.json")
     icons = load_icons(DESIGN / "icons.txt")
     hero_spec = load_json(DESIGN / "fonts" / "hero.json")
@@ -628,6 +781,7 @@ def main() -> int:
         ROOT / "web" / "src" / "design" / "heroFont.ts": emit_hero_font_ts(hero_spec),
         DESIGN / "fonts" / "hero_preview.txt": hero_preview(hero_spec, hero),
         DESIGN / "icons_preview.png": emit_icons_preview_png(tokens, icons),
+        ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "palettes_gen.hpp": emit_palettes_hpp(tokens),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "theme_gen.hpp": emit_theme_gen_hpp(tokens, strings),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "icons_gen.hpp": emit_icons_gen_hpp(icons),
         ROOT / "components" / "neon_core" / "include" / "neon" / "ui" / "hero_font_gen.hpp": emit_hero_font_hpp(hero_spec, hero),

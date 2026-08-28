@@ -67,7 +67,7 @@ export function Live(props: PageProps) {
             onCycle={() => setStyle(nextBeatStyle(beatStyle))}
           />
         ) : (
-          <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={72} />
+          <HeroTempo bpm={status && status.tempo_valid ? status.bpm : null} size={94} />
         )}
         {showBeat ? (
           <div class="beat-stage__picker" role="radiogroup" aria-label="Beat style">
@@ -87,7 +87,7 @@ export function Live(props: PageProps) {
         ) : null}
         {showBeat && status?.tempo_valid ? (
           <div class="beat-stage__bpm">
-            <HeroTempo bpm={status.bpm} size={28} />
+            <HeroTempo bpm={status.bpm} size={36} />
           </div>
         ) : null}
 

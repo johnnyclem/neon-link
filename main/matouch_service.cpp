@@ -14,12 +14,14 @@
 #include "halesp/cst816.hpp"
 #include "halesp/encoder_pcnt.hpp"
 #include "halesp/lcd_gc9a01.hpp"
+#include "halesp/midi_uart.hpp"
 #include "neon/fixed_math.hpp"
 #include "neon/gfx/font5x7.hpp"
 #include "neon/timeline.hpp"
 #include "neon/transport.hpp"
 #include "neon/config/model.hpp"
 #include "neon/ui/menu_model.hpp"
+#include "neon/ui/palettes_gen.hpp"
 #include "wifi.h"
 
 #include <cmath>
@@ -58,16 +60,37 @@ constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return c;
 }
 
-// Neon-tube palette, same family as the CrowPanel/Tab5 faces.
-constexpr uint16_t kBg = rgb(0, 2, 8);
-constexpr uint16_t kRingDim = rgb(0, 40, 52);
-constexpr uint16_t kSurface = rgb(0, 28, 40);
-constexpr uint16_t kSurface2 = rgb(0, 52, 68);
-constexpr uint16_t kNeon = rgb(0, 255, 255);
-constexpr uint16_t kNeonDim = rgb(0, 150, 170);
-constexpr uint16_t kInk = rgb(255, 255, 255);
-constexpr uint16_t kMuted = rgb(0, 190, 205);
-constexpr uint16_t kHot = rgb(255, 45, 149);
+struct Pal {
+  uint16_t bg;
+  uint16_t ring;
+  uint16_t surface;
+  uint16_t surface2;
+  uint16_t neon;
+  uint16_t neon_dim;
+  uint16_t ink;
+  uint16_t muted;
+  uint16_t hot;
+  uint16_t hero;
+};
+
+Pal pal{};
+
+Pal make_pal(neon::ColorTheme theme) {
+  const neon::ui::ColorPalette& s =
+      neon::ui::color_palette(static_cast<uint8_t>(theme));
+  Pal p;
+  p.bg = rgb(s.bg.r, s.bg.g, s.bg.b);
+  p.ring = rgb(s.surface.r, s.surface.g, s.surface.b);
+  p.surface = rgb(s.surface.r, s.surface.g, s.surface.b);
+  p.surface2 = rgb(s.surface2.r, s.surface2.g, s.surface2.b);
+  p.neon = rgb(s.neon.r, s.neon.g, s.neon.b);
+  p.neon_dim = rgb(s.neon_dim.r, s.neon_dim.g, s.neon_dim.b);
+  p.ink = rgb(s.text.r, s.text.g, s.text.b);
+  p.muted = rgb(s.text_muted.r, s.text_muted.g, s.text_muted.b);
+  p.hot = rgb(s.magenta.r, s.magenta.g, s.magenta.b);
+  p.hero = rgb(s.hero.r, s.hero.g, s.hero.b);
+  return p;
+}
 
 uint16_t* g_fb = nullptr;
 
@@ -77,6 +100,12 @@ neon::Config g_cfg;
 neon::MenuModel g_menu(&g_cfg);
 bool g_settings = false;
 int g_scroll = 0;  // first visible row index
+
+void refresh_pal() {
+  const neon::ColorTheme theme =
+      g_settings ? g_cfg.color_theme : neon_config().color_theme;
+  pal = make_pal(theme);
+}
 
 // ---- On-device WiFi join (encoder character picker) --------------------
 
@@ -196,6 +225,8 @@ void disc(int cx, int cy, int r, uint16_t c) {
   }
 }
 
+int iabs(int v) { return v < 0 ? -v : v; }
+
 // 7×7 cog, LSB = left (shared with the CrowPanel face).
 void draw_gear(int x, int y, int scale, uint16_t c) {
   static const uint8_t kBits[7] = {0x14, 0x3e, 0x63, 0x55, 0x63, 0x3e, 0x14};
@@ -226,14 +257,14 @@ void phase_ring(float progress, bool playing) {
     const int x = kCx + static_cast<int>(kR * std::cos(a));
     const int y = kCy + static_cast<int>(kR * std::sin(a));
     const bool on = playing && i < lit;
-    disc(x, y, 2, on ? kNeon : kRingDim);
+    disc(x, y, 2, on ? pal.neon : pal.ring);
   }
   if (playing) {
     const float a = -static_cast<float>(M_PI) / 2.0f +
                     (2.0f * static_cast<float>(M_PI) * lit) / kDots;
     const int x = kCx + static_cast<int>(kR * std::cos(a));
     const int y = kCy + static_cast<int>(kR * std::sin(a));
-    disc(x, y, 5, kInk);
+    disc(x, y, 5, pal.ink);
   }
 }
 
@@ -246,6 +277,8 @@ struct Snap {
   bool playing = false;
   bool wifi_up = false;
   bool provisioned = false;
+  bool big_beat = true;    // full-screen beat animation while playing
+  uint8_t beat_style = 0;  // neon::BeatStyle as a byte
   char ip[16] = {};
   char firmware[32] = {};
   char bpm[16] = {};
@@ -268,6 +301,8 @@ Snap snapshot() {
   s.beat = neon::beat_number(s.phase, s.quantum);
   s.playing = tl.playing != 0;
   s.peers = tl.num_peers;
+  s.big_beat = cfg.big_beat_display != 0;
+  s.beat_style = static_cast<uint8_t>(cfg.beat_style);
   s.wifi_up = neon_wifi_sta_got_ip();
   s.provisioned = neon_wifi_has_credentials();
   const char* ssid = neon_wifi_current_ssid();
@@ -281,10 +316,64 @@ Snap snapshot() {
   return s;
 }
 
+// Gear + SETTINGS affordance at the top of the dial. Drawn on every live
+// view (BPM face and beat stage) so settings is always one tap away.
+void draw_settings_affordance() {
+  const int label_w = text_w("SETTINGS", 1);
+  const int gear_px = 7 * 2;
+  const int group_w = gear_px + 6 + label_w;
+  const int gx = kCx - group_w / 2;
+  draw_gear(gx, 14, 2, pal.muted);
+  text(gx + gear_px + 6, 15, "SETTINGS", 1, pal.muted);
+}
+
+// Defined in the MIDI section below (used by the settings screen and the
+// live faces before their point of definition).
+void draw_midi_in_badge();
+void send_test_note();
+
+// ---- Beat stage --------------------------------------------------------
+//
+// The big glanceable beat number (1..quantum) inside the phase ring, shown
+// while playing when BEAT (big_beat_display) is on. The pie/pendulum/pulse
+// animations were dropped from this build -- the per-pixel pie in particular
+// was too costly on the round panel -- so only the number remains. (The
+// shared BeatStyle enum still exists for the OLED / web faces.)
+
+void beat_num(const Snap& s) {
+  char d[4];
+  std::snprintf(d, sizeof(d), "%u", static_cast<unsigned>(s.beat));
+  const int scale = 13;
+  const uint16_t c = s.beat == 1 ? pal.hot : pal.hero;
+  text_cx(kCx, kCy - 7 * scale / 2, d, scale, c);
+}
+
+void paint_beat_stage(const Snap& s) {
+  refresh_pal();
+  fill(0, 0, kW, kH, pal.bg);
+
+  const uint32_t span = s.quantum * 1000u;
+  const float progress =
+      span != 0 ? static_cast<float>(s.phase % span) / static_cast<float>(span)
+                : 0.0f;
+  phase_ring(progress, s.playing);
+  draw_settings_affordance();
+
+  beat_num(s);
+  draw_midi_in_badge();
+}
+
 // ---- Live face ---------------------------------------------------------
 
 void paint_live(const Snap& s) {
-  fill(0, 0, kW, kH, kBg);
+  // Full-screen beat animation while playing (BEAT + STYLE), matching the
+  // OLED's render_home. Otherwise the glanceable hero-BPM dial.
+  if (s.playing && s.big_beat) {
+    paint_beat_stage(s);
+    return;
+  }
+  refresh_pal();
+  fill(0, 0, kW, kH, pal.bg);
 
   const uint32_t span = s.quantum * 1000u;
   const float progress =
@@ -293,12 +382,7 @@ void paint_live(const Snap& s) {
   phase_ring(progress, s.playing);
 
   // Gear + SETTINGS at the top, in place of the old device-name line.
-  const int label_w = text_w("SETTINGS", 1);
-  const int gear_px = 7 * 2;
-  const int group_w = gear_px + 6 + label_w;
-  const int gx = kCx - group_w / 2;
-  draw_gear(gx, 14, 2, kMuted);
-  text(gx + gear_px + 6, 15, "SETTINGS", 1, kMuted);
+  draw_settings_affordance();
 
   // Hero tempo. Integer nudges land on whole BPM, so drop the ".0" and
   // render the number larger (scale 6) for a glance read; only a genuinely
@@ -306,31 +390,32 @@ void paint_live(const Snap& s) {
   const bool whole = (s.milli_bpm % 1000u) == 0;
   char big[8];
   const char* bpm_str = s.bpm;
-  int bpm_scale = 4;
+  int bpm_scale = 5;
   if (whole) {
     std::snprintf(big, sizeof(big), "%u",
                   static_cast<unsigned>(s.milli_bpm / 1000u));
     bpm_str = big;
-    bpm_scale = 6;
+    bpm_scale = 8;
   }
   const int bpm_h = 7 * bpm_scale;
-  text_cx(kCx, kCy - bpm_h / 2 - 4, bpm_str, bpm_scale, kInk);
-  text_cx(kCx, kCy + bpm_h / 2 + 2, "BPM", 1, kMuted);
+  text_cx(kCx, kCy - bpm_h / 2 - 4, bpm_str, bpm_scale, pal.hero);
+  text_cx(kCx, kCy + bpm_h / 2 + 2, "BPM", 1, pal.muted);
 
   // Peer count under the tempo block.
   char peers[12];
   std::snprintf(peers, sizeof(peers), "%u LINK",
                 static_cast<unsigned>(s.peers));
-  text_cx(kCx, kCy + bpm_h / 2 + 18, peers, 1, s.peers ? kNeon : kNeonDim);
+  text_cx(kCx, kCy + bpm_h / 2 + 18, peers, 1, s.peers ? pal.neon : pal.neon_dim);
 
   // Transport chip near the bottom of the dial.
   const int chip_w = 96;
   const int chip_h = 34;
   const int chip_x = kCx - chip_w / 2;
-  const int chip_y = kH - 74;
-  fill(chip_x, chip_y, chip_w, chip_h, s.playing ? kHot : kRingDim);
+  const int chip_y = kH - 58;
+  fill(chip_x, chip_y, chip_w, chip_h, s.playing ? pal.hot : pal.ring);
   text_cx(kCx, chip_y + (chip_h - 14) / 2, s.playing ? "STOP" : "RUN", 2,
-          s.playing ? kInk : kMuted);
+          s.playing ? pal.ink : pal.muted);
+  draw_midi_in_badge();
 }
 
 // ---- Settings: apply edited config, navigation helpers -----------------
@@ -356,22 +441,124 @@ void commit_menu() {
   live.display_brightness = g_cfg.display_brightness;
   live.big_beat_display = g_cfg.big_beat_display;
   live.beat_style = g_cfg.beat_style;
+  live.color_theme = g_cfg.color_theme;
   live.audio = g_cfg.audio;
   neon_config_apply(live);
   g_cfg = live;
   apply_backlight();
 }
 
-void follow_cursor() {
+// ---- Board-aware menu trimming -----------------------------------------
+//
+// The shared MenuModel exposes every board's settings. The MaTouch has no
+// Eurorack jacks and no audio codec, so its panel hides the sections and
+// rows that would drive hardware it does not have: the OUTPUTS and AUDIO
+// sections, and the pulse/MIDI-timing rows on SYSTEM. MIDI stays (a TRS
+// clock jack can be wired to the header — see board_pins.h kPinMidiTx).
+// These maps translate a visible row position into the model's real index;
+// a null map means "show every row" (identity).
+
+// MENU: LIVE, NETWORK, MIDI, SYSTEM, BACK (drops OUTPUTS[1] and AUDIO[4]).
+constexpr int kMenuVis[] = {0, 2, 3, 5, 6};
+constexpr int kMenuVisCount = 5;
+
+// MIDI: only CLK OUT drives anything here. BLE is force-disabled on the
+// link-sync profile, and CHANNEL / GATE / PITCH CV route MIDI-in to CV
+// gates this board has neither the input pin nor the DACs for. The 24 PPQN
+// clock on kPinMidiTx is the one live MIDI feature, so it is the one row.
+constexpr int kMidiVis[] = {1};
+constexpr int kMidiVisCount = 1;
+
+// SYSTEM: QUANTUM, MIDI NDG, SS SYNC, BRIGHT, BEAT, COLOUR, VERSION, REBOOT.
+// MIDI NDG stays because it times the (now live) TRS clock. STYLE is dropped
+// with the animations (only the big beat number remains). Also drops
+// LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, RST EDGE — each of which times
+// a pulse output or an external clock input this board does not have.
+constexpr int kSysVis[] = {5, 7, 8, 9, 10, 12, 13, 14};
+constexpr int kSysVisCount = 8;
+
+const int* row_map(neon::MenuModel::Screen scr, int* count) {
+  using S = neon::MenuModel::Screen;
+  if (scr == S::kMenu) {
+    *count = kMenuVisCount;
+    return kMenuVis;
+  }
+  if (scr == S::kMidi) {
+    *count = kMidiVisCount;
+    return kMidiVis;
+  }
+  if (scr == S::kSystem) {
+    *count = kSysVisCount;
+    return kSysVis;
+  }
+  *count = g_menu.item_count();
+  return nullptr;
+}
+
+int vis_to_real(const int* map, int vis) { return map != nullptr ? map[vis] : vis; }
+
+int real_to_vis(const int* map, int count, int real) {
+  if (map == nullptr) {
+    return real;
+  }
+  for (int i = 0; i < count; ++i) {
+    if (map[i] == real) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+// After navigating to a trimmed screen the model cursor may sit on a hidden
+// row (e.g. SYSTEM opens at index 0, which is not visible). Snap it onto
+// the first visible row so the highlight and the first click are correct.
+void snap_cursor() {
+  int count = 0;
+  const int* map = row_map(g_menu.screen(), &count);
+  if (map == nullptr) {
+    return;
+  }
   const int cur = g_menu.cursor();
-  if (cur < g_scroll) {
-    g_scroll = cur;
-  } else if (cur >= g_scroll + kRows) {
-    g_scroll = cur - kRows + 1;
+  for (int i = 0; i < count; ++i) {
+    if (map[i] == cur) {
+      return;
+    }
+  }
+  g_menu.set_cursor(map[0]);
+}
+
+void follow_cursor() {
+  int count = 0;
+  const int* map = row_map(g_menu.screen(), &count);
+  const int vis = real_to_vis(map, count, g_menu.cursor());
+  if (vis < g_scroll) {
+    g_scroll = vis;
+  } else if (vis >= g_scroll + kRows) {
+    g_scroll = vis - kRows + 1;
   }
   if (g_scroll < 0) {
     g_scroll = 0;
   }
+}
+
+// Move the cursor by `detents` across only the visible rows of the current
+// screen. On identity-mapped screens (OUTPUTS EDIT, MIDI, CONFIRM) this
+// defers to the model so editing/confirm behave unchanged.
+void settings_rotate(int detents) {
+  int count = 0;
+  const int* map = row_map(g_menu.screen(), &count);
+  if (map == nullptr) {
+    g_menu.on_rotate(detents);
+    follow_cursor();
+    return;
+  }
+  if (count <= 0) {
+    return;
+  }
+  int vis = real_to_vis(map, count, g_menu.cursor());
+  vis = ((vis + detents) % count + count) % count;
+  g_menu.set_cursor(map[vis]);
+  follow_cursor();
 }
 
 void open_settings() {
@@ -405,6 +592,7 @@ void settings_back() {
   } else {
     g_menu.go_section(S::kMenu);
   }
+  snap_cursor();
   g_scroll = 0;
 }
 
@@ -434,11 +622,57 @@ void menu_activate(int row) {
     default:
       return;
   }
+  snap_cursor();
   g_scroll = 0;
 }
 
-// Activate a row on whichever settings screen is showing.
-void settings_activate(int row) {
+// A row whose value the user edits in place (as opposed to a navigation or
+// action row). MENU and NETWORK rows navigate; VERSION is read-only and
+// REBOOT is an action.
+bool is_value_row(neon::MenuModel::Screen scr, int row) {
+  using S = neon::MenuModel::Screen;
+  if (scr == S::kMidi) {
+    return true;
+  }
+  if (scr == S::kSystem) {
+    return row != neon::MenuModel::kSystemVersionItem &&
+           row != neon::MenuModel::kSystemRebootItem;
+  }
+  return false;  // MENU / NETWORK / OUTPUTS list rows are not value edits
+}
+
+// Step a value row by one, in `delta`'s direction. MenuModel clamps its
+// numeric ranges (QUANTUM 1..16, BRIGHT 0..255, MIDI NDG ±100 ms), so a
+// plain +1 gets stuck at the ceiling — tapping QUANTUM would climb to 16
+// and stop. When a step does not move the value it was already at that
+// end, so we wrap to the far end by stepping the other way until it stops.
+// Enum rows (STYLE, COLOUR) already wrap in the model and take the direct
+// path; toggles flip either way for the same reason.
+void step_value(int row, int delta) {
+  g_menu.set_cursor(row);
+  char before[24] = {};
+  g_menu.item_value(row, before, sizeof(before));
+  g_menu.nudge_value(delta);
+  char after[24] = {};
+  g_menu.item_value(row, after, sizeof(after));
+  if (std::strcmp(before, after) == 0) {
+    char prev[24];
+    for (;;) {
+      std::snprintf(prev, sizeof(prev), "%s", after);
+      g_menu.nudge_value(-delta);
+      g_menu.item_value(row, after, sizeof(after));
+      if (std::strcmp(prev, after) == 0) {
+        break;
+      }
+    }
+  }
+  commit_menu();
+}
+
+// Activate a row on whichever settings screen is showing. `delta` is the
+// step direction for value rows (right-tap +1, left-tap or encoder... see
+// callers); it is ignored for navigation and action rows.
+void settings_activate(int row, int delta = 1) {
   using S = neon::MenuModel::Screen;
   const S scr = g_menu.screen();
   if (scr == S::kMenu) {
@@ -455,26 +689,25 @@ void settings_activate(int row) {
     return;
   }
   if (scr == S::kSystem && row == neon::MenuModel::kSystemRebootItem) {
+    g_menu.set_confirm_yes(false);
     g_menu.go_section(S::kConfirm);
     return;
   }
   if (scr == S::kSystem && row == neon::MenuModel::kSystemVersionItem) {
     return;
   }
-  g_menu.set_cursor(row);
-  char val[24] = {};
-  g_menu.item_value(row, val, sizeof(val));
-  // Toggle-like rows read nicer if a tap turns them off from ON/LEAD.
-  g_menu.nudge_value((std::strcmp(val, "ON") == 0 ||
-                      std::strcmp(val, "LEAD") == 0)
-                         ? -1
-                         : 1);
-  commit_menu();
+  step_value(row, delta);
 }
 
 void confirm_choice(bool yes) {
   if (yes) {
     ESP_LOGI(kTag, "reboot from settings");
+    // Visible confirmation before the panel goes dark, so a fast reboot
+    // does not read as "nothing happened".
+    refresh_pal();
+    fill(0, 0, kW, kH, pal.bg);
+    text_cx(kCx, kCy - 8, "REBOOTING", 2, pal.hot);
+    halesp::lcd_gc9a01_blit(g_fb, 0, 0, kW, kH);
     neon_config_flush_now();
     esp_restart();
   }
@@ -487,53 +720,66 @@ void confirm_choice(bool yes) {
 
 void paint_back_chip(bool exit_label) {
   const int w = 120;
-  fill(kCx - w / 2, kBackY0, w, kBackH, kSurface);
+  fill(kCx - w / 2, kBackY0, w, kBackH, pal.surface);
   text_cx(kCx, kBackY0 + (kBackH - 7) / 2, exit_label ? "CLOSE" : "< BACK", 1,
-          kNeon);
+          pal.neon);
 }
 
 void paint_network(const Snap& s) {
   const char* mode = s.provisioned ? (s.wifi_up ? "WIFI" : "JOINING")
                                    : "SETUP AP";
   int y = kListY0 + 4;
-  text(40, y, "MODE", 1, kMuted);
-  text(150, y, mode, 1, kInk);
+  text(40, y, "MODE", 1, pal.muted);
+  text(150, y, mode, 1, pal.ink);
   y += 30;
-  text(40, y, "IP", 1, kMuted);
-  text(150, y, s.ip[0] ? s.ip : "-", 1, kInk);
+  text(40, y, "IP", 1, pal.muted);
+  text(150, y, s.ip[0] ? s.ip : "-", 1, pal.ink);
   y += 30;
   char pc[12];
   std::snprintf(pc, sizeof(pc), "%u", static_cast<unsigned>(s.peers));
-  text(40, y, "PEERS", 1, kMuted);
-  text(150, y, pc, 1, kInk);
+  text(40, y, "PEERS", 1, pal.muted);
+  text(150, y, pc, 1, pal.ink);
   // Tappable "scan & join" chip (also fired by an encoder click here).
   const int cw = 150;
-  fill(kCx - cw / 2, kBackY0 - 40, cw, 30, kSurface2);
-  text_cx(kCx, kBackY0 - 40 + (30 - 7) / 2, "SCAN & JOIN", 1, kNeon);
+  fill(kCx - cw / 2, kBackY0 - 40, cw, 30, pal.surface2);
+  text_cx(kCx, kBackY0 - 40 + (30 - 7) / 2, "SCAN & JOIN", 1, pal.neon);
 }
 
 constexpr int kNetScanY0 = kBackY0 - 40;
 constexpr int kNetScanH = 30;
 
 void paint_confirm() {
-  text_cx(kCx, kListY0 + 6, "REBOOT?", 2, kInk);
-  text_cx(kCx, kListY0 + 34, "clock stops", 1, kMuted);
+  text_cx(kCx, kListY0 + 6, "REBOOT?", 2, pal.ink);
+  text_cx(kCx, kListY0 + 34, "clock stops", 1, pal.muted);
   const int bw = 70;
   const int bh = 40;
   const int by = kCy + 20;
-  fill(kCx - 8 - bw, by, bw, bh, kSurface);
-  text_cx(kCx - 8 - bw / 2, by + (bh - 14) / 2, "NO", 2, kInk);
-  fill(kCx + 8, by, bw, bh, kHot);
-  text_cx(kCx + 8 + bw / 2, by + (bh - 14) / 2, "YES", 2, kInk);
+  const bool yes = g_menu.confirm_yes();
+  const int no_x = kCx - 8 - bw;
+  const int yes_x = kCx + 8;
+  fill(no_x, by, bw, bh, pal.surface);
+  text_cx(no_x + bw / 2, by + (bh - 14) / 2, "NO", 2, pal.ink);
+  fill(yes_x, by, bw, bh, pal.hot);
+  text_cx(yes_x + bw / 2, by + (bh - 14) / 2, "YES", 2, pal.ink);
+  // Selection ring so the encoder path shows which choice is armed (touch
+  // hits either side directly). Twisting toggles it; a click commits it.
+  const int sx = yes ? yes_x : no_x;
+  fill(sx - 3, by - 3, bw + 6, 3, pal.ink);
+  fill(sx - 3, by + bh, bw + 6, 3, pal.ink);
+  fill(sx - 3, by - 3, 3, bh + 6, pal.ink);
+  fill(sx + bw, by - 3, 3, bh + 6, pal.ink);
+  text_cx(kCx, kH - 34, yes ? "click = REBOOT" : "twist to YES", 1,
+          pal.neon_dim);
 }
 
 void paint_settings(const Snap& s) {
   using S = neon::MenuModel::Screen;
-  fill(0, 0, kW, kH, kBg);
+  refresh_pal();
+  fill(0, 0, kW, kH, pal.bg);
 
   const S scr = g_menu.screen();
-  text_cx(kCx, 12, g_menu.screen_title(), 2, kNeon);
-  fill(kCx - 70, 32, 140, 2, kNeonDim);
+  text_cx(kCx, 12, g_menu.screen_title(), 2, pal.neon);
+  fill(kCx - 70, 32, 140, 2, pal.neon_dim);
 
   if (scr == S::kConfirm) {
     paint_confirm();
@@ -545,35 +791,45 @@ void paint_settings(const Snap& s) {
     return;
   }
 
-  const int n = g_menu.item_count();
+  int n = 0;
+  const int* map = row_map(scr, &n);
   follow_cursor();
   for (int i = 0; i < kRows; ++i) {
-    const int idx = g_scroll + i;
-    if (idx >= n) {
+    const int vis = g_scroll + i;
+    if (vis >= n) {
       break;
     }
+    const int idx = vis_to_real(map, vis);
     const int y = kListY0 + i * kRowH;
     const bool cur = idx == g_menu.cursor();
     if (cur) {
-      fill(28, y, kW - 56, kRowH - 4, kSurface2);
+      fill(28, y, kW - 56, kRowH - 4, pal.surface2);
     }
     text(38, y + (kRowH - 4 - 7) / 2, g_menu.item_label(idx), 1,
-         cur ? kInk : kMuted);
+         cur ? pal.ink : pal.muted);
     char val[40] = {};
     if (scr == S::kSystem && idx == neon::MenuModel::kSystemVersionItem) {
       std::snprintf(val, sizeof(val), "%s", s.firmware);
     } else {
       g_menu.item_value(idx, val, sizeof(val));
     }
-    text(202 - text_w(val, 1), y + (kRowH - 4 - 7) / 2, val, 1, kNeon);
+    text(202 - text_w(val, 1), y + (kRowH - 4 - 7) / 2, val, 1, pal.neon);
   }
 
   // Scroll hints when the list runs past the window.
   if (g_scroll > 0) {
-    text_cx(kCx, kListY0 - 10, "\x18", 1, kNeonDim);  // up
+    text_cx(kCx, kListY0 - 10, "\x18", 1, pal.neon_dim);  // up
   }
   if (g_scroll + kRows < n) {
-    text_cx(kCx, kBackY0 - 12, "\x19", 1, kNeonDim);  // down
+    text_cx(kCx, kBackY0 - 12, "\x19", 1, pal.neon_dim);  // down
+  }
+
+  // A "send a note" chip on the MIDI screen (mirrors the Network scan chip):
+  // an audible check that the synth on the OUT jack is hearing us.
+  if (scr == S::kMidi) {
+    const int cw = 150;
+    fill(kCx - cw / 2, kBackY0 - 40, cw, 30, pal.surface2);
+    text_cx(kCx, kBackY0 - 40 + (30 - 7) / 2, "TEST NOTE", 1, pal.neon);
   }
 
   paint_back_chip(scr == S::kMenu);
@@ -582,12 +838,21 @@ void paint_settings(const Snap& s) {
 // ---- WiFi join flow ----------------------------------------------------
 
 void wifi_connect() {
+  // Ignore a premature commit: WPA2 needs at least 8 characters, so a
+  // half-typed password should not kick off a connect. (Combined with the
+  // RAM-only apply below, a wrong password can no longer reach flash.)
+  if (!g_join_open && g_pass_len < 8) {
+    return;
+  }
   neon::Config cfg = neon_config();
   std::snprintf(cfg.wifi[0].ssid, sizeof(cfg.wifi[0].ssid), "%s", g_join_ssid);
   std::snprintf(cfg.wifi[0].pass, sizeof(cfg.wifi[0].pass), "%s",
                 g_join_open ? "" : g_pass);
   cfg.wifi[0].hidden = 0;
-  neon_config_apply(cfg);
+  // Try the credential without persisting it. Only wifi_tick(), once an IP
+  // actually arrives, writes it to NVS -- so a failed attempt leaves flash
+  // untouched instead of poisoning it with a password that never connects.
+  neon_config_apply_ram(cfg);
   neon_wifi_apply_credentials();
   g_connect_us = esp_timer_get_time();
   g_connected_us = 0;
@@ -631,8 +896,8 @@ void wifi_pass_click() {
 
 // Paint one frame of feedback, run the blocking scan, land on the list.
 void wifi_start_scan() {
-  fill(0, 0, kW, kH, kBg);
-  text_cx(kCx, kCy - 8, "SCANNING", 2, kNeon);
+  fill(0, 0, kW, kH, pal.bg);
+  text_cx(kCx, kCy - 8, "SCANNING", 2, pal.neon);
   halesp::lcd_gc9a01_blit(g_fb, 0, 0, kW, kH);
   g_ap_count = neon_wifi_scan(g_aps, 16);
   if (g_ap_count < 0) {
@@ -645,13 +910,13 @@ void wifi_start_scan() {
 }
 
 void paint_wifi_list() {
-  fill(0, 0, kW, kH, kBg);
-  text_cx(kCx, 12, "WIFI", 2, kNeon);
-  fill(kCx - 70, 32, 140, 2, kNeonDim);
+  fill(0, 0, kW, kH, pal.bg);
+  text_cx(kCx, 12, "WIFI", 2, pal.neon);
+  fill(kCx - 70, 32, 140, 2, pal.neon_dim);
 
   if (g_ap_count == 0) {
-    text_cx(kCx, kCy - 8, "NO NETWORKS", 1, kMuted);
-    text_cx(kCx, kCy + 8, "click to rescan", 1, kNeonDim);
+    text_cx(kCx, kCy - 8, "NO NETWORKS", 1, pal.muted);
+    text_cx(kCx, kCy + 8, "click to rescan", 1, pal.neon_dim);
     paint_back_chip(false);
     return;
   }
@@ -669,30 +934,30 @@ void paint_wifi_list() {
     const int y = kListY0 + i * kRowH;
     const bool cur = idx == g_ap_sel;
     if (cur) {
-      fill(28, y, kW - 56, kRowH - 4, kSurface2);
+      fill(28, y, kW - 56, kRowH - 4, pal.surface2);
     }
     char ssid[24];
     clip_str(ssid, sizeof(ssid), g_aps[idx].ssid, 22);
-    text(38, y + (kRowH - 4 - 7) / 2, ssid, 1, cur ? kInk : kMuted);
+    text(38, y + (kRowH - 4 - 7) / 2, ssid, 1, cur ? pal.ink : pal.muted);
     // Lock glyph for secured networks.
     if (g_aps[idx].open == 0) {
-      text(190, y + (kRowH - 4 - 7) / 2, "\x07", 1, kNeon);
+      text(190, y + (kRowH - 4 - 7) / 2, "\x07", 1, pal.neon);
     }
   }
   if (g_ap_scroll > 0) {
-    text_cx(kCx, kListY0 - 10, "\x18", 1, kNeonDim);
+    text_cx(kCx, kListY0 - 10, "\x18", 1, pal.neon_dim);
   }
   if (g_ap_scroll + kRows < g_ap_count) {
-    text_cx(kCx, kBackY0 - 12, "\x19", 1, kNeonDim);
+    text_cx(kCx, kBackY0 - 12, "\x19", 1, pal.neon_dim);
   }
   paint_back_chip(false);
 }
 
 void paint_wifi_pass() {
-  fill(0, 0, kW, kH, kBg);
+  fill(0, 0, kW, kH, pal.bg);
   char title[26];
   clip_str(title, sizeof(title), g_join_ssid, 24);
-  text_cx(kCx, 14, title, 1, kMuted);
+  text_cx(kCx, 14, title, 1, pal.muted);
 
   // Entered password so far (plain, so a typo is visible), last 15 chars.
   const char* shown = g_pass;
@@ -704,7 +969,7 @@ void paint_wifi_pass() {
   const int ln = static_cast<int>(std::strlen(line));
   line[ln] = '_';
   line[ln + 1] = '\0';
-  text_cx(kCx, 46, g_pass_len ? line : "_", 2, kInk);
+  text_cx(kCx, 46, g_pass_len ? line : "_", 2, pal.ink);
 
   // The picker: current slot big in the middle, neighbours faded.
   auto slot_label = [](int idx, char* buf) {
@@ -723,13 +988,13 @@ void paint_wifi_pass() {
     char buf[4];
     slot_label(idx, buf);
     const int scale = off == 0 ? 4 : 2;
-    const uint16_t col = off == 0 ? kNeon : kNeonDim;
+    const uint16_t col = off == 0 ? pal.neon : pal.neon_dim;
     const int x = kCx + off * 34;
     text(x - text_w(buf, scale) / 2, cy - 7 * scale / 2, buf, scale, col);
   }
 
-  text_cx(kCx, kH - 40, "turn pick . click add", 1, kNeonDim);
-  text_cx(kCx, kH - 26, "hold = back", 1, kNeonDim);
+  text_cx(kCx, kH - 40, "turn pick . click add", 1, pal.neon_dim);
+  text_cx(kCx, kH - 26, "hold = back", 1, pal.neon_dim);
 }
 
 // Once the STA has an IP, persist the credential and drop back to the home
@@ -744,7 +1009,9 @@ bool wifi_tick() {
   }
   if (g_connected_us == 0) {
     g_connected_us = esp_timer_get_time();
-    neon_config_flush_now();  // survive a power cycle immediately
+    // Proven good (we have an IP): now it is safe to persist. This is the
+    // only path that writes the joined credential to flash.
+    neon_config_save(neon_config());
     ESP_LOGI(kTag, "joined; credentials saved");
   }
   if (esp_timer_get_time() - g_connected_us > 1200000) {
@@ -755,26 +1022,27 @@ bool wifi_tick() {
 }
 
 void paint_wifi_connecting() {
-  fill(0, 0, kW, kH, kBg);
+  fill(0, 0, kW, kH, pal.bg);
   const bool up = neon_wifi_sta_got_ip();
   const int64_t dt = esp_timer_get_time() - g_connect_us;
   if (up) {
-    text_cx(kCx, kCy - 20, "CONNECTED", 2, kNeon);
-    text_cx(kCx, kCy + 8, g_join_ssid, 1, kInk);
+    text_cx(kCx, kCy - 20, "CONNECTED", 2, pal.neon);
+    text_cx(kCx, kCy + 8, g_join_ssid, 1, pal.ink);
   } else if (dt > 20000000) {
-    text_cx(kCx, kCy - 20, "NO CONNECT", 2, kHot);
-    text_cx(kCx, kCy + 8, "check password", 1, kMuted);
-    text_cx(kCx, kH - 40, "hold = back", 1, kNeonDim);
+    text_cx(kCx, kCy - 20, "NO CONNECT", 2, pal.hot);
+    text_cx(kCx, kCy + 8, "check password", 1, pal.muted);
+    text_cx(kCx, kH - 40, "hold = back", 1, pal.neon_dim);
   } else {
-    text_cx(kCx, kCy - 20, "CONNECTING", 2, kNeon);
+    text_cx(kCx, kCy - 20, "CONNECTING", 2, pal.neon);
     const int dots = static_cast<int>((dt / 400000) % 4);
     char d[5] = "....";
     d[dots] = '\0';
-    text_cx(kCx, kCy + 8, d, 2, kInk);
+    text_cx(kCx, kCy + 8, d, 2, pal.ink);
   }
 }
 
 void paint_wifi() {
+  refresh_pal();
   switch (g_wifi) {
     case Wifi::kList:
       paint_wifi_list();
@@ -886,13 +1154,11 @@ void settings_tap(int x, int y) {
   const S scr = g_menu.screen();
 
   if (scr == S::kConfirm) {
-    const int bw = 70;
-    const int bh = 40;
+    // Whole lower half splits left = NO, right = YES: no centre dead zone,
+    // and each target is half the dial rather than a 70 px pill.
     const int by = kCy + 20;
-    if (in_rect(x, y, kCx - 8 - bw, by, bw, bh)) {
-      confirm_choice(false);
-    } else if (in_rect(x, y, kCx + 8, by, bw, bh)) {
-      confirm_choice(true);
+    if (y >= by - 24) {
+      confirm_choice(x >= kCx);
     }
     return;
   }
@@ -910,13 +1176,118 @@ void settings_tap(int x, int y) {
     return;
   }
 
-  // A row in the list window.
+  if (scr == S::kMidi && in_rect(x, y, kCx - 75, kBackY0 - 40, 150, 30)) {
+    send_test_note();
+    return;
+  }
+
+  // A row in the list window. On value rows the tap's side sets direction:
+  // left half decrements, right half increments, so a bounded value moves
+  // both ways (QUANTUM no longer sticks at 16). Navigation rows ignore it.
   if (y >= kListY0 && y < kListY0 + kRows * kRowH) {
     const int i = (y - kListY0) / kRowH;
-    const int idx = g_scroll + i;
-    if (idx >= 0 && idx < g_menu.item_count()) {
-      settings_activate(idx);
+    const int vis = g_scroll + i;
+    int count = 0;
+    const int* map = row_map(scr, &count);
+    if (vis >= 0 && vis < count) {
+      const int idx = vis_to_real(map, vis);
+      const int delta = (is_value_row(scr, idx) && x < kCx) ? -1 : 1;
+      settings_activate(idx, delta);
     }
+  }
+}
+
+// ---- MIDI test tone + external-clock follow ----------------------------
+
+// A one-shot note to whatever synth is on the OUT jack (the M5 unit's
+// SAM2695 hears it in either switch position, since RXD always feeds the
+// synth). Proves the MaTouch -> unit TX path audibly, independent of the
+// DIN wiring and the KeyStep. Uses the buffered driver write; safe because
+// this is a stopped-state test, so the ISR clock path is not also writing.
+int64_t g_test_off_us = 0;
+
+void send_test_note() {
+  const uint8_t on[3] = {0x90, 60, 100};  // ch 1 note-on, middle C
+  halesp::midi_uart_send(on, sizeof(on));
+  g_test_off_us = esp_timer_get_time() + 350000;
+}
+
+void test_note_tick() {
+  if (g_test_off_us != 0 && esp_timer_get_time() >= g_test_off_us) {
+    const uint8_t off[3] = {0x80, 60, 0};
+    halesp::midi_uart_send(off, sizeof(off));
+    g_test_off_us = 0;
+  }
+}
+
+// External MIDI clock follow. Bytes arrive on RX (GPIO44) from a MIDI IN
+// source; 24 PPQN clock is counted over a ~1 s window to estimate BPM
+// (pushed to the Link session as kSetTempo), and Start/Stop drive the
+// transport. Tempo + transport follow, not sample-accurate phase lock.
+int g_midi_clocks = 0;
+int64_t g_midi_window_us = 0;
+int64_t g_midi_last_rx_us = 0;
+
+void midi_in_tick() {
+  const int64_t now = esp_timer_get_time();
+  uint8_t buf[128];
+  for (;;) {
+    const int n = halesp::midi_uart_read(buf, sizeof(buf));
+    if (n <= 0) {
+      break;
+    }
+    for (int i = 0; i < n; ++i) {
+      const uint8_t b = buf[i];
+      if (b == 0xF8) {  // clock
+        ++g_midi_clocks;
+        g_midi_last_rx_us = now;
+      } else if (b == 0xFA || b == 0xFB) {  // start / continue
+        ControlCommand c{};
+        c.kind = ControlCommand::Kind::kPlayNow;
+        control_queue_push(c);
+        g_midi_last_rx_us = now;
+      } else if (b == 0xFC) {  // stop
+        ControlCommand c{};
+        c.kind = ControlCommand::Kind::kStopNow;
+        control_queue_push(c);
+        g_midi_last_rx_us = now;
+      }
+    }
+    if (n < static_cast<int>(sizeof(buf))) {
+      break;
+    }
+  }
+  if (g_midi_window_us == 0) {
+    g_midi_window_us = now;
+  }
+  const int64_t dt = now - g_midi_window_us;
+  if (dt >= 1000000) {
+    if (g_midi_clocks > 0) {
+      // 24 PPQN: milli_bpm = clocks / (dt seconds) / 24 * 60 * 1000
+      //                    = clocks * 2.5e9 / dt_us.
+      const uint32_t milli_bpm = static_cast<uint32_t>(
+          (static_cast<int64_t>(g_midi_clocks) * 2500000000LL) / dt);
+      if (milli_bpm >= neon::kMinMilliBpm && milli_bpm <= neon::kMaxMilliBpm) {
+        ControlCommand c{};
+        c.kind = ControlCommand::Kind::kSetTempo;
+        c.arg = static_cast<int32_t>(milli_bpm);
+        control_queue_push(c);
+      }
+    }
+    g_midi_clocks = 0;
+    g_midi_window_us = now;
+  }
+}
+
+// True for ~0.6 s after the last realtime byte, for the live-face badge.
+bool midi_in_active() {
+  return g_midi_last_rx_us != 0 &&
+         (esp_timer_get_time() - g_midi_last_rx_us) < 600000;
+}
+
+void draw_midi_in_badge() {
+  if (midi_in_active()) {
+    text_cx(kCx, kH - 18, "MIDI IN", 1, pal.neon);
   }
 }
 
@@ -935,20 +1306,76 @@ void push_kind(ControlCommand::Kind kind) {
   control_queue_push(cmd);
 }
 
-// Debounced single-touch tap: fire once on the press edge, ignore drags.
-bool poll_tap(int* tx, int* ty) {
+// True when the current settings list is taller than the window, so a
+// touch drag has somewhere to go.
+bool list_scrollable() {
+  using S = neon::MenuModel::Screen;
+  const S scr = g_menu.screen();
+  if (scr == S::kConfirm || scr == S::kNetwork || scr == S::kHome) {
+    return false;
+  }
+  int count = 0;
+  row_map(scr, &count);
+  return count > kRows;
+}
+
+// Single-finger touch: a press that lifts without much travel is a tap
+// (fired on release, at the press point); vertical travel on a scrollable
+// settings list scrolls it instead and suppresses the tap. Dragging the
+// list also carries the cursor with it so the encoder's follow-cursor does
+// not snap the window back on the next frame.
+void handle_touch() {
   static bool was_down = false;
+  static int start_x = 0;
+  static int start_y = 0;
+  static int start_scroll = 0;
+  static bool dragging = false;
+  static bool on_list = false;
+
   int x = 0;
   int y = 0;
   const bool down = halesp::cst816_poll(&x, &y);
-  bool tapped = false;
+
   if (down && !was_down) {
-    tapped = true;
-    *tx = x;
-    *ty = y;
+    start_x = x;
+    start_y = y;
+    start_scroll = g_scroll;
+    dragging = false;
+    on_list = g_settings && g_wifi == Wifi::kOff && list_scrollable();
+  } else if (down && was_down) {
+    if (on_list) {
+      if (iabs(y - start_y) > 8) {
+        dragging = true;
+      }
+      if (dragging) {
+        int count = 0;
+        const int* map = row_map(g_menu.screen(), &count);
+        const int max_scroll = count > kRows ? count - kRows : 0;
+        int ns = start_scroll + (start_y - y) / kRowH;
+        if (ns < 0) {
+          ns = 0;
+        }
+        if (ns > max_scroll) {
+          ns = max_scroll;
+        }
+        g_scroll = ns;
+        g_menu.set_cursor(vis_to_real(map, ns));  // keep follow_cursor happy
+      }
+    }
+  } else if (!down && was_down && !dragging) {
+    // Release without a drag → a tap at the press point.
+    if (g_settings && g_wifi != Wifi::kOff) {
+      wifi_tap(start_x, start_y);
+    } else if (g_settings) {
+      settings_tap(start_x, start_y);
+    } else if (in_rect(start_x, start_y, kGearZoneX0, kGearZoneY0,
+                       kGearZoneX1 - kGearZoneX0,
+                       kGearZoneY1 - kGearZoneY0)) {
+      open_settings();
+      ESP_LOGI(kTag, "touch: open settings");
+    }
   }
   was_down = down;
-  return tapped;
 }
 
 void handle_encoder() {
@@ -986,8 +1413,7 @@ void handle_encoder() {
 
   // In settings: rotate scrolls / edits, short click activates, long backs.
   if (detents != 0) {
-    g_menu.on_rotate(detents);
-    follow_cursor();
+    settings_rotate(detents);
   }
   if (press == halesp::EncoderPress::kShort) {
     if (g_menu.screen() == neon::MenuModel::Screen::kConfirm) {
@@ -1029,32 +1455,22 @@ void matouch_task(void*) {
   }
 
   g_cfg = neon_config();
+  refresh_pal();
 
   // Splash so the panel proves itself before Link is up.
-  fill(0, 0, kW, kH, kBg);
+  fill(0, 0, kW, kH, pal.bg);
   phase_ring(0.0f, false);
-  text_cx(kCx, kCy - 20, "NEON", 3, kNeon);
-  text_cx(kCx, kCy + 12, "link-mat", 1, kMuted);
+  text_cx(kCx, kCy - 20, "NEON", 3, pal.neon);
+  text_cx(kCx, kCy + 12, "link-mat", 1, pal.muted);
   halesp::lcd_gc9a01_blit(g_fb, 0, 0, kW, kH);
   halesp::lcd_gc9a01_backlight(true);
   vTaskDelay(pdMS_TO_TICKS(700));
 
   for (;;) {
     handle_encoder();
-
-    int tx = 0;
-    int ty = 0;
-    if (poll_tap(&tx, &ty)) {
-      if (g_settings && g_wifi != Wifi::kOff) {
-        wifi_tap(tx, ty);
-      } else if (g_settings) {
-        settings_tap(tx, ty);
-      } else if (in_rect(tx, ty, kGearZoneX0, kGearZoneY0,
-                         kGearZoneX1 - kGearZoneX0, kGearZoneY1 - kGearZoneY0)) {
-        open_settings();
-        ESP_LOGI(kTag, "touch: open settings");
-      }
-    }
+    handle_touch();
+    midi_in_tick();    // follow external MIDI clock + start/stop on RX
+    test_note_tick();  // release a pending test note
 
     wifi_tick();  // auto-save + return home once the join gets an IP
 

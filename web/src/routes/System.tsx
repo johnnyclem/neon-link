@@ -14,6 +14,8 @@ import {
 } from "../components/controls";
 import { SaveBar } from "./SaveBar";
 import { SubNav } from "../components/SubNav";
+import { ThemePicker } from "../components/ThemePicker";
+import { isThemeId } from "../theme";
 
 /** Timing, clock source, tempo CV range, and the destructive actions. */
 export function System(props: PageProps) {
@@ -194,6 +196,7 @@ export function System(props: PageProps) {
       ) : null}
 
       {pane === "panel" ? (
+      <>
       <Card title="Identity">
         <div class="fields">
           <TextField
@@ -230,6 +233,17 @@ export function System(props: PageProps) {
           />
         </div>
       </Card>
+
+      <Card
+        title="Colour"
+        note="The MaTouch dial and this editor. Save to keep it on the module."
+      >
+        <ThemePicker
+          value={isThemeId(cfg.color_theme) ? cfg.color_theme : undefined}
+          onChange={(id) => patch((d) => (d.color_theme = id))}
+        />
+      </Card>
+      </>
       ) : null}
 
       {pane === "mod" ? (

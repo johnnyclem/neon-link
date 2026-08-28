@@ -16,6 +16,27 @@ std::string encode(const neon::Config& cfg) {
 }
 }  // namespace
 
+TEST_CASE("config JSON: color_theme names") {
+  neon::Config a;
+  CHECK(a.color_theme == neon::ColorTheme::kTeal);
+  const std::string json = encode(a);
+  CHECK(json.find("\"color_theme\":\"teal\"") != std::string::npos);
+
+  a.color_theme = neon::ColorTheme::kAmber;
+  neon::Config b;
+  const std::string amber_json = encode(a);
+  REQUIRE(neon::config_from_json(amber_json.c_str(), amber_json.size(), &b));
+  CHECK(b.color_theme == neon::ColorTheme::kAmber);
+
+  const char* paper = "{\"color_theme\":\"paper\"}";
+  REQUIRE(neon::config_from_json(paper, std::strlen(paper), &b));
+  CHECK(b.color_theme == neon::ColorTheme::kPaper);
+
+  const char* junk = "{\"color_theme\":\"rainbow\"}";
+  REQUIRE(neon::config_from_json(junk, std::strlen(junk), &b));
+  CHECK(b.color_theme == neon::ColorTheme::kPaper);
+}
+
 TEST_CASE("config JSON: beat_style names") {
   neon::Config a;
   CHECK(a.beat_style == neon::BeatStyle::kNumber);

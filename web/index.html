@@ -15,6 +15,12 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230B0C0F'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='ui-monospace,monospace' font-size='18' font-weight='700' fill='%2300F0FF'%3EN%3C/text%3E%3C/svg%3E"
     />
     <title>NEON LINK</title>
+    <script>
+      try {
+        var t = localStorage.getItem("neon-link-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -172,6 +172,8 @@ export interface Config {
   big_beat_display: boolean;
   /** Which beat animation the live screen (and this page) draw. */
   beat_style?: "number" | "pie" | "pendulum" | "pulse";
+  /** Colour LCD / web palette. MaTouch GC9A01 and this editor. */
+  color_theme?: "void" | "teal" | "phosphor" | "amber" | "magenta" | "paper";
   audio: AudioConfig;
   tempo_milli_bpm: number;
   wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };

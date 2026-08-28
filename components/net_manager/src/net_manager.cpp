@@ -433,6 +433,25 @@ bool g_ap_handlers = false;
 esp_netif_t* g_ap_netif = nullptr;
 bool g_ap_lwip_up = false;
 
+// Who starts (netif_adds) the AP interface on WIFI_EVENT_AP_START.
+//
+// On native Wi-Fi, main/wifi.cpp calls esp_netif_create_default_wifi_sta(),
+// which installs IDF's *shared* default handler set — and that set includes
+// WIFI_EVENT_AP_START -> wifi_default_action_ap_start (esp_wifi/src/
+// wifi_default.c). That handler already starts our AP netif, so if
+// on_ap_event ALSO starts it, lwIP asserts "netif already added" (netif.c)
+// and the chip reboots — which is exactly what a wrong Wi-Fi password
+// (STA fails -> setup-AP fallback) triggered. So on native we must NOT add
+// it a second time; we only track status.
+//
+// On Hosted (C6 over esp_wifi_remote: P4 LCD / Tab5) that shared STA path is
+// not used, no default AP handler exists, and we must add it ourselves.
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+constexpr bool kApSelfStartsNetif = true;
+#else
+constexpr bool kApSelfStartsNetif = false;
+#endif
+
 #if NEON_HAVE_WIFI
 void ap_netif_start_once() {
   if (g_ap_lwip_up || g_ap_netif == nullptr) {
@@ -455,16 +474,22 @@ void ap_netif_start_once() {
 void on_ap_event(void*, esp_event_base_t base, int32_t id, void* event_data) {
   if (id == WIFI_EVENT_AP_START) {
     const bool first = !g_ap_lwip_up;
-    ap_netif_start_once();
+    if (kApSelfStartsNetif) {
+      ap_netif_start_once();
+    } else {
+      // IDF's default WIFI_EVENT_AP_START handler already netif_added the AP
+      // interface; adding it again here would assert. Just record it.
+      g_ap_lwip_up = true;
+    }
     g_ap_up = true;
     if (first) {
       ESP_LOGI(kTag, "SoftAP started: %s at 192.168.4.1", g_ap_ssid);
     }
   } else if (id == WIFI_EVENT_AP_STOP) {
-    if (g_ap_lwip_up && g_ap_netif != nullptr) {
+    if (kApSelfStartsNetif && g_ap_lwip_up && g_ap_netif != nullptr) {
       (void)esp_netif_action_stop(g_ap_netif, base, id, event_data);
-      g_ap_lwip_up = false;
     }
+    g_ap_lwip_up = false;
     g_ap_up = false;
     ESP_LOGW(kTag, "SoftAP stopped");
   } else if (id == WIFI_EVENT_AP_STACONNECTED) {

@@ -462,9 +462,9 @@ const char* lcd_item_label(int i) {
     static const char* k[] = {
         "LATENCY",    "RESET PULSE", "CLOCK SRC",  "CLK IN",
         "GATE CLK",   "QUANTUM",     "RST EDGE",   "MIDI NUDGE",
-        "START/STOP", "BRIGHTNESS",  "BEAT DISP",  "BEAT STYLE",
+        "START/STOP", "BRIGHTNESS",  "BEAT DISP",  "BEAT STYLE", "COLOUR",
         "VERSION",    "REBOOT"};
-    if (i >= 0 && i < 14) {
+    if (i >= 0 && i < 15) {
       return k[i];
     }
   } else if (scr == S::kAudio) {

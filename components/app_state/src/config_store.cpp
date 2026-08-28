@@ -132,6 +132,19 @@ void neon_config_apply(const neon::Config& cfg) {
   g_last_change_us = 0;
 }
 
+void neon_config_apply_ram(const neon::Config& cfg) {
+  neon::Config clean = cfg;
+  neon::config_sanitize(&clean);
+  g_config = clean;
+  publish_buses();
+  ++g_rev;
+  // Deliberately no persist and no g_save_pending: this is a trial value
+  // (e.g. a WiFi credential being tested on-device). The caller persists
+  // with neon_config_save() only after it is proven good. Leaving
+  // g_save_pending untouched also means a later debounced flush cannot
+  // sneak the untrusted value to flash.
+}
+
 void neon_config_hold_nvs(bool hold) {
   g_nvs_hold = hold;
 }

@@ -129,6 +129,23 @@ const char* beat_style_str(BeatStyle s) {
   }
 }
 
+const char* color_theme_str(ColorTheme t) {
+  switch (t) {
+    case ColorTheme::kVoid:
+      return "void";
+    case ColorTheme::kPhosphor:
+      return "phosphor";
+    case ColorTheme::kAmber:
+      return "amber";
+    case ColorTheme::kMagenta:
+      return "magenta";
+    case ColorTheme::kPaper:
+      return "paper";
+    default:
+      return "teal";
+  }
+}
+
 void get_u32(const cJSON* obj, const char* key, uint32_t* out) {
   const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
   if (cJSON_IsNumber(v)) {
@@ -306,6 +323,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
   cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
   cJSON_AddStringToObject(root, "beat_style", beat_style_str(cfg.beat_style));
+  cJSON_AddStringToObject(root, "color_theme", color_theme_str(cfg.color_theme));
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -510,6 +528,22 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       cfg->beat_style = BeatStyle::kPulse;
     } else if (str_eq(style, "number")) {
       cfg->beat_style = BeatStyle::kNumber;
+    }
+  }
+  {
+    const cJSON* theme = cJSON_GetObjectItemCaseSensitive(root, "color_theme");
+    if (str_eq(theme, "void")) {
+      cfg->color_theme = ColorTheme::kVoid;
+    } else if (str_eq(theme, "teal")) {
+      cfg->color_theme = ColorTheme::kTeal;
+    } else if (str_eq(theme, "phosphor")) {
+      cfg->color_theme = ColorTheme::kPhosphor;
+    } else if (str_eq(theme, "amber")) {
+      cfg->color_theme = ColorTheme::kAmber;
+    } else if (str_eq(theme, "magenta")) {
+      cfg->color_theme = ColorTheme::kMagenta;
+    } else if (str_eq(theme, "paper")) {
+      cfg->color_theme = ColorTheme::kPaper;
     }
   }
 

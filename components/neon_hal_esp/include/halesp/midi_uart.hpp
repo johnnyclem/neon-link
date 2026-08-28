@@ -15,4 +15,11 @@ void midi_uart_send_isr(const uint8_t* bytes, size_t len);
 // Non-blocking drain of the RX FIFO. 0 if RX was never pinned.
 int midi_uart_read(uint8_t* buf, size_t cap);
 
+// True once the UART is configured. Diagnostics for "is TX even up?".
+bool midi_uart_ready();
+// Total bytes handed to the TX FIFO since boot (both the buffered and the
+// ISR path). A running counter, so a caller can log the delta to confirm
+// the clock is actually reaching the wire.
+uint32_t midi_uart_tx_count();
+
 }  // namespace halesp

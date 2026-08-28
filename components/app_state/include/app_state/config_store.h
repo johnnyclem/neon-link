@@ -22,6 +22,15 @@ const neon::Config& neon_config();
 // core 1 via the config bus, and schedule a debounced NVS write.
 void neon_config_apply(const neon::Config& cfg);
 
+// Adopt a configuration in RAM ONLY: sanitize and publish, but never touch
+// flash and never mark a save pending -- not even for a network-identity
+// change (which neon_config_apply persists immediately). For values that
+// must be *tried* before they are trusted: the on-device WiFi join applies
+// a candidate credential this way and calls neon_config_save() only once an
+// IP actually arrives, so a wrong/half-typed password is never written to
+// NVS and then retried forever across reboots.
+void neon_config_apply_ram(const neon::Config& cfg);
+
 // G6: while held, neon_config_flush will not touch flash. The audio
 // task holds this for the whole time I2S DMA is running. Idle (I2S
 // down, including never started) still commits after 2 s of quiet.

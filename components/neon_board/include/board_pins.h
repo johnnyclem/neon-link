@@ -353,8 +353,18 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = -1;  // free GPIO on the expansion header
-inline constexpr int kPinMidiRx = -1;
+// TRS MIDI clock out (UART1 @ 31250, ClockEngine on core 1). GPIO43 is the
+// classic UART0 TXD, free on this board because the console runs on the
+// native USB Serial/JTAG, and it is broken out on the expansion header as
+// "TX". Wire a TRS jack (Type A: tip = current source through 220R, ring =
+// GND) to hear 24 PPQN clock. RX is left unwired — this board sends clock,
+// it does not follow external MIDI.
+inline constexpr int kPinMidiTx = 43;  // U0TXD on the header
+// TRS MIDI in (UART1 RX @ 31250). GPIO44 is the classic UART0 RXD, the
+// header pad silk-labelled RXD/IO44, free because the console is on the
+// native USB Serial/JTAG. Feed it from a MIDI IN (e.g. the M5 unit's serial
+// TXD in BYPASS mode) and the dial follows external MIDI clock + start/stop.
+inline constexpr int kPinMidiRx = 44;  // U0RXD on the header
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 

@@ -52,23 +52,38 @@ mix them.
 | Encoder B / DT | **47** | |
 | Encoder push | **17** | active-low; short = play/stop, long = tap |
 | Haptic motor | 41 | not driven by the POC |
-| Touch SDA | 38 | CST816 — not driven by the POC |
+| Touch SDA | 38 | CST816 cap-touch (drives the settings panel) |
 | Touch SCL | 39 | |
 | Touch INT | 40 | |
 | Touch RST | 18 | |
+| MIDI TX | **43** | U0TXD, UART1 @ 31250 — 24 PPQN TRS clock |
 
 Pulse channels are virtual — there are no Eurorack jacks. Native USB
-Serial/JTAG is the console; there is no USB-UART bridge.
+Serial/JTAG is the console (so classic UART0 on GPIO43/44 is free), and
+there is no USB-UART bridge. TRS **MIDI clock out** rides GPIO43: wire a
+jack (Type A — tip = 220 Ω from TX, ring = GND) and it sends a
+Link-derived 24 PPQN clock whenever Settings → MIDI → CLK OUT is on.
 
 ## What it does
 
 - **Boot splash** — "NEON / link-mat" proves the panel before Link is up.
-- **Live face** — hero tempo (`120.0`), a 120-dot phase ring that fills
+- **Live face** — hero tempo (`120`), a 120-dot phase ring that fills
   once per bar with a bright head at the current beat position, peer
-  count (`N LINK` + pips), and a RUN/STOP chip.
+  count (`N LINK` + pips), and a RUN/STOP chip. Colour palettes (Teal
+  default, Void, Phosphor, Amber, Magenta, Paper) live under
+  Settings → System → COLOUR; the same choice is on the web editor.
+- **Beat styles** — while playing with Settings → System → BEAT on, the
+  dial shows a full-screen beat animation set by STYLE: Number, Pie,
+  Pendulum or Pulse (a colour echo of `neon::ui::draw_beat_stage`). BEAT
+  off keeps the glanceable hero BPM.
 - **Encoder** — twist nudges tempo ±1 BPM per detent (`kNudgeTempo`),
   a short click toggles transport (`kToggle`), a long press taps tempo
-  (`kTapTempo`). All go through the shared `control_queue`.
+  (`kTapTempo`). All go through the shared `control_queue`. In settings,
+  twist moves the row, click activates, long-press goes back.
+- **Touch settings** — tap the gear to open. Drag to scroll the list; on a
+  value row, tap the left half to decrement and the right half to
+  increment. The menu is trimmed to what this board can do (no OUTPUTS or
+  AUDIO section; MIDI shows CLK OUT; SYSTEM drops the pulse-timing rows).
 - First boot has no WiFi; the dial still runs on the internal timeline.
   Provision over SoftAP like the other link-sync boards.
 

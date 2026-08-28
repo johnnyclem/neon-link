@@ -39,7 +39,7 @@ export function HeroTempo({ bpm, size = 64, unit = true }: Props) {
             y={r.y}
             width={r.w}
             height={r.h}
-            fill={lit.has(name) ? "var(--neon)" : "var(--surface-2)"}
+            fill={lit.has(name) ? "var(--hero)" : "var(--surface-2)"}
           />,
         );
       }
@@ -52,7 +52,7 @@ export function HeroTempo({ bpm, size = 64, unit = true }: Props) {
           y={r.y}
           width={r.w}
           height={r.h}
-          fill="var(--neon)"
+          fill="var(--hero)"
         />,
       );
     }

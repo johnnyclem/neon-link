@@ -1,6 +1,8 @@
 import { useState } from "preact/hooks";
-import { tokens } from "../design/tokens";
+import { tokens, type ColorName, type ThemeId } from "../design/tokens";
 import { strings, type StateName } from "../design/strings";
+import { ThemePicker } from "../components/ThemePicker";
+import { readStoredTheme } from "../theme";
 import { iconMasters, ICON_TICK_HZ, type IconName } from "../design/icons";
 import { Icon } from "../components/Icon";
 import { HeroTempo } from "../components/HeroTempo";
@@ -56,6 +58,8 @@ export function Styleguide() {
   const [running, setRunning] = useState(true);
   const [toggled, setToggled] = useState(true);
   const [modal, setModal] = useState(false);
+  const [themeId, setThemeId] = useState<ThemeId>(readStoredTheme);
+  const palette = tokens.themes[themeId].color;
 
   return (
     <main class="shell">
@@ -124,9 +128,9 @@ export function Styleguide() {
             the way an LED readout looks up close.
           </p>
           <div style="display:flex;gap:var(--space-5);align-items:flex-end;flex-wrap:wrap">
-            <HeroTempo bpm={tempo} size={96} />
-            <HeroTempo bpm={tempo} size={48} />
-            <HeroTempo bpm={null} size={48} />
+            <HeroTempo bpm={tempo} size={125} />
+            <HeroTempo bpm={tempo} size={62} />
+            <HeroTempo bpm={null} size={62} />
           </div>
           <div style="max-width:320px;margin-top:var(--space-4)">
             <NumberField label="Tempo" value={tempo} min={20} max={999} onChange={setTempo} />
@@ -243,10 +247,15 @@ export function Styleguide() {
       <Section
         id="colour"
         title="Colour"
-        lede="Dark-first. Neon cyan means the system is alive and Link is present; magenta is reserved for wireless. Ratios are computed live here and asserted in CI by scripts/check_contrast.py."
+        lede="Dark-first by default. The live page and this guide share a palette of themes; neon is still the 'alive' accent inside each one. Ratios are computed live here and asserted in CI by scripts/check_contrast.py against every palette."
       >
+        <Card title="Themes" note="Same picker as System → Panel. Applies immediately in this browser.">
+          <ThemePicker value={themeId} onChange={setThemeId} />
+        </Card>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--space-3)">
-          {Object.entries(tokens.color).map(([name, hex]) => (
+          {(Object.keys(palette) as ColorName[]).map((name) => {
+            const hex = palette[name];
+            return (
             <div key={name} style="border:2px solid var(--border)">
               <div style={`background:${hex};height:56px`} />
               <div style="padding:var(--space-2)">
@@ -254,14 +263,15 @@ export function Styleguide() {
                   {name}
                 </div>
                 <div class="mono" style="color:var(--text-muted);font-size:var(--text-caption)">
-                  {hex} · {ratio(hex, tokens.color.bg).toFixed(2)}:1 on page
+                  {hex} · {ratio(hex, palette.bg).toFixed(2)}:1 on page
                 </div>
                 <div style="color:var(--text-muted);font-size:var(--text-caption);margin-top:4px">
-                  {tokens.colorUse[name as keyof typeof tokens.colorUse]}
+                  {tokens.colorUse[name]}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </Section>
 

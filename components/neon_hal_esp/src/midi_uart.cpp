@@ -10,6 +10,7 @@ namespace halesp {
 namespace {
 constexpr uart_port_t kPort = UART_NUM_1;
 bool g_ready = false;
+volatile uint32_t g_tx_bytes = 0;
 }  // namespace
 
 bool midi_uart_init(int tx_gpio, int rx_gpio) {
@@ -47,6 +48,7 @@ bool midi_uart_init(int tx_gpio, int rx_gpio) {
 void midi_uart_send(const uint8_t* bytes, size_t len) {
   if (g_ready) {
     uart_write_bytes(kPort, bytes, len);
+    g_tx_bytes += static_cast<uint32_t>(len);
   }
 }
 
@@ -59,7 +61,12 @@ void IRAM_ATTR midi_uart_send_isr(const uint8_t* bytes, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     WRITE_PERI_REG(UART_FIFO_AHB_REG(UART_NUM_1), bytes[i]);
   }
+  g_tx_bytes += static_cast<uint32_t>(len);
 }
+
+bool midi_uart_ready() { return g_ready; }
+
+uint32_t midi_uart_tx_count() { return g_tx_bytes; }
 
 int midi_uart_read(uint8_t* buf, size_t cap) {
   if (!g_ready || buf == nullptr || cap == 0) {

@@ -44,37 +44,59 @@ def contrast_ratio(fg: str, bg: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def main() -> int:
-    with TOKENS.open(encoding="utf-8") as fh:
-        tokens = json.load(fh)
+THEME_SKIP = {"$comment", "default"}
 
-    colors = {
-        name: entry["hex"]
-        for name, entry in tokens["color"].items()
-        if not name.startswith("$")
-    }
-    pairs = tokens["contrast"]["pairs"]
 
+def color_hexes(block: dict) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for name, entry in block.items():
+        if name.startswith("$"):
+            continue
+        out[name] = entry["hex"] if isinstance(entry, dict) else entry
+    return out
+
+
+def check_palette(name: str, colors: dict[str, str], pairs: list[dict]) -> int:
     failures = 0
+    print(f"\n{name}")
     print(f"{'pair':<28} {'ratio':>7}  {'min':>5}  result")
     print("-" * 60)
     for pair in pairs:
         fg_name, bg_name, minimum = pair["fg"], pair["bg"], pair["min"]
-        for name in (fg_name, bg_name):
-            if name not in colors:
-                raise SystemExit(f"contrast pair references unknown colour '{name}'")
+        for token in (fg_name, bg_name):
+            if token not in colors:
+                raise SystemExit(f"{name}: contrast pair references unknown colour '{token}'")
         ratio = contrast_ratio(colors[fg_name], colors[bg_name])
         ok = ratio >= minimum
         if not ok:
             failures += 1
         label = f"{fg_name} on {bg_name}"
         print(f"{label:<28} {ratio:>6.2f}:1 {minimum:>5.1f}  {'ok' if ok else 'FAIL'}   {pair.get('note', '')}")
+    return failures
+
+
+def main() -> int:
+    with TOKENS.open(encoding="utf-8") as fh:
+        tokens = json.load(fh)
+
+    default = color_hexes(tokens["color"])
+    pairs = tokens["contrast"]["pairs"]
+    failures = check_palette("default (void)", default, pairs)
+
+    themes = tokens.get("themes") or {}
+    for tid, theme in themes.items():
+        if tid in THEME_SKIP:
+            continue
+        colors = dict(default)
+        if "color" in theme:
+            colors.update(color_hexes(theme["color"]))
+        failures += check_palette(tid, colors, pairs)
 
     print()
     if failures:
         print(f"{failures} contrast pair(s) below target.", file=sys.stderr)
         return 1
-    print(f"All {len(pairs)} contrast pairs meet their targets.")
+    print("All palettes meet their contrast targets.")
     return 0
 
 
