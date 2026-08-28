@@ -15,7 +15,7 @@ recommended sequence, but B and C are independent of A and of each other.
 | Timestamped parse path + router sync tap | `ble_midi_parser.*`, `serial_midi_parser.*`, `router.hpp`/`midi_router.cpp` | Done, host-tested |
 | BLE 13-bit timestamp decode + sender-time mapper (Phase B) | `ble_midi_parser.*`, `ble_time_mapper.hpp`/`src/midi_ble_time_mapper.cpp`, follower integration | Done, host-tested (`test_ble_time_mapper.cpp`) |
 | ESP32 wiring (queue, arbitration, session drive) | `app_state/timeline_bus.*`, `main/midi_service.cpp`, `main/link_service.cpp` | Done, **not yet compiled by CI** (see followups §1) |
-| Daisy parser timestamps | `daisy/src/midi_daisy.cpp` (`drain_rx` passes `now_us`) | Done — but nothing consumes the tap yet (Phase C) |
+| Daisy parser timestamps | `daisy/src/midi_daisy.cpp` (`drain_rx` passes `now_us`) | Done — the router sync tap feeds the link service's `SyncFollower` (Phase C) |
 
 ---
 
@@ -98,34 +98,48 @@ degraded mode. What shipped, mapped onto the original items:
    compensation, if ever wanted, is a nudge-config question, not an
    estimator one.
 
-## Phase C — Internal-timeline targets: Teensy 4.1 and Daisy
+## Phase C — Internal-timeline targets: Teensy 4.1 and Daisy  *(done)*
 
 On boards where the timeline is not a Link session, the PLL **is** the
 session while active (`HANDOFF.md` root doc: ext-clock is more central on
 these targets). The PLL's `Model` maps 1:1 onto `TimelineSnapshot`
 (`tempo_mpb_q32` / `origin_us` / `beat_at_origin_q32` / `playing`), so
-this phase is service glue, not estimator work:
+this phase was service glue, not estimator work. How it landed:
 
 - **Daisy** (`daisy/src/link_service_daisy.cpp` + `midi_daisy.cpp`): the
-  parser already delivers timestamps. Add `midi_clock_byte` /
-  `midi_song_position` overrides to its `Sink`, feed a `SyncFollower`
-  (single-threaded main loop — no queue needed, call `on_event` directly),
-  and on `poll()`: while following, publish the PLL model as the timeline
-  snapshot instead of the internal one. Precedence per `docs/DAISY.md`:
-  CLK IN outranks MIDI when both are alive.
-- **Teensy** (`teensy41/src/link_service_t41.cpp`): same shape; it has
-  TRS MIDI out today but check whether MIDI *in* is wired before starting —
-  if there's no RX path, this reduces to documenting "not on this target".
-- **Position, not just tempo:** unlike the Link path (which only anchors
-  the downbeat), internal-timeline targets can consume
-  `beat_at_origin_q32` directly — SPP and bar position land exactly. Use
-  `beat_valid` to decide whether to trust it; while `false` (free clock),
-  follow tempo only and keep the local beat continuous.
-- Watch the seam: these targets re-derive `next_clock_tick_us` for MIDI
-  *out* from the snapshot — when the snapshot follows MIDI *in*, the
-  module would echo the sender's clock back out. Decide (config) whether
-  clock-thru or clock-regeneration is wanted; regeneration is what the
-  PLL gives for free, thru is what `ClockPolicy::kReplace` already does.
+  `Sink` grew `midi_clock_byte` / `midi_song_position` overrides that
+  call `on_event` directly on the link service's `SyncFollower`
+  (single-threaded main loop — no queue; registered via
+  `miditrs::set_sync_follower`). This replaced the raw-tick
+  `ExtClockEstimator` stopgap (spike §7) and its clock ring. The
+  arbitration mirrors the ESP service: CLK IN outranks MIDI under
+  `kAuto`, each master mode pins its own source, and the follower keeps
+  the PLL warm while not allowed. On capture, while following with no
+  Link peers, the PLL model overrides the captured session state before
+  `build_snapshot` — the outputs ride the continuous estimate (and the
+  existing material-change gate keeps publish churn down), while the
+  hysteretic `set_tempo` steering keeps the session's own tempo in step
+  for clean reversion when the sender dies. On the netlink build with
+  peers, the steered session capture stands (session consensus owns the
+  grid, like the ESP path).
+- **Teensy** (`teensy41/src/midi_t41.h`): documented "not on this
+  target" — Serial1 RX (pin 0) is reserved but not wired, so there is no
+  MIDI-in path to feed. When MIDI in lands (TEENSY41.md §5.3) the sync
+  side copies the Daisy shape.
+- **Position, not just tempo:** while `beat_valid`, `origin_us` /
+  `beat_at_origin_q32` / `playing` come straight from the model — SPP
+  and bar position land exactly. While `false` (free clock), only the
+  tempo is overridden; the captured session phase keeps the local beat
+  continuous.
+- The MIDI-out seam needed no new config: the existing clock policy
+  already expresses thru vs regeneration. `kIgnore` (default) emits the
+  snapshot-derived clock, which while following *is* the PLL grid —
+  regeneration; `kReplace` mutes that stream and forwards the sender's
+  own bytes — thru; `kMerge` sends both.
+
+Still owed to close the phase completely: a bench pass of the Daisy path
+(the Phase A rig applies unchanged — TRS sender into the Seed/Pod MIDI
+IN), since the service glue is on-device code the host tests don't cover.
 
 ## Phase D — Authority interplay with Link peers (spike §8.4)
 
