@@ -137,6 +137,31 @@ TEST_CASE("not allowed: silent tracking, then a warm, anchored handover") {
   CHECK(a.playing);
 }
 
+TEST_CASE("following() tracks the poll state the services arbitrate on") {
+  // The link services drop the MIDI router's duplicate unquantized
+  // play/stop while the follower owns transport; the flag they read
+  // between polls is this sticky state, not a per-poll edge.
+  SyncFollower f;
+  CHECK_FALSE(f.following());
+
+  int64_t t = feed_ticks(f, 0, 48);
+  f.poll(t, true);
+  CHECK(f.following());
+
+  // CLK IN takes the clock: the very next poll releases ownership.
+  f.poll(t + 1000, false);
+  CHECK_FALSE(f.following());
+
+  // CLK IN gone again: re-follow from the warm estimate.
+  t = feed_ticks(f, t + kTick120, 24);
+  f.poll(t, true);
+  CHECK(f.following());
+
+  // A dead clock clears ownership too.
+  f.poll(t + 2000000, true);
+  CHECK_FALSE(f.following());
+}
+
 TEST_CASE("clock loss stops the following state cleanly") {
   SyncFollower f;
   int64_t t = feed_ticks(f, 0, 48);

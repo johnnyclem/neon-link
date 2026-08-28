@@ -25,6 +25,7 @@ NEON LINK is designed to beat it on nearly every axis:
 | Output roles            | Clock / gate / reset      | Same list, **assignable per output**   |
 | Extra outputs           | Optional MIDI clock       | Reset, Run gate, **Tempo CV**, TRS MIDI |
 | Inputs                  | None                      | **Clock In + Reset In**                |
+| MIDI clock sync-in      | None                      | **DIN + BLE, PLL-disciplined → Link**  |
 | Local UI                | Buttons + LEDs            | **OLED + encoder**                     |
 | Rhythm Explorer         | Euclidean + free steps    | Same, **64 steps, 4 independent patterns** |
 | Stored WiFi networks    | List with retry count     | Same, **plus wired Ethernet**          |

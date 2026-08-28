@@ -89,6 +89,7 @@ class Sink final : public neon::IRouterSink {
     ControlCommand cmd{};
     cmd.kind = play ? ControlCommand::Kind::kPlayNow
                     : ControlCommand::Kind::kStopNow;
+    cmd.from_midi = 1;
     control_queue_push(cmd);
   }
   void trs_realtime(uint8_t status) override {

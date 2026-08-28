@@ -76,7 +76,11 @@ knows about means bumping the submodule, nothing here.
   external tempo source** (fixed 24 PPQN) feeding its own
   `ExtClockEstimator`; the CLK IN jack outranks it when both are alive,
   and phase anchoring stays RST IN's alone (MIDI has no downbeat
-  message — Start restarts beat 0 through the transport instead).
+  message — Start restarts beat 0 through the transport instead). The
+  ESP32 firmware's PLL-based MIDI sync-in (phase-locked ticks, Start
+  anchoring the downbeat) has **not** been ported to the
+  internal-timeline targets; that work is scoped in
+  `docs/MIDI_PLL_PHASES_HANDOFF.md`.
 - **Audio engine on the built-in codec** — the best-fit subsystem: the
   codec runs 48 kHz, exactly the rate the portable audio services are
   written for. Metronome click, pulse-as-audio taps (clock / reset / run

@@ -10,6 +10,13 @@ timestamp decoding, internal-timeline targets) lives in
 status note), then the code it points at — the PLL and follower are short
 and every policy decision is commented in place.
 
+**Status (2026-08-28):** items 2, 3, 5, and 6 are done (per-item notes
+below). Item 1 remains blocked on the account-level Actions setting.
+Item 4 stays deferred — it is a product decision to make before the
+panel silkscreen conversation. Item 7's two nits stay deliberately open:
+the `t_us` parameters wait on the BLE timestamp decision (phases doc §B),
+and the SyncEvent footprint only matters if a C3 target gains MIDI-in.
+
 ---
 
 ## 1. Restore CI, then compile-check the firmware targets  *(do first)*
@@ -40,7 +47,13 @@ Once runners come back:
 Every merge since Aug 15 landed CI-unverified — when the queue drains,
 check `main` goes green too, not just this PR.
 
-## 2. Web editor: expose `clock_source = "midi"`
+## 2. Web editor: expose `clock_source = "midi"`  *(done)*
+
+> Both selects now carry `MIDI clock in is the master`; their option
+> lists stay separate because the two "Auto" labels are deliberately
+> different (the Outputs one is jack-contextual). The mocks needed no
+> change — both PUT handlers echo the stored config verbatim, so
+> `"midi"` round-trips as-is. Bundle rebuilt and committed.
 
 The firmware accepts and serializes `"midi"` (see
 `components/neon_core/src/config_json.cpp`, `source_str` and the decode
@@ -62,7 +75,7 @@ branch), so the JSON API works today; only the editor UI can't select it.
   step performs) and commit the regenerated artifact, or CI will fail on
   staleness.
 
-## 3. Config JSON round-trip test for `"midi"`
+## 3. Config JSON round-trip test for `"midi"`  *(done)*
 
 `host/tests/test_config_json.cpp` exercises `clock_source` round-trips for
 the original three values. Add the fourth: encode `kMidiMaster` → expect
@@ -87,7 +100,16 @@ design-system status words (`design/`, regenerated via
 `scripts/gen_design.py` — never hand-edit generated files). Cosmetic;
 defer freely, but decide before the panel silkscreen conversation.
 
-## 5. Suppress the router's duplicate transport path while following MIDI
+## 5. Suppress the router's duplicate transport path while following MIDI  *(done)*
+
+> Landed on the link-service side, with one refinement over the sketch
+> below: `kPlayNow`/`kStopNow` now carry a `from_midi` origin flag
+> (`ControlCommand`), and only the router's flagged duplicates are
+> dropped while `SyncFollower::following()` holds — a plain "drop all
+> while following" would also have swallowed deliberate panel/editor
+> transport clicks, which the follower (edge-tracked) would never
+> re-assert. `following()` is the new portable accessor, host-tested in
+> `test_midi_sync_follower.cpp`.
 
 Known, benign double-path from PR #40: with `transport_enabled` on, an
 incoming 0xFA takes **two** routes — `MidiRouter` → `Sink::transport()` →
@@ -102,7 +124,7 @@ gate `Sink::transport()` in `main/midi_service.cpp` on
 arbitration. Add a host test to `test_midi_sync_follower.cpp`'s style if
 the logic lands anywhere portable.
 
-## 6. Documentation cross-links
+## 6. Documentation cross-links  *(done)*
 
 The spike doc carries the status note, but the standing docs don't mention
 the feature yet:

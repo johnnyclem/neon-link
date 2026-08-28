@@ -261,11 +261,21 @@ and the engine) and drained by the Link service, which feeds
 - 4×-period (min 2 s) silence deactivates the estimator and the module
   reverts to Link-master behavior.
 
-`Config.clock_source` selects kAuto (external wins while CLK IN is
-active — default), kLinkMaster, or kExternalMaster; `clock_in_ppqn` sets
-the expected input rate. RST IN produces a phase request forwarded to
-Link's `requestBeatAtTime`, anchoring the session downbeat to the external
-reset.
+Incoming **MIDI clock** (DIN or BLE) is a second external source
+(docs/SPIKE_MIDI_PLL.md): the router's sync tap timestamps 0xF8/0xFA/0xFB/
+0xFC/SPP into a queue drained by the Link service, where
+`neon::MidiClockPll` (a type-II PI servo with per-transport gains)
+disciplines a tick grid and `neon::midi::SyncFollower` applies the same
+hysteretic-publish policy as the CLK IN path — plus downbeat anchoring
+from Start and edge-tracked transport. While the follower owns transport,
+the router's duplicate unquantized play/stop commands are dropped.
+
+`Config.clock_source` selects kAuto (default — while both are alive
+CLK IN outranks MIDI clock, and either outranks the session),
+kLinkMaster, kExternalMaster, or kMidiMaster; `clock_in_ppqn` sets the
+expected CLK IN rate (MIDI clock is 24 PPQN by definition). RST IN
+produces a phase request forwarded to Link's `requestBeatAtTime`,
+anchoring the session downbeat to the external reset.
 
 ## Rhythm Explorer + presets + instrumentation (milestone 9)
 

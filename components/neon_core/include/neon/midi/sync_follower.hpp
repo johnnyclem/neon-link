@@ -57,6 +57,12 @@ class SyncFollower {
   // handover starts from a warm estimate.
   Actions poll(int64_t now_us, bool allowed);
 
+  // The sticky poll-to-poll state, for arbitration between polls: while
+  // true the follower owns transport, and a service can drop the MIDI
+  // router's duplicate unquantized play/stop (the same 0xFA/0xFC reaches
+  // it through the clock tap as an edge-tracked set_playing).
+  bool following() const { return following_; }
+
   const MidiClockPll& pll() const { return pll_; }
 
  private:

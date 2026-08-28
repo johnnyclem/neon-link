@@ -85,6 +85,7 @@ These define the product. Shipping without any of them means it is not yet the p
 | Networking              | WiFi only               | WiFi (Ethernet later)                    |
 | Outputs                 | 2 CV                    | Tempo CV + 1 flexible clock/gate + MIDI  |
 | BLE MIDI                | None                    | **Full** (notes/CC/transport → CV + MIDI)|
+| MIDI clock sync-in      | None                    | **DIN + BLE, PLL-disciplined → Link**    |
 | Local UI                | Buttons + LEDs          | **OLED + encoder**                       |
 | Form factor             | 2HP                     | 10HP                                     |
 | Hardware cost target    | ~$250 retail            | **Very low** (AMYboard base ≈ $30)       |

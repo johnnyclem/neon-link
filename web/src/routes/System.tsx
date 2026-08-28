@@ -155,6 +155,7 @@ export function System(props: PageProps) {
               { value: "auto", label: "Auto" },
               { value: "link", label: "Link is the master" },
               { value: "external", label: "External input is the master" },
+              { value: "midi", label: "MIDI clock in is the master" },
             ]}
             onChange={(v) => patch((d) => (d.clock_source = v))}
           />
