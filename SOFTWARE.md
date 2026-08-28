@@ -136,7 +136,8 @@ Ethernet (W5500) remains an optional later add-on. Custom multi-output PCBs are 
 ### Bidirectional Logic
 1. **Link Master mode** (default): Follow Link tempo + phase. Generate outputs.
 2. **External Clock Master mode**: Measure period on Clock In → call Link `setTempo`. Attempt phase alignment using reset or beat quantization heuristics.
-3. Hybrid / quantize modes can be added later.
+3. **MIDI Clock Master mode**: Discipline a PLL to incoming MIDI clock (DIN or BLE, 24 PPQN) → call Link `setTempo`; Start anchors the downbeat via `requestBeatAtTime` and Start/Stop drives the transport. Under auto arbitration Clock In outranks MIDI clock. Design: `docs/SPIKE_MIDI_PLL.md`.
+4. Hybrid / quantize modes can be added later.
 
 ### Networking Preference
 - Prefer Ethernet when a cable is detected (lower jitter, more reliable).

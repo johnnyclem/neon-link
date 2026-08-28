@@ -93,10 +93,11 @@ void MidiRouter::on_message(const MidiMessage& m) {
   }
 }
 
-void MidiRouter::on_realtime(uint8_t status, int64_t t_us) {
+void MidiRouter::on_realtime(uint8_t status, int64_t t_us,
+                             uint16_t sender_ms13) {
   if (status == 0xf8u || status == 0xfau || status == 0xfbu ||
       status == 0xfcu) {
-    sink_->midi_clock_byte(status, t_us);
+    sink_->midi_clock_byte(status, t_us, sender_ms13);
   }
   switch (status) {
     case 0xfa:  // start

@@ -22,16 +22,26 @@ least-squares slope over the last nine tick timestamps — a period median,
 as first sketched in §5.2, is poisoned by BLE burst arrivals.
 `neon::midi::SyncFollower` (`sync_follower.hpp`) wraps it with the publish
 hysteresis and rate limiting of §5.4. Timestamps flow per §6.1: parsers
-take arrival times (`IMidiSink::on_realtime(status, t_us)`), the UART drain
-back-dates by 320 µs/byte, BLE stamps at the NimBLE callback (in-packet
-13-bit timestamps still undecoded — §8.5 stands), and the router's
-`midi_clock_byte`/`midi_song_position` tap feeds a queue the Link service
-arbitrates under `clock_source` (new `kMidiMaster`; `kAuto` order is
-CLK IN > MIDI > session). Host tests: `test_midi_clock_pll.cpp`,
-`test_midi_sync_follower.cpp`. Still open: the §9.3 bench acceptance run,
-BLE timestamp decoding, the editor UI for the new clock source, and the
-Teensy/Daisy internal-timeline publish path — the near-term chores are
-handed off in `MIDI_PLL_FOLLOWUPS_HANDOFF.md` and the remaining phases in
+take arrival times (`IMidiSink::on_realtime(status, t_us, sender_ms13)`),
+the UART drain back-dates by 320 µs/byte, BLE stamps at the NimBLE
+callback, and the router's `midi_clock_byte`/`midi_song_position` tap
+feeds a queue the Link service arbitrates under `clock_source` (new
+`kMidiMaster`; `kAuto` order is CLK IN > MIDI > session). The in-packet
+13-bit BLE timestamps are now decoded too (§6.1.3): `BleMidiParser`
+reconstructs them (in-packet low-byte rollover included) and
+`neon::midi::BleTimeMapper` (`ble_time_mapper.hpp`) — the miniature
+PeerClock of §6.1 item 3 — maps sender ms onto local µs via a
+TTL-pruned median offset window, unwrapping the 8.192 s modulus against
+packet arrival. The §8.5 risk is handled as proposed: a degenerate
+stamp stream (dispersion of the decoded spacing ≈ the
+connection-interval comb) never earns trust and BLE stays on raw
+arrivals with its burst-hardened gains, while trusted stamps promote
+the loop to the `kUsb` gain set with honest lock. Host tests:
+`test_midi_clock_pll.cpp`, `test_midi_sync_follower.cpp`,
+`test_ble_time_mapper.cpp`. Still open: the §9.3 bench acceptance run,
+the editor UI for the new clock source, and the Teensy/Daisy
+internal-timeline publish path — the near-term chores are handed off in
+`MIDI_PLL_FOLLOWUPS_HANDOFF.md` and the remaining phases in
 `MIDI_PLL_PHASES_HANDOFF.md`.
 
 ---

@@ -138,6 +138,13 @@ void link_service_task(void*) {
     ESP_LOGW(kTag, "CLK/RST IN capture init failed");
   }
   neon::midi::SyncFollower midi_follow;
+  // The session as of the previous loop's capture (10 ms stale at most),
+  // feeding the follower's Link-authority policy (spike §8.4): while the
+  // MIDI transport runs, peer tempo edits and peer stops are corrected;
+  // while stopped, peer edits stand. require_peer stays at its default
+  // (off) — this module's session is also its local timeline, so MIDI
+  // follow must work with zero peers.
+  neon::midi::SessionView midi_session;
   bool ext_active = false;
   // Per-tick PLL telemetry (docs/MIDI_PLL_PHASES_HANDOFF.md Phase E),
   // behind the same debug.telemetry_uart_csv flag as the 1 Hz TEL stream
@@ -145,7 +152,6 @@ void link_service_task(void*) {
   // 1: the whole point is one row per 0xF8 (~48 rows/s at 120 BPM —
   // a few KB/s, well inside the console baud).
   neon::TelemetryTicker pll_ticker(/*ticks_per_line=*/1);
-  bool midi_following = false;
 
   neon::TimelineSnapshot prev{};
   bool have_prev = false;
@@ -178,10 +184,18 @@ void link_service_task(void*) {
             latch.request(tl, now, !local_playing);
             break;
           case ControlCommand::Kind::kPlayNow:
-            latch.request(tl, now, true, /*quantized=*/false);
-            break;
           case ControlCommand::Kind::kStopNow:
-            latch.request(tl, now, false, /*quantized=*/false);
+            // A MIDI 0xFA/0xFC also reaches the follower through the sync
+            // tap; while it owns transport its edge-tracked set_playing is
+            // the one write the session gets, and the router's unquantized
+            // duplicate is dropped. Panel/editor commands (from_midi
+            // clear) always pass.
+            if (cmd.from_midi && midi_follow.following()) {
+              break;
+            }
+            latch.request(tl, now,
+                          cmd.kind == ControlCommand::Kind::kPlayNow,
+                          /*quantized=*/false);
             break;
           case ControlCommand::Kind::kSetTempo:
             next.tempo_milli_bpm =
@@ -273,10 +287,10 @@ void link_service_task(void*) {
           printf("PLL,%s\n", buf);
         }
         if (tt.want_line) {
-          // `following` is last poll's verdict — at most 10 ms stale,
+          // following() is last poll's verdict — at most 10 ms stale,
           // fine for a yes/no analysis column.
           const neon::MidiPllTelemetrySample s = neon::midi_pll_telemetry_sample(
-              midi_follow.pll(), mev.t_us, midi_following);
+              midi_follow.pll(), mev.t_us, midi_follow.following());
           if (neon::midi_pll_telemetry_csv_line(s, buf, sizeof(buf)) != 0) {
             printf("PLL,%s\n", buf);
           }
@@ -288,8 +302,7 @@ void link_service_task(void*) {
          source == neon::ClockSource::kMidiMaster) &&
         !follow_external;
     const neon::midi::SyncFollower::Actions midi_act =
-        midi_follow.poll(now_arb, midi_allowed);
-    midi_following = midi_act.following;
+        midi_follow.poll(now_arb, midi_allowed, midi_session);
 
     const bool any_external = follow_external || midi_act.following;
     if (any_external != ext_active) {
@@ -356,7 +369,13 @@ void link_service_task(void*) {
       ap_recommended_logged = true;
     }
     hal::LinkState state;
+    midi_session = {};
     if (session.capture(state)) {
+      midi_session.valid = true;
+      midi_session.tempo_mbpm =
+          static_cast<uint32_t>(state.tempo_bpm * 1000.0 + 0.5);
+      midi_session.playing = state.playing;
+      midi_session.peers = state.num_peers;
       neon::TimelineSnapshot snap;
       if (neon::build_snapshot(state, have_prev ? &prev : nullptr, snap)) {
         timeline_bus().publish(snap);
