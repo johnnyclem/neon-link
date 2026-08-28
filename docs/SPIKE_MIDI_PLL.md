@@ -30,7 +30,9 @@ arbitrates under `clock_source` (new `kMidiMaster`; `kAuto` order is
 CLK IN > MIDI > session). Host tests: `test_midi_clock_pll.cpp`,
 `test_midi_sync_follower.cpp`. Still open: the §9.3 bench acceptance run,
 BLE timestamp decoding, the editor UI for the new clock source, and the
-Teensy/Daisy internal-timeline publish path.
+Teensy/Daisy internal-timeline publish path — the near-term chores are
+handed off in `MIDI_PLL_FOLLOWUPS_HANDOFF.md` and the remaining phases in
+`MIDI_PLL_PHASES_HANDOFF.md`.
 
 ---
 
