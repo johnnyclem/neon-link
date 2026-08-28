@@ -81,6 +81,15 @@ int64_t next_clock_us(const TimelineSnapshot& tl, int64_t t_us) {
   return t_us + 1;
 }
 
+bool next_nudged_clock_us(const TimelineSnapshot& tl, int64_t now_us,
+                          int64_t nudge_us, int64_t* out) {
+  if (tl.tempo_mpb_q32 == 0) {
+    return false;
+  }
+  *out = next_clock_us(tl, now_us - nudge_us) + nudge_us;
+  return true;
+}
+
 void ClockEngine::emit(Event* out, size_t* n, size_t cap, int64_t t_us,
                        EventKind kind, uint16_t spp) {
   if (*n >= cap) {

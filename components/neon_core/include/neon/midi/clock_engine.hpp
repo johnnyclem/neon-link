@@ -36,6 +36,13 @@ uint16_t song_position_16ths(const TimelineSnapshot& tl, int64_t t_us);
 // First 24-PPQN clock strictly after t_us, on the session grid.
 int64_t next_clock_us(const TimelineSnapshot& tl, int64_t t_us);
 
+// The same solve on the nudged grid, for the services' re-arming TRS
+// clock timers: solve un-nudged, then shift the result — the whole
+// stream moves together relative to the CV outputs. Returns false while
+// no timeline exists yet (callers back off and retry).
+bool next_nudged_clock_us(const TimelineSnapshot& tl, int64_t now_us,
+                          int64_t nudge_us, int64_t* out);
+
 // Produces timed MIDI realtime events from TimelineSnapshot.
 //
 // Transport:

@@ -194,3 +194,27 @@ TEST_CASE("nudge shifts every emitted event by the same offset") {
     CHECK(evs[i].t_us == raw[i].t_us + 1500);
   }
 }
+
+TEST_CASE("next_nudged_clock_us: the services' timer solve, shifted whole") {
+  const auto tl = snapshot(120000, 0.0, 0);
+
+  // No timeline yet: the caller backs off instead of arming a timer.
+  neon::TimelineSnapshot none{};
+  int64_t out = 0;
+  CHECK_FALSE(neon::midi::next_nudged_clock_us(none, 12345, 0, &out));
+
+  // Zero nudge agrees with the raw grid solve and is strictly after now.
+  REQUIRE(neon::midi::next_nudged_clock_us(tl, 10000, 0, &out));
+  CHECK(out == neon::midi::next_clock_us(tl, 10000));
+  CHECK(out > 10000);
+
+  // A nudge shifts the same grid point, not a different one: solving at
+  // the shifted instant keeps the stream aligned tick-for-tick.
+  int64_t nudged = 0;
+  REQUIRE(neon::midi::next_nudged_clock_us(tl, 10000 + 1500, 1500, &nudged));
+  CHECK(nudged == out + 1500);
+  // And the result stays strictly after the asked-for time even when the
+  // un-nudged solve lands exactly on it.
+  REQUIRE(neon::midi::next_nudged_clock_us(tl, out + 1500, 1500, &nudged));
+  CHECK(nudged > out + 1500);
+}

@@ -2,6 +2,7 @@
 
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/midi/sync_follower.hpp"
@@ -30,6 +31,12 @@ neon::midi::SyncFollower g_midi_follow;
 // This capture's arbitration verdict, consumed by the publish stage:
 // while following, the PLL model is published as the snapshot.
 bool g_midi_following = false;
+// The previous capture, for the follower's Link-authority policy
+// (phases handoff §D — same shape as the ESP service). On the offline
+// configs peers is always 0 and the view only tells the follower its
+// own steering landed; on netlink it makes peer edits under a running
+// MIDI transport get level-corrected instead of standing.
+neon::midi::SessionView g_midi_session;
 bool g_local_playing = false;
 bool g_ext_active = false;
 int64_t g_next_capture_us = 0;
@@ -141,21 +148,11 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
   }
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
 
-  // Arbitration (docs/SPIKE_MIDI_PLL.md §5.4): CLK IN outranks MIDI
-  // clock under kAuto — the jack is this module's native sync, and a
-  // beat-locked drum machine sending both would otherwise fight itself.
-  // Each master mode pins its own source; the session is the fallback.
-  // While not allowed, the follower's PLL keeps tracking silently so a
-  // handover starts from a warm estimate.
-  const neon::ClockSource source = neon_config().clock_source;
-  const bool jack = (source == neon::ClockSource::kAuto ||
-                     source == neon::ClockSource::kExternalMaster) &&
-                    g_ext_clock.active(now);
-  const bool midi_allowed = (source == neon::ClockSource::kAuto ||
-                             source == neon::ClockSource::kMidiMaster) &&
-                            !jack;
+  const neon::ClockArbitration arb = neon::arbitrate_clock_source(
+      neon_config().clock_source, g_ext_clock.active(now));
+  const bool jack = arb.follow_clk_in;
   const neon::midi::SyncFollower::Actions midi_act =
-      g_midi_follow.poll(now, midi_allowed);
+      g_midi_follow.poll(now, arb.midi_allowed, g_midi_session);
   g_midi_following = midi_act.following;
 
   const bool follow = jack || midi_act.following;
@@ -224,7 +221,13 @@ void poll(int64_t now_us) {
   follow_external_clock(session, now_us);
 
   hal::LinkState state;
+  g_midi_session = {};
   if (session.capture(state)) {
+    g_midi_session.valid = true;
+    g_midi_session.tempo_mbpm =
+        static_cast<uint32_t>(state.tempo_bpm * 1000.0 + 0.5);
+    g_midi_session.playing = state.playing;
+    g_midi_session.peers = state.num_peers;
     // While following MIDI clock with no peers, the PLL *is* the session
     // (docs/MIDI_PLL_PHASES_HANDOFF.md Phase C): its model maps 1:1 onto
     // the snapshot, so the outputs ride the continuous estimate instead

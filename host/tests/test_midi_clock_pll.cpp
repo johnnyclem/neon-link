@@ -128,7 +128,7 @@ TEST_CASE("Start makes the next tick beat zero and fires one downbeat") {
 
   int64_t downbeat = 0;
   CHECK_FALSE(pll.take_downbeat(&downbeat));
-  pll.on_start(gen.t);
+  pll.on_start();
   const int64_t t0_true = gen.t;
   feed(pll, gen, 1);
 
@@ -150,10 +150,10 @@ TEST_CASE("Stop freezes the position; Continue resumes at the next tick") {
   MidiClockPll pll;
   TickGen gen;
   feed(pll, gen, 48);
-  pll.on_start(gen.t);
+  pll.on_start();
   feed(pll, gen, 48);  // song ticks 0..47
 
-  pll.on_stop(gen.t);
+  pll.on_stop();
   MidiClockPll::Model m;
   REQUIRE(pll.model(&m));
   CHECK_FALSE(m.playing);
@@ -167,7 +167,7 @@ TEST_CASE("Stop freezes the position; Continue resumes at the next tick") {
   CHECK(pll.tempo_milli_bpm() >= 119900);
   CHECK(pll.tempo_milli_bpm() <= 120100);
 
-  pll.on_continue(gen.t);
+  pll.on_continue();
   feed(pll, gen, 1);
   REQUIRE(pll.model(&m));
   CHECK(m.playing);
@@ -180,7 +180,7 @@ TEST_CASE("SPP then Continue resumes at sixteenth * 6 ticks") {
   TickGen gen;
   feed(pll, gen, 48);
   pll.on_spp(16);  // 16 sixteenths = 96 ticks = beat 4
-  pll.on_continue(gen.t);
+  pll.on_continue();
   feed(pll, gen, 1);
   MidiClockPll::Model m;
   REQUIRE(pll.model(&m));
@@ -189,10 +189,42 @@ TEST_CASE("SPP then Continue resumes at sixteenth * 6 ticks") {
   CHECK(m.beat_at_origin_q32 == (4ll << 32));
 }
 
+TEST_CASE("a Start delivered with the new stream survives the gap restart") {
+  // A DAW that gates its clock off while stopped: ticks, Stop, silence
+  // long past kMaxPeriodUs, then 0xFA and the fresh stream in one burst.
+  // The restart must not eat the Start — it is a fact about the new
+  // stream, and losing it leaves the position unanchored with no
+  // downbeat until the sender happens to Start again.
+  MidiClockPll pll;
+  TickGen gen;
+  feed(pll, gen, 48);
+  pll.on_stop();
+
+  gen.t += 700000;  // 0.7 s of silence: past kMaxPeriodUs (0.5 s)
+  pll.on_start();
+  const int64_t t0_true = gen.t;
+  feed(pll, gen, 1);  // the restart tick
+  CHECK(pll.playing());
+
+  feed(pll, gen, 9);  // window refills, rate reseeds
+  MidiClockPll::Model m;
+  REQUIRE(pll.model(&m));
+  CHECK(m.playing);
+  CHECK(m.beat_valid);
+  int64_t downbeat = 0;
+  REQUIRE(pll.take_downbeat(&downbeat));
+  CHECK(downbeat >= t0_true - 200);
+  CHECK(downbeat <= t0_true + 200);
+  // Beat 0 sits on the restart tick; the anchor sits on the last tick
+  // fed, song tick 9.
+  CHECK(m.beat_at_origin_q32 ==
+        static_cast<int64_t>((9ull << 32) / 24u));
+}
+
 TEST_CASE("Start pending before any clock lands on the first tick") {
   MidiClockPll pll;
   TickGen gen;
-  pll.on_start(gen.t);
+  pll.on_start();
   feed(pll, gen, 1);
   CHECK(pll.playing());
   MidiClockPll::Model m;
@@ -246,7 +278,7 @@ TEST_CASE("a stall longer than any musical period restarts in-line") {
   MidiClockPll pll;
   TickGen gen;
   feed(pll, gen, 48);
-  pll.on_start(gen.t);
+  pll.on_start();
   feed(pll, gen, 24);
   CHECK(pll.playing());
 
@@ -267,7 +299,7 @@ TEST_CASE("SPP during play jumps the position at the next tick") {
   MidiClockPll pll;
   TickGen gen;
   feed(pll, gen, 48);
-  pll.on_start(gen.t);
+  pll.on_start();
   feed(pll, gen, 12);  // song ticks 0..11
   pll.on_spp(8);       // jump to 48 ticks = beat 2
   feed(pll, gen, 1);

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "neon/clock_arbitration.hpp"
 #include "neon/config/model.hpp"
 #include "neon/ext_clock.hpp"
 
@@ -173,4 +174,28 @@ TEST_CASE("config sanitize covers the new clock-source fields") {
   neon::config_sanitize(&cfg);
   CHECK(cfg.clock_in_ppqn == 96);
   CHECK(cfg.clock_source == neon::ClockSource::kAuto);
+}
+
+TEST_CASE("clock_source arbitration: the one precedence table") {
+  using neon::ClockSource;
+  const auto arb = [](ClockSource s, bool clk_in) {
+    return neon::arbitrate_clock_source(s, clk_in);
+  };
+
+  // kAuto: CLK IN wins while alive, MIDI only in its absence.
+  CHECK(arb(ClockSource::kAuto, true).follow_clk_in);
+  CHECK_FALSE(arb(ClockSource::kAuto, true).midi_allowed);
+  CHECK_FALSE(arb(ClockSource::kAuto, false).follow_clk_in);
+  CHECK(arb(ClockSource::kAuto, false).midi_allowed);
+
+  // kLinkMaster ignores both external sources.
+  CHECK_FALSE(arb(ClockSource::kLinkMaster, true).follow_clk_in);
+  CHECK_FALSE(arb(ClockSource::kLinkMaster, true).midi_allowed);
+
+  // Each master mode pins its own source — and only its own: a pinned
+  // MIDI master follows MIDI even while the jack is pulsing.
+  CHECK(arb(ClockSource::kExternalMaster, true).follow_clk_in);
+  CHECK_FALSE(arb(ClockSource::kExternalMaster, false).midi_allowed);
+  CHECK(arb(ClockSource::kMidiMaster, true).midi_allowed);
+  CHECK_FALSE(arb(ClockSource::kMidiMaster, true).follow_clk_in);
 }

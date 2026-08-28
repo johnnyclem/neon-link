@@ -57,12 +57,16 @@ class MidiClockPll {
   void set_transport(Transport t) { transport_ = t; }
   Transport transport() const { return transport_; }
 
-  // Inputs. Timestamps are mandatory and share the timebase the rest of
-  // the module schedules in (esp_timer on ESP32 targets).
+  // Inputs. Tick timestamps are mandatory and share the timebase the
+  // rest of the module schedules in (esp_timer on ESP32 targets).
+  // Transport bytes carry no time: they are ordering facts that take
+  // effect on the next tick, whose own timestamp is the one that matters
+  // (settled with the BLE stamp work — phases handoff §B — where only
+  // ticks feed the sender-time mapper).
   void on_tick(int64_t t_us);        // 0xF8
-  void on_start(int64_t t_us);       // 0xFA: next tick is beat 0
-  void on_continue(int64_t t_us);    // 0xFB: next tick resumes the position
-  void on_stop(int64_t t_us);        // 0xFC: freeze position, keep tracking
+  void on_start();                   // 0xFA: next tick is beat 0
+  void on_continue();                // 0xFB: next tick resumes the position
+  void on_stop();                    // 0xFC: freeze position, keep tracking
   void on_spp(uint16_t sixteenths);  // 0xF2: position := sixteenths * 6 ticks
 
   // True while ticks are arriving (no gap beyond 8x the tick period,

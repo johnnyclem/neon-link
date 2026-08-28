@@ -21,6 +21,7 @@
 #include "halesp/midi_uart.hpp"
 #include "halesp/tempo_cv_ledc.hpp"
 #include "neon/midi/ble_midi_parser.hpp"
+#include "neon/midi/clock_engine.hpp"
 #include "neon/midi/midi_encoder.hpp"
 #include "neon/midi/router.hpp"
 #include "neon/midi/serial_midi_parser.hpp"
@@ -158,33 +159,15 @@ bool link_clock_enabled() {
              neon::MidiRouteConfig::ClockPolicy::kReplace;
 }
 
-// Computes the next 24 PPQN tick strictly after now; returns false when no
+// Next 24 PPQN tick strictly after now on the nudged grid; false when no
 // timeline exists yet. The configured MIDI nudge shifts the whole clock
 // stream relative to the CV outputs, which is what MIDI gear with its own
 // input latency needs.
 bool next_clock_tick_us(int64_t now_us, int64_t* out) {
   neon::TimelineSnapshot tl;
   timeline_bus().read(tl);
-  if (tl.tempo_mpb_q32 == 0) {
-    return false;
-  }
-  const int64_t nudge = neon_config().midi_nudge_us;
-  const double mpb = static_cast<double>(tl.tempo_mpb_q32) / 4294967296.0;
-  // Solve on the un-nudged grid, then shift the result.
-  const double grid_now = static_cast<double>(now_us - nudge);
-  const double beat =
-      static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0 +
-      (grid_now - static_cast<double>(tl.origin_us)) / mpb;
-  const double tick_beats = 1.0 / 24.0;
-  const int64_t tick = static_cast<int64_t>(beat / tick_beats) + 1;
-  const double target_beat = static_cast<double>(tick) * tick_beats;
-  const double b0 = static_cast<double>(tl.beat_at_origin_q32) / 4294967296.0;
-  *out = tl.origin_us + nudge +
-         static_cast<int64_t>((target_beat - b0) * mpb);
-  if (*out <= now_us) {
-    *out = now_us + 1000;
-  }
-  return true;
+  return neon::midi::next_nudged_clock_us(tl, now_us,
+                                          neon_config().midi_nudge_us, out);
 }
 
 void clock_cb(void*) {
