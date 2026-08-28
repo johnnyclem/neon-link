@@ -103,7 +103,8 @@ class Sink final : public neon::IRouterSink {
   void set_clock_source_tag(neon::MidiClockPll::Transport t) {
     clock_src_ = t;
   }
-  void midi_clock_byte(uint8_t status, int64_t t_us) override {
+  void midi_clock_byte(uint8_t status, int64_t t_us,
+                       uint16_t sender_ms13) override {
     neon::midi::SyncEvent ev;
     switch (status) {
       case 0xf8:
@@ -123,6 +124,7 @@ class Sink final : public neon::IRouterSink {
     }
     ev.transport = clock_src_;
     ev.t_us = t_us;
+    ev.sender_ms13 = sender_ms13;  // BLE 13-bit stamp; the follower maps it
     midi_sync_queue_push(ev);  // drop on overflow: ticks self-heal
   }
   void midi_song_position(uint16_t sixteenths) override {

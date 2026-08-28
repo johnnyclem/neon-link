@@ -13,6 +13,7 @@ recommended sequence, but B and C are independent of A and of each other.
 | The PLL (type-II PI servo, LS-slope seeding, transport semantics) | `components/neon_core/{include/neon/midi/clock_pll.hpp, src/midi_clock_pll.cpp}` | Done, host-tested (`host/tests/test_midi_clock_pll.cpp`) |
 | Follower policy (hysteresis, rate limit, handover) | `neon/midi/sync_follower.hpp`, `src/midi_sync_follower.cpp` | Done, host-tested (`test_midi_sync_follower.cpp`) |
 | Timestamped parse path + router sync tap | `ble_midi_parser.*`, `serial_midi_parser.*`, `router.hpp`/`midi_router.cpp` | Done, host-tested |
+| BLE 13-bit timestamp decode + sender-time mapper (Phase B) | `ble_midi_parser.*`, `ble_time_mapper.hpp`/`src/midi_ble_time_mapper.cpp`, follower integration | Done, host-tested (`test_ble_time_mapper.cpp`) |
 | ESP32 wiring (queue, arbitration, session drive) | `app_state/timeline_bus.*`, `main/midi_service.cpp`, `main/link_service.cpp` | Done, **not yet compiled by CI** (see followups §1) |
 | Daisy parser timestamps | `daisy/src/midi_daisy.cpp` (`drain_rx` passes `now_us`) | Done — but nothing consumes the tap yet (Phase C) |
 
@@ -60,34 +61,42 @@ call (spike §8.1); consider exposing a `tight`/`smooth` config enum
 mapping to two gain sets rather than raw numbers.
 
 ## Phase B — BLE-MIDI 13-bit timestamp decoding (spike §6.1.3, §8.5)
+### ✅ Done (2026-08-28)
 
-Raw BLE arrivals are the documented degraded mode: the PLL deliberately
-never reports `locked()` under burst delivery, and tempo is only good to a
-few percent. Decoding the in-packet timestamps recovers sender-side
-spacing (±1 ms) and makes BLE a first-class source.
+Landed as designed; BLE with a conforming sender is now a first-class
+source (honest `locked()`, kUsb-grade gains) instead of the documented
+degraded mode. What shipped, mapped onto the original items:
 
-Design already sketched in the spike; the shape:
-
-1. **Parser:** `BleMidiParser` currently recognizes timestamp bytes only
-   to skip them. Extend it to reconstruct the 13-bit millisecond value
-   (header carries bits 12–7, each message's timestamp byte bits 6–0;
-   handle the low-byte rollover *within* a packet) and deliver it — either
-   widen `on_realtime` again with a `sender_ms` or add a parallel
-   callback. Parser stays pure; host tests with fixture packets.
-2. **Domain mapping (the real work):** sender ms → local µs is a miniature
-   `PeerClock` (`components/neon_sync/src/peer_clock.cpp` is the in-tree
-   prior art): offset = arrival_us − sender_ms·1000, filtered by a small
-   median window, **unwrapped against the 8.192 s modulus** using packet
-   arrival as the coarse reference. Sender clock drifts tens of ppm —
-   the median window's TTL handles it like PeerClock's does.
-3. **Degenerate-sender detection (spike §8.5):** some stacks stamp at the
-   connection-interval bucket, making timestamps worthless. Detect: if the
-   decoded inter-tick spacing shows the same comb as raw arrivals
-   (variance ≈ connection interval), fall back to raw-arrival mode
-   (`Transport::kBle` gains) instead of trusting the stamps.
-4. Once mapped times feed the PLL, BLE can likely run the kUsb gain set;
-   revisit `Gains` and add a host test with a recorded real-device packet
-   trace if one can be captured (the parser fixtures make this cheap).
+1. **Parser:** `BleMidiParser` reconstructs the 13-bit millisecond value
+   (header bits 12–7, timestamp-byte bits 6–0, low-byte rollover within
+   a packet) and delivers it via the widened
+   `IMidiSink::on_realtime(status, t_us, sender_ms13)`
+   (`kNoSenderMs` from stamp-less feeders — the serial parser, or a
+   malformed packet). Fixture-packet host tests in `test_midi.cpp`.
+2. **Domain mapping:** `neon::midi::BleTimeMapper`
+   (`ble_time_mapper.hpp` / `src/midi_ble_time_mapper.cpp`) — the
+   miniature PeerClock: offset = arrival_us − sender_ms·1000 through a
+   16-sample median window with a 2 s TTL, the modulus unwrapped
+   against packet arrival (which also bounds it: a > 2 s gap resets).
+   Host tests: `test_ble_time_mapper.cpp`.
+3. **Degenerate-sender detection:** dispersion of the *decoded*
+   inter-tick spacing (mean absolute deviation vs. its median) reads
+   the connection-interval comb; a comb-shaped window revokes trust
+   immediately and the stream stays on raw arrivals with
+   `Transport::kBle` gains. Trust needs a full window plus eight clean
+   evaluations (~one beat) — decoded spacing is immune to link jitter,
+   so a dirty window indicts the sender, not the radio.
+4. **Gains:** integrated in `SyncFollower::on_event` — BLE ticks run
+   through the mapper, and while it is `trusted()` the PLL runs the
+   `kUsb` gain set on mapped times (see the follower tests in
+   `test_midi_sync_follower.cpp`: stamped BLE locks, degenerate BLE
+   keeps the old degraded behavior). Still worth doing when hardware
+   allows: capture a real-device packet trace and replay it as a
+   parser fixture — the synthetic streams model the comb, not any one
+   stack's quirks. Note the mapped grid sits at the *median* delivery
+   latency (a constant the loop never sees); absolute-latency
+   compensation, if ever wanted, is a nudge-config question, not an
+   estimator one.
 
 ## Phase C — Internal-timeline targets: Teensy 4.1 and Daisy
 

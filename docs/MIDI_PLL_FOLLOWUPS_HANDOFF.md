@@ -121,9 +121,11 @@ the feature yet:
 
 - `neon::MidiClockPll::on_start/on_continue/on_stop` take a `t_us` that is
   currently unused (kept for API symmetry). Either use it (validate
-  ordering vs the next tick) or drop the parameters — decide once the BLE
-  timestamp work (phases doc §B) settles whether transport bytes need
-  their own times.
+  ordering vs the next tick) or drop the parameters. Phase B (now landed)
+  settled its half of the question: transport bytes do *not* need
+  sender-side stamps — only ticks feed the BLE time mapper, and the
+  transport events remain pure ordering facts — so this is purely an API
+  tidiness call now.
 - `SyncEvent` is 24 bytes with padding; the queue is 64 deep (1.5 KB).
   Fine on ESP32-S3; re-check on the C3 target if the linksync-c3oled
   profile ever gains MIDI-in.

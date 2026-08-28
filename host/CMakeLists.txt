@@ -40,6 +40,7 @@ add_executable(neon_tests
   tests/test_midi.cpp
   tests/test_midi_clock.cpp
   tests/test_midi_clock_pll.cpp
+  tests/test_ble_time_mapper.cpp
   tests/test_midi_sync_follower.cpp
   tests/test_midi_serial.cpp
   tests/test_status_led.cpp

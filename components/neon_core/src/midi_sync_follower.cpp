@@ -4,10 +4,25 @@ namespace neon {
 namespace midi {
 
 void SyncFollower::on_event(const SyncEvent& ev) {
-  pll_.set_transport(ev.transport);
+  int64_t t_us = ev.t_us;
+  MidiClockPll::Transport transport = ev.transport;
+  if (ev.transport == MidiClockPll::Transport::kBle) {
+    if (ev.kind == SyncEvent::Kind::kTick && ev.sender_ms13 != kNoSenderMs) {
+      t_us = ble_map_.on_tick(ev.t_us, ev.sender_ms13);
+    }
+    if (ble_map_.trusted()) {
+      // Decoded sender stamps recover ±1 ms spacing — USB-grade timing,
+      // so run the kUsb loop instead of BLE's burst-hardened one. The
+      // handful of raw-arrival ticks still in the PLL's window at the
+      // switch show up as one clamped residual, inside the loop's
+      // pull-in range.
+      transport = MidiClockPll::Transport::kUsb;
+    }
+  }
+  pll_.set_transport(transport);
   switch (ev.kind) {
     case SyncEvent::Kind::kTick:
-      pll_.on_tick(ev.t_us);
+      pll_.on_tick(t_us);
       break;
     case SyncEvent::Kind::kStart:
       pll_.on_start(ev.t_us);
