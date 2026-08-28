@@ -229,7 +229,10 @@ Design notes worth knowing before editing:
    (today's 100 µs tick is fine for clocking, not sample-accurate;
    `PulseHwT41::late_*()` counters quantify it in `/api/status`).
 3. **MIDI in** on Serial1 RX (pin 0) → the portable router (notes to
-   the synth voice / gates, transport, clock policy).
+   the synth voice / gates, transport, clock policy). This is also the
+   gate on MIDI clock sync-in (docs/MIDI_PLL_PHASES_HANDOFF.md Phase C):
+   the PLL, follower, and Daisy service wiring to copy all exist, but
+   with no RX path there is nothing to feed them on this target yet.
 4. **Network OTA** into the LittleFS region with a small bootloader
    handshake, so `/api/ota` stops returning 501.
 5. **Native 320×240 colour skin** for the UI, once a second `render_ui`

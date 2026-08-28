@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "neon/midi/sync_follower.hpp"
+
 // TRS MIDI on the board's MIDI UART(s) @ 31250 baud.
 //
 // Out: session-derived 24 PPQN clock from a 500 µs TIM4 ISR (immune to
@@ -15,17 +17,24 @@
 // BLE MIDI — so notes gate a pulse output, pitch maps to the CV jack,
 // CCs edit latency/shuffle, Start/Stop drives the transport, Program
 // Change recalls presets, and the clock stream can be forwarded to the
-// TRS output per the configured clock policy. Independently of the
-// router, every incoming 0xF8 tick is timestamped for the link
-// service's MIDI clock-follow (pop_clock below): incoming MIDI clock is
-// an external tempo source exactly like CLK IN, at a fixed 24 PPQN.
+// TRS output per the configured clock policy. The router's clock-sync
+// tap (0xF8/FA/FB/FC with arrival timestamps, plus Song Position) feeds
+// the link service's MidiClockPll follower directly — everything here
+// runs on the single-threaded main loop, so no cross-task queue sits
+// between the UART drain and the arbitration like on the ESP.
+//
+// Clock out while following MIDI clock in: the existing clock policy
+// already expresses the thru-vs-regeneration choice. kIgnore emits the
+// snapshot-derived clock, which while following *is* the PLL grid —
+// clean regenerated clock. kReplace mutes the regenerated stream and
+// forwards the sender's own bytes — thru. kMerge sends both.
 namespace miditrs {
 
 void init();
 void poll(int64_t now_us);
 
-// Timestamps of received MIDI clock ticks (µs, shared timebase),
-// drained by the link service each capture. Returns false when empty.
-bool pop_clock(int64_t* t_us);
+// The link service's MIDI clock follower; the router sync tap calls
+// on_event on it directly. Set once at service init, before poll runs.
+void set_sync_follower(neon::midi::SyncFollower* follower);
 
 }  // namespace miditrs

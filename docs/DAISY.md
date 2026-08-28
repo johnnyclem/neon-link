@@ -73,10 +73,16 @@ knows about means bumping the submodule, nothing here.
   Start/Stop drives the transport, Program Change recalls presets, and
   the incoming clock stream can be forwarded to the TRS output per the
   clock policy. Independently, incoming **MIDI clock is a second
-  external tempo source** (fixed 24 PPQN) feeding its own
-  `ExtClockEstimator`; the CLK IN jack outranks it when both are alive,
-  and phase anchoring stays RST IN's alone (MIDI has no downbeat
-  message — Start restarts beat 0 through the transport instead).
+  external sync source**: the router's sync tap feeds the
+  `MidiClockPll` follower (docs/SPIKE_MIDI_PLL.md) in the link service,
+  and while it is the active source the PLL's model — tempo, phase, and
+  (after a Start or SPP + Continue) the exact musical position — is
+  published as the timeline snapshot: on the internal-timeline configs
+  the PLL *is* the session while following. The CLK IN jack outranks
+  MIDI clock when both are alive. Clock out while following is
+  regenerated from the PLL grid under the default clock policy; set
+  `kReplace` for thru (the sender's own bytes, regenerated stream
+  muted).
 - **Audio engine on the built-in codec** — the best-fit subsystem: the
   codec runs 48 kHz, exactly the rate the portable audio services are
   written for. Metronome click, pulse-as-audio taps (clock / reset / run
@@ -346,9 +352,10 @@ CI proves the build; these need a Seed and a scope:
    second compare keeps the 10 kHz housekeeping tick.
 4. ~~MIDI in~~ — **done** (§1): the portable `SerialMidiParser` (new,
    host-tested) feeds the same `MidiRouter` the ESP32 runs, plus MIDI
-   clock-follow as a second external tempo source. Seed: USART1 RX
-   (D14); Pod: its own TRS MIDI IN jack; patch.init(): the A2 header
-   pin.
+   clock-follow through the `MidiClockPll`/`SyncFollower` (phase-locked
+   tempo, transport, and song position — docs/MIDI_PLL_PHASES_HANDOFF.md
+   Phase C). Seed: USART1 RX (D14); Pod: its own TRS MIDI IN jack;
+   patch.init(): the A2 header pin.
 5. ~~USB gadget networking~~ — **done** (§9): the `daisy/netlink/`
    config. CDC-ECM (not NCM — simpler, and FS bandwidth doesn't reward
    NCM's aggregation) + lwIP + the Teensy platform layer re-plumbed

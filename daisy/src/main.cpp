@@ -16,8 +16,9 @@
 //
 // No network interface on this hardware: Ableton Link, the web editor,
 // WiFi, and BLE MIDI live on the other targets (docs/DAISY.md §1). The
-// session grid is the InternalTimeline; CLK IN is the only external
-// sync, which makes it more central here than anywhere else.
+// session grid is the InternalTimeline; CLK IN and TRS MIDI clock are
+// the only external sync, which makes them more central here than
+// anywhere else.
 
 #include "daisy_seed.h"
 
