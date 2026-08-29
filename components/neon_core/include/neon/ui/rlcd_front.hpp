@@ -1,0 +1,74 @@
+#pragma once
+
+#include <cstdint>
+
+#include "neon/config/model.hpp"
+
+namespace neon {
+
+// Waveshare RLCD-4.2 front-panel state machine. Pure logic, host-
+// tested. The board has exactly two buttons — the side KEY and BOOT —
+// so every mode is driven by four gestures: KEY short/long and BOOT
+// short/long. The rlcd task maps debounced GPIO edges onto these
+// calls; this type never talks to GPIO or NVS.
+//
+// Live: KEY short toggles transport, BOOT short/long nudges BPM
+// up/down, KEY long opens the settings list. Menu: BOOT short/long
+// moves the cursor down/up, KEY short activates (the last row opens
+// the power popup), KEY long returns to live. Edit: BOOT steps the
+// value, KEY short commits, KEY long reverts. Idle 25 s returns to
+// live; the boot splash clears itself after a few seconds.
+class RlcdFrontPanel {
+ public:
+  enum class Mode : uint8_t { kSplash, kLive, kMenu, kEdit, kPower };
+  enum class Action : uint8_t { kNone, kReboot, kPowerOff };
+
+  static constexpr int kItems = 7;  // 6 settings + POWER
+  static constexpr int kPowerItem = 6;
+  static constexpr int64_t kIdleUs = 25000000;
+  static constexpr int64_t kSplashUs = 6000000;
+  static constexpr int kPowerChoices = 3;  // Restart, Power Off, Cancel
+
+  explicit RlcdFrontPanel(Config* cfg);
+
+  void on_key_short(int64_t now_us);
+  void on_key_long(int64_t now_us);
+  void on_boot_short(int64_t now_us);
+  void on_boot_long(int64_t now_us);
+  void tick(int64_t now_us);
+
+  Mode mode() const { return mode_; }
+  int cursor() const { return cursor_; }
+  int power_cursor() const { return power_cur_; }
+
+  bool take_dirty();
+  Action take_action();
+  int take_nudge();
+  bool take_toggle();
+
+  const char* item_label(int index) const;
+  void item_value(int index, char* buf, int cap) const;
+  static const char* power_label(int index);
+
+ private:
+  bool readonly(int index) const;
+  void touch(int64_t now_us);
+  void leave_splash(int64_t now_us);
+  void step(int delta);
+  void stash();
+  void revert();
+
+  Config* cfg_;
+  Mode mode_ = Mode::kSplash;
+  int cursor_ = 0;
+  int power_cur_ = 2;
+  bool dirty_ = false;
+  Action action_ = Action::kNone;
+  int nudge_ = 0;
+  bool toggle_ = false;
+  int64_t last_us_ = 0;
+  uint32_t stash32_ = 0;
+  uint8_t stash8_ = 0;
+};
+
+}  // namespace neon

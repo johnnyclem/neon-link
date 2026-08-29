@@ -40,6 +40,9 @@ void neon_start_core0_tasks() {
 #elif CONFIG_NEON_BOARD_LINKSYNC_EPD
   neon_start_epd_service();
   neon_start_telemetry_service();
+#elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
+  neon_start_rlcd_service();
+  neon_start_telemetry_service();
 #elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
   neon_start_lcd_service();
   neon_start_telemetry_service();

@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [link, stub, nsync, bleoff, amyboard-audio, stub-audio, linksync, linksync-epd]
+        variant: [link, stub, nsync, bleoff, amyboard-audio, stub-audio, linksync, linksync-epd, linksync-rlcd]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,13 +128,14 @@ jobs:
             ${{ matrix.variant == 'stub-audio' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.stub;sdkconfig.ci.audio"' || '' }}
             ${{ matrix.variant == 'linksync' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync"' || '' }}
             ${{ matrix.variant == 'linksync-epd' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-epd"' || '' }}
+            ${{ matrix.variant == 'linksync-rlcd' && '-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-rlcd"' || '' }}
             build
 
       # The AMYboard image has to fit the OTA slot it will be flashed into,
       # and "it built" is not the same statement. 6 MB slots, checked here
       # so a size regression fails in CI rather than during an update.
       - name: App image fits its OTA slot
-        if: matrix.variant == 'amyboard-audio' || matrix.variant == 'linksync' || matrix.variant == 'linksync-epd'
+        if: matrix.variant == 'amyboard-audio' || matrix.variant == 'linksync' || matrix.variant == 'linksync-epd' || matrix.variant == 'linksync-rlcd'
         run: |
           size=$(stat -c%s build/neon_link.bin 2>/dev/null || stat -c%s build/*.bin | head -1)
           if [ "${{ matrix.variant }}" = "linksync" ] || [ "${{ matrix.variant }}" = "linksync-epd" ]; then

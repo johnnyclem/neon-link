@@ -1,0 +1,160 @@
+#include <doctest.h>
+
+#include <cstring>
+
+#include "neon/ui/rlcd_front.hpp"
+
+using neon::Config;
+using neon::RlcdFrontPanel;
+using Mode = neon::RlcdFrontPanel::Mode;
+using Action = neon::RlcdFrontPanel::Action;
+
+namespace {
+constexpr int64_t kSec = 1000000;
+}
+
+TEST_CASE("splash clears on any button or after the timeout") {
+  Config cfg;
+  {
+    RlcdFrontPanel ui(&cfg);
+    CHECK(ui.mode() == Mode::kSplash);
+    ui.on_boot_short(1);
+    CHECK(ui.mode() == Mode::kLive);
+  }
+  {
+    RlcdFrontPanel ui(&cfg);
+    ui.tick(1);
+    CHECK(ui.mode() == Mode::kSplash);
+    ui.tick(1 + RlcdFrontPanel::kSplashUs);
+    CHECK(ui.mode() == Mode::kLive);
+  }
+}
+
+TEST_CASE("live: KEY toggles transport, BOOT nudges tempo both ways") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);  // leave splash
+  ui.on_key_short(2);
+  CHECK(ui.take_toggle());
+  CHECK_FALSE(ui.take_toggle());
+  ui.on_boot_short(3);
+  ui.on_boot_short(4);
+  ui.on_boot_long(5);
+  CHECK(ui.take_nudge() == 1);
+  CHECK(ui.take_nudge() == 0);
+}
+
+TEST_CASE("menu navigation with two buttons") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  CHECK(ui.mode() == Mode::kMenu);
+  CHECK(ui.cursor() == 0);
+  ui.on_boot_short(3);
+  CHECK(ui.cursor() == 1);
+  ui.on_boot_long(4);
+  ui.on_boot_long(5);
+  CHECK(ui.cursor() == RlcdFrontPanel::kItems - 1);  // wrapped up
+  ui.on_key_long(6);
+  CHECK(ui.mode() == Mode::kLive);
+}
+
+TEST_CASE("editing TRS commits on KEY short and reverts on KEY long") {
+  Config cfg;
+  cfg.midi_trs_type = 0;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  ui.on_boot_short(3);  // cursor -> 1 = TRS
+  ui.on_key_short(4);
+  CHECK(ui.mode() == Mode::kEdit);
+  ui.on_boot_short(5);
+  CHECK(cfg.midi_trs_type == 1);
+  ui.on_key_short(6);  // commit
+  CHECK(ui.mode() == Mode::kMenu);
+  CHECK(ui.take_dirty());
+  CHECK(cfg.midi_trs_type == 1);
+
+  ui.on_key_short(7);  // re-enter edit
+  ui.on_boot_short(8);
+  CHECK(cfg.midi_trs_type == 0);
+  ui.on_key_long(9);  // cancel
+  CHECK(ui.mode() == Mode::kMenu);
+  CHECK_FALSE(ui.take_dirty());
+  CHECK(cfg.midi_trs_type == 1);  // reverted
+}
+
+TEST_CASE("readonly PPQN row does not enter edit") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  CHECK(ui.cursor() == 0);
+  ui.on_key_short(3);
+  CHECK(ui.mode() == Mode::kMenu);
+}
+
+TEST_CASE("power popup lives behind the POWER menu row") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  ui.on_boot_long(3);  // wrap up to the POWER row
+  CHECK(ui.cursor() == RlcdFrontPanel::kPowerItem);
+  ui.on_key_short(4);
+  CHECK(ui.mode() == Mode::kPower);
+  CHECK(ui.power_cursor() == 2);  // starts on CANCEL
+  ui.on_key_short(5);
+  CHECK(ui.mode() == Mode::kLive);
+  CHECK(ui.take_action() == Action::kNone);
+
+  // Restart.
+  ui.on_key_long(6);
+  ui.on_boot_long(7);
+  ui.on_key_short(8);
+  ui.on_boot_short(9);  // CANCEL -> RESTART
+  CHECK(ui.power_cursor() == 0);
+  ui.on_key_short(10);
+  CHECK(ui.take_action() == Action::kReboot);
+}
+
+TEST_CASE("quantum steps through the ladder and the value renders") {
+  Config cfg;
+  cfg.quantum_beats = 4;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  for (int i = 0; i < 3; ++i) {
+    ui.on_boot_short(3 + i);  // cursor -> 3 = QUANTUM
+  }
+  CHECK(ui.cursor() == 3);
+  ui.on_key_short(10);
+  ui.on_boot_short(11);
+  CHECK(cfg.quantum_beats == 8);
+  ui.on_boot_short(12);
+  CHECK(cfg.quantum_beats == 1);  // wrapped
+  ui.on_boot_long(13);
+  CHECK(cfg.quantum_beats == 8);
+  char v[16];
+  ui.item_value(3, v, sizeof(v));
+  CHECK(std::strcmp(v, "8") == 0);
+}
+
+TEST_CASE("menu idles back to live and reverts a pending edit") {
+  Config cfg;
+  cfg.start_stop_sync = 1;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  for (int i = 0; i < 4; ++i) {
+    ui.on_boot_short(3 + i);  // cursor -> 4 = SS SYNC
+  }
+  ui.on_key_short(10);
+  ui.on_boot_short(11);
+  CHECK(cfg.start_stop_sync == 0);
+  ui.tick(11 + RlcdFrontPanel::kIdleUs);
+  CHECK(ui.mode() == Mode::kLive);
+  CHECK(cfg.start_stop_sync == 1);  // reverted, never applied
+  CHECK_FALSE(ui.take_dirty());
+}

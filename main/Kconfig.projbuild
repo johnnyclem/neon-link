@@ -17,6 +17,9 @@ choice NEON_BOARD
         link-sync-matouch is the Makerfabs MaTouch ESP32-S3 1.28"
         Rotary — 240×240 round GC9A01 + rotary encoder
         (docs/LINKSYNC_MATOUCH.md).
+        link-sync-rlcd is the Waveshare ESP32-S3-RLCD-4.2 — 400×300
+        ST7305 reflective LCD, live beat display, battery gauge
+        (docs/LINKSYNC_RLCD.md).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -36,11 +39,13 @@ config NEON_BOARD_LINKSYNC_C3OLED
     bool "link-sync (ESP32-C3 0.42\" OLED stamp)"
 config NEON_BOARD_LINKSYNC_MATOUCH
     bool "link-sync (MaTouch ESP32-S3 1.28\" round GC9A01 + encoder)"
+config NEON_BOARD_LINKSYNC_RLCD
+    bool "link-sync (Waveshare ESP32-S3-RLCD-4.2 reflective LCD)"
 endchoice
 
 config NEON_LINKSYNC
     bool
-    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH || NEON_BOARD_LINKSYNC_RLCD
     help
         Shared link-sync firmware path: Link + MIDI clock. The XIAO uses
         a single LED; the e-Paper board uses the 5.79" panel; the P4 LCD
@@ -90,6 +95,7 @@ config NEON_I2S_MCLK
     int "MCLK (master clock, 256fs)"
     default 3 if NEON_BOARD_AMYBOARD
     default 13 if NEON_BOARD_P4DEVKIT
+    default 16 if NEON_BOARD_LINKSYNC_RLCD
     default -1
 
 config NEON_I2S_BCLK
@@ -97,6 +103,7 @@ config NEON_I2S_BCLK
     default 8 if NEON_BOARD_AMYBOARD
     default 12 if NEON_BOARD_P4DEVKIT
     default 22 if NEON_BOARD_LINKSYNC_P4LCD
+    default 9 if NEON_BOARD_LINKSYNC_RLCD
     default -1
 
 config NEON_I2S_LRCLK
@@ -104,6 +111,7 @@ config NEON_I2S_LRCLK
     default 2 if NEON_BOARD_AMYBOARD
     default 10 if NEON_BOARD_P4DEVKIT
     default 21 if NEON_BOARD_LINKSYNC_P4LCD
+    default 45 if NEON_BOARD_LINKSYNC_RLCD
     default -1
 
 config NEON_I2S_DOUT
@@ -111,6 +119,7 @@ config NEON_I2S_DOUT
     default 6 if NEON_BOARD_AMYBOARD
     default 9 if NEON_BOARD_P4DEVKIT
     default 23 if NEON_BOARD_LINKSYNC_P4LCD
+    default 8 if NEON_BOARD_LINKSYNC_RLCD
     default -1
 
 config NEON_I2S_DIN

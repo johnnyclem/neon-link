@@ -40,6 +40,9 @@ inline constexpr int kPinI2sDin = -1;
 #if CONFIG_NEON_BOARD_P4DEVKIT
 // NS4150B enable on the onboard 3.5 mm jack. Active high.
 inline constexpr int kPinI2sPa = 53;
+#elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
+// Speaker amp enable behind the ES8311. Active high.
+inline constexpr int kPinI2sPa = 46;
 #else
 inline constexpr int kPinI2sPa = -1;
 #endif
@@ -391,6 +394,79 @@ inline constexpr int kPinDispBlk = 45;   // backlight, active HIGH
 inline constexpr int kPinEncA = 48;
 inline constexpr int kPinEncB = 47;
 inline constexpr int kPinEncSw = 17;   // active-low
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
+#elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
+
+// Waveshare ESP32-S3-RLCD-4.2 (ESP32-S3-WROOM-1-N16R8). 4.2" ST7305
+// reflective mono LCD, 400×300 landscape, SPI2 @ 24 MHz. Native USB
+// Serial/JTAG console, so the classic UART0 pads (43/44) on the 2×8
+// expansion header carry TRS MIDI, exactly like the MaTouch. Pin map
+// verified against the vendor board manifest (SolarOS
+// boards/manifests/waveshare_esp32_s3_rlcd_4_2.toml) and the
+// Waveshare schematic. Pulse channels are virtual.
+//
+//   ST7305 SPI:  SCK 11  MOSI 12  CS 40  DC 5  RST 41  TE 6 (unused)
+//   I2C:         SDA 13  SCL 14 (PCF85063 RTC, SHTC3, ES8311/ES7210)
+//   SD (1-bit):  CLK 38  CMD 21  D0 39 (unused)
+//   Audio I2S0:  MCLK 16  BCLK 9  WS 45  DOUT 8  DIN 10  PA 46
+//   Battery:     ADC GPIO4, ÷3 divider
+//   Buttons:     side KEY 18 (active-low), BOOT 0
+
+inline constexpr int kPinClk1 = 1;
+inline constexpr int kPinClk2 = 2;
+inline constexpr int kPinClk3 = 3;
+inline constexpr int kPinClk4 = 15;
+inline constexpr int kPinReset = 17;
+inline constexpr int kPinRun = 42;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+// TRS MIDI on the expansion header's TXD/RXD pads (UART1 @ 31250; the
+// console is native USB Serial/JTAG, so U0TXD/U0RXD are free). Opto
+// required on RX as usual.
+inline constexpr int kPinMidiTx = 43;
+inline constexpr int kPinMidiRx = 44;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+// Onboard bus: PCF85063 RTC, SHTC3, ES8311/ES7210 codecs.
+inline constexpr int kPinI2cSda = 13;
+inline constexpr int kPinI2cScl = 14;
+
+// ST7305 over SPI2. No BUSY pin — the controller scans continuously.
+inline constexpr int kPinDispSck = 11;
+inline constexpr int kPinDispMosi = 12;
+inline constexpr int kPinDispCs = 40;
+inline constexpr int kPinDispDc = 5;
+inline constexpr int kPinDispRes = 41;
+inline constexpr int kPinDispTe = 6;
+
+inline constexpr int kPinEncA = -1;
+inline constexpr int kPinEncB = -1;
+inline constexpr int kPinEncSw = -1;
+// Side user key + BOOT are the whole front panel (RlcdFrontPanel).
+inline constexpr int kPinKeyUser = 18;
+inline constexpr int kPinKeyBoot = 0;
+inline constexpr int kPinBatteryAdc = 4;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;
