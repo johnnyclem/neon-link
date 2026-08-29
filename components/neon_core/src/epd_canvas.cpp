@@ -80,6 +80,32 @@ int EpdCanvas::black_pixels() const {
   return n;
 }
 
+bool epd_dirty_row_span(const uint8_t* prev, const uint8_t* cur, int* row0,
+                        int* row1) {
+  if (prev == nullptr || cur == nullptr || row0 == nullptr ||
+      row1 == nullptr) {
+    return false;
+  }
+  constexpr int kStride = EpdCanvas::kStride;
+  int lo = -1;
+  int hi = -1;
+  for (int y = 0; y < EpdCanvas::kHeight; ++y) {
+    if (std::memcmp(prev + static_cast<size_t>(y) * kStride,
+                    cur + static_cast<size_t>(y) * kStride, kStride) != 0) {
+      if (lo < 0) {
+        lo = y;
+      }
+      hi = y;
+    }
+  }
+  if (lo < 0) {
+    return false;
+  }
+  *row0 = lo;
+  *row1 = hi;
+  return true;
+}
+
 void draw_charge_icon(EpdCanvas& c, int x, int y) {
   // Chunky battery + bolt. Static: e-paper must not animate.
   c.fill_rect(x, y, 38, 20, true);

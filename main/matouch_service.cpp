@@ -21,6 +21,7 @@
 #include "neon/transport.hpp"
 #include "neon/config/model.hpp"
 #include "neon/ui/menu_model.hpp"
+#include "neon/ui/idle_dimmer.hpp"
 #include "neon/ui/palettes_gen.hpp"
 #include "wifi.h"
 
@@ -97,6 +98,14 @@ uint16_t* g_fb = nullptr;
 // ---- Settings state (touch + encoder over the shared MenuModel) --------
 
 neon::Config g_cfg;
+
+// Idle display power (docs/SOLAROS_PORTS_HANDOFF.md §3): dims after
+// display_dim_s of no touch/encoder input, blanks a stopped transport.
+neon::ui::IdleDimmer g_dimmer;
+// The input edge that wakes a blanked panel is swallowed — it turns the
+// glass back on, it must not also fire the action under the finger.
+bool g_swallow_touch = false;
+int g_bl_applied = -1;
 neon::MenuModel g_menu(&g_cfg);
 bool g_settings = false;
 int g_scroll = 0;  // first visible row index
@@ -420,8 +429,17 @@ void paint_live(const Snap& s) {
 
 // ---- Settings: apply edited config, navigation helpers -----------------
 
-void apply_backlight() {
-  halesp::lcd_gc9a01_backlight(g_cfg.display_brightness != 0);
+void apply_backlight(int64_t now_us) {
+  // Brightness base: the menu's edit copy while settings are open (so a
+  // committed BRIGHT edit previews), the live config otherwise (so a web
+  // PUT lands without opening the panel).
+  const uint8_t base = g_settings ? g_cfg.display_brightness
+                                  : neon_config().display_brightness;
+  const int eff = g_dimmer.apply(base, now_us);
+  if (eff != g_bl_applied) {
+    halesp::lcd_gc9a01_backlight_level(static_cast<uint8_t>(eff));
+    g_bl_applied = eff;
+  }
 }
 
 void commit_menu() {
@@ -442,10 +460,12 @@ void commit_menu() {
   live.big_beat_display = g_cfg.big_beat_display;
   live.beat_style = g_cfg.beat_style;
   live.color_theme = g_cfg.color_theme;
+  live.display_dim_s = g_cfg.display_dim_s;
+  live.display_dim_level = g_cfg.display_dim_level;
   live.audio = g_cfg.audio;
   neon_config_apply(live);
   g_cfg = live;
-  apply_backlight();
+  apply_backlight(esp_timer_get_time());
 }
 
 // ---- Board-aware menu trimming -----------------------------------------
@@ -469,13 +489,14 @@ constexpr int kMenuVisCount = 5;
 constexpr int kMidiVis[] = {1};
 constexpr int kMidiVisCount = 1;
 
-// SYSTEM: QUANTUM, MIDI NDG, SS SYNC, BRIGHT, BEAT, COLOUR, VERSION, REBOOT.
+// SYSTEM: QUANTUM, MIDI NDG, SS SYNC, BRIGHT, BEAT, COLOUR, DIM, DIM LVL,
+// VERSION, REBOOT.
 // MIDI NDG stays because it times the (now live) TRS clock. STYLE is dropped
 // with the animations (only the big beat number remains). Also drops
 // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, RST EDGE — each of which times
 // a pulse output or an external clock input this board does not have.
-constexpr int kSysVis[] = {5, 7, 8, 9, 10, 12, 13, 14};
-constexpr int kSysVisCount = 8;
+constexpr int kSysVis[] = {5, 7, 8, 9, 10, 12, 13, 14, 15, 16};
+constexpr int kSysVisCount = 10;
 
 const int* row_map(neon::MenuModel::Screen scr, int* count) {
   using S = neon::MenuModel::Screen;
@@ -1335,6 +1356,17 @@ void handle_touch() {
   int x = 0;
   int y = 0;
   const bool down = halesp::cst816_poll(&x, &y);
+  if (down) {
+    g_dimmer.note_activity(esp_timer_get_time());
+  }
+  if (g_swallow_touch) {
+    // This gesture only woke the blanked panel; drop it whole.
+    if (!down) {
+      g_swallow_touch = false;
+    }
+    was_down = down;
+    return;
+  }
 
   if (down && !was_down) {
     start_x = x;
@@ -1382,6 +1414,9 @@ void handle_encoder() {
   // Encoder A/B read CCW-positive on this board; negate so CW is "forward".
   const int detents = -halesp::encoder_take_detents();
   const halesp::EncoderPress press = halesp::encoder_take_press();
+  if (detents != 0 || press != halesp::EncoderPress::kNone) {
+    g_dimmer.note_activity(esp_timer_get_time());
+  }
 
   if (!g_settings) {
     if (detents != 0) {
@@ -1463,10 +1498,41 @@ void matouch_task(void*) {
   text_cx(kCx, kCy - 20, "NEON", 3, pal.neon);
   text_cx(kCx, kCy + 12, "link-mat", 1, pal.muted);
   halesp::lcd_gc9a01_blit(g_fb, 0, 0, kW, kH);
-  halesp::lcd_gc9a01_backlight(true);
+  g_dimmer.note_activity(esp_timer_get_time());
+  apply_backlight(esp_timer_get_time());
   vTaskDelay(pdMS_TO_TICKS(700));
 
   for (;;) {
+    const int64_t now = esp_timer_get_time();
+    {
+      const neon::Config& live = neon_config();
+      g_dimmer.configure(live.display_dim_s, live.display_dim_level);
+    }
+    if (g_dimmer.level(now) == neon::ui::IdleDimmer::Level::kBlank) {
+      // Panel dark: drain inputs without acting on them — the edge that
+      // wakes the glass must not also nudge tempo or tap a control —
+      // and skip the 115 KB SPI blit. MIDI follow keeps running.
+      int tx = 0;
+      int ty = 0;
+      const bool tdown = halesp::cst816_poll(&tx, &ty);
+      const int det = halesp::encoder_take_detents();
+      const halesp::EncoderPress pr = halesp::encoder_take_press();
+      if (tdown || det != 0 || pr != halesp::EncoderPress::kNone) {
+        g_dimmer.note_activity(now);
+        g_swallow_touch = tdown;  // drop the rest of the waking gesture
+      }
+      midi_in_tick();
+      test_note_tick();
+      wifi_tick();
+      // A transport started remotely must un-blank: playing never
+      // blanks, so the dimmer falls back to kDim and painting resumes.
+      neon::TimelineSnapshot tl{};
+      timeline_bus().read(tl);
+      g_dimmer.set_playing(tl.playing != 0);
+      apply_backlight(now);
+      vTaskDelay(pdMS_TO_TICKS(g_dimmer.frame_interval_hint_ms(now)));
+      continue;
+    }
     handle_encoder();
     handle_touch();
     midi_in_tick();    // follow external MIDI clock + start/stop on RX
@@ -1475,6 +1541,9 @@ void matouch_task(void*) {
     wifi_tick();  // auto-save + return home once the join gets an IP
 
     const Snap s = snapshot();
+    g_dimmer.set_playing(s.playing);
+    apply_backlight(now);
+    const int hint = g_dimmer.frame_interval_hint_ms(now);
     if (g_settings && g_wifi != Wifi::kOff) {
       paint_wifi();
     } else if (g_settings) {
@@ -1483,7 +1552,7 @@ void matouch_task(void*) {
       paint_live(s);
     }
     halesp::lcd_gc9a01_blit(g_fb, 0, 0, kW, kH);
-    vTaskDelay(pdMS_TO_TICKS(40));  // ~25 fps
+    vTaskDelay(pdMS_TO_TICKS(40 + hint));  // ~25 fps active, relaxed dim
   }
 }
 

@@ -71,4 +71,10 @@ class EpdCanvas {
 
 void render_linksync_panel(EpdCanvas& c, const LinkSyncPanelStatus& s);
 
+// True when the two canvases differ; [*row0, *row1] is then the
+// inclusive band of differing rows, ready for a banded partial
+// refresh. Both buffers are EpdCanvas::kSize bytes.
+bool epd_dirty_row_span(const uint8_t* prev, const uint8_t* cur, int* row0,
+                        int* row1);
+
 }  // namespace neon

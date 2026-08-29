@@ -217,10 +217,29 @@ struct Config {
   // MaTouch dial so the hero BPM is not pure white on a near-black void.
   // A v8 blob decodes with this set to kTeal — see config_decode.
   ColorTheme color_theme = ColorTheme::kTeal;
+
+  // Appended in v10 (docs/SOLAROS_PORTS_HANDOFF.md §3). Idle display
+  // power: after display_dim_s seconds without local input the panel
+  // dims to display_dim_level (same 0..255 scale as
+  // display_brightness); after three dim windows a *stopped* transport
+  // blanks the panel entirely — a playing one only dims, the tempo
+  // must stay glanceable (neon::ui::IdleDimmer, host-tested). 0 keeps
+  // today's always-on behavior and is the default.
+  uint16_t display_dim_s = 0;
+  uint8_t display_dim_level = 64;
+
+  // Appended in v11 (docs/SOLAROS_PORTS_HANDOFF.md §4, docs/OSC.md).
+  // OSC over UDP: /neon/* inbound control into the ControlCommand
+  // funnel, plus a fixed outbound binding set (tempo, playing, beat,
+  // peers). Off by default — this is an unauthenticated LAN surface,
+  // the same posture as the web editor's origin gate: opt in.
+  uint8_t osc_enabled = 0;
+  uint16_t osc_port = 9000;      // inbound listen port
+  char osc_target[40] = "";      // "host:port" for outbound; empty = in only
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 9;
+inline constexpr uint16_t kConfigVersion = 11;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

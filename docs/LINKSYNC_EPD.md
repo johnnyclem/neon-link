@@ -20,11 +20,14 @@ E-paper cannot flash the downbeat. That is a choice, not a bug. No
 metronome, no big-beat animation, no partial chase. The panel
 repaints only when the text changes (tempo, PLAYING/STOPPED, peers,
 WiFi / setup AP). Key interactions (BPM nudge, menu cursor, value
-edits) land as **partial refreshes** — sub-second, no flash — while
-ambient changes keep a 5 s floor. A full refresh runs on layout
-changes and every 20 partials to clear ghosting, and the panel drops
-to deep sleep after 30 s idle so the glass is not held at high
-voltage. Clock lives on the GPTimer ring, same as the XIAO.
+edits) land as **banded partial refreshes** — sub-second, no flash,
+streaming only the dirty rows — while ambient changes keep a 5 s
+floor. Layout changes (opening the menu, the power popup) repaint the
+whole glass with the **fast mode** (0xC7, ~1 s, no flash); a true full
+refresh (0xF7, the flash) runs only at boot/wake and every 20 non-GC
+paints to clear ghosting. The panel drops to deep sleep after 30 s
+idle so the glass is not held at high voltage. Clock lives on the
+GPTimer ring, same as the XIAO.
 
 While the setup AP is up (or the box is still unprovisioned) the
 glass prints the SoftAP SSID and password. Physical access is the
@@ -121,10 +124,19 @@ is the ground truth. The panel will not tick.
 Waveshare's own precautions apply:
 
 - Repaint only when the painted text changes; sleep once idle
-- Partial refresh (mode 0xFF) for interactions; it diffs against the
-  old RAM seeded by the last full refresh (Waveshare `Display_Base`
-  pattern) and accumulates ghosting, so a full refresh (0xF7) runs on
-  every layout change and after 20 consecutive partials
+- Partial refresh (mode 0xFF) for interactions, banded to the dirty
+  rows (`neon::epd_dirty_row_span`); it diffs against the old RAM
+  seeded by the last full/fast refresh (Waveshare `Display_Base`
+  pattern). After each banded update the driver rewrites the band into
+  both RAM planes so the ping-pong can never resurface stale content
+  outside the band
+- Fast refresh (0xC7) repaints the whole glass without the flash. It
+  only works because init loads the LUT with a written temperature
+  operand (`0x1A {0x6E}` → `0x22 {0x91}` → `0x20` — the step the
+  vendor demo hides inside `Init_Fast()`; see
+  `SOLAROS_PORTS_HANDOFF.md` §2). Used for layout changes
+- Fast and partial refreshes accumulate ghosting, so a full refresh
+  (0xF7) runs at boot/wake and after 20 non-GC paints
   (`neon::EpdRefreshPlanner`, host-tested)
 - Do not treat the glass as a metronome
 

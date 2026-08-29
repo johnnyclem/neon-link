@@ -168,6 +168,13 @@ export interface Config {
   /** Drives <name>.local and the default access point SSID. */
   device_name: string;
   display_brightness: number;
+  display_dim_s: number;
+  display_dim_level: number;
+  osc: {
+    enabled: boolean;
+    listen_port: number;
+    target: string;
+  };
   /** Full-screen 1/2/3/4 on the panel while the transport is running. */
   big_beat_display: boolean;
   /** Which beat animation the live screen (and this page) draw. */

@@ -321,9 +321,16 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(root, "midi_nudge_us", cfg.midi_nudge_us);
   cJSON_AddStringToObject(root, "device_name", cfg.device_name);
   cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
+  cJSON_AddNumberToObject(root, "display_dim_s", cfg.display_dim_s);
+  cJSON_AddNumberToObject(root, "display_dim_level", cfg.display_dim_level);
   cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
   cJSON_AddStringToObject(root, "beat_style", beat_style_str(cfg.beat_style));
   cJSON_AddStringToObject(root, "color_theme", color_theme_str(cfg.color_theme));
+
+  cJSON* osc = cJSON_AddObjectToObject(root, "osc");
+  cJSON_AddBoolToObject(osc, "enabled", cfg.osc_enabled != 0);
+  cJSON_AddNumberToObject(osc, "listen_port", cfg.osc_port);
+  cJSON_AddStringToObject(osc, "target", cfg.osc_target);
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -517,6 +524,8 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
   get_i32(root, "midi_nudge_us", &cfg->midi_nudge_us);
   get_str(root, "device_name", cfg->device_name, sizeof(cfg->device_name));
   get_u8(root, "display_brightness", &cfg->display_brightness);
+  get_u16(root, "display_dim_s", &cfg->display_dim_s);
+  get_u8(root, "display_dim_level", &cfg->display_dim_level);
   get_bool_u8(root, "big_beat_display", &cfg->big_beat_display);
   {
     const cJSON* style = cJSON_GetObjectItemCaseSensitive(root, "beat_style");
@@ -545,6 +554,13 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     } else if (str_eq(theme, "paper")) {
       cfg->color_theme = ColorTheme::kPaper;
     }
+  }
+
+  const cJSON* osc = cJSON_GetObjectItemCaseSensitive(root, "osc");
+  if (cJSON_IsObject(osc)) {
+    get_bool_u8(osc, "enabled", &cfg->osc_enabled);
+    get_u16(osc, "listen_port", &cfg->osc_port);
+    get_str(osc, "target", cfg->osc_target, sizeof(cfg->osc_target));
   }
 
   const cJSON* ble = cJSON_GetObjectItemCaseSensitive(root, "ble");

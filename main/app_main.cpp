@@ -176,4 +176,7 @@ extern "C" void app_main(void) {
   // Always linked: web_ui resolves /api/audio/channels against these
   // symbols. On link-sync the service is a no-op (CONFIG_NEON_AUDIO=n).
   neon_start_audio_service();
+  // Idles until the user enables OSC in the editor; retries its socket
+  // until the network stack is up.
+  neon_start_osc_service();
 }

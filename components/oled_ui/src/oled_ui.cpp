@@ -23,6 +23,7 @@
 #include "neon/transport.hpp"
 #include "neon/ui/icons_gen.hpp"
 #include "neon/ui/menu_model.hpp"
+#include "neon/ui/idle_dimmer.hpp"
 #include "neon/ui/render.hpp"
 #include "neon/ui/widgets.hpp"
 #include "netman/net_manager.h"
@@ -257,18 +258,42 @@ void ui_task(void*) {
   uint8_t applied_brightness = 0;
   bool brightness_applied = false;
 
+  // Idle display power (docs/SOLAROS_PORTS_HANDOFF.md §3). While
+  // blank the render already short-circuits through want_brightness ==
+  // 0; input that wakes the panel is dropped so a blind detent cannot
+  // nudge tempo.
+  neon::ui::IdleDimmer dimmer;
+  dimmer.note_activity(esp_timer_get_time());
+  bool last_playing = false;
+
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
+    dimmer.configure(ui_cfg.display_dim_s, ui_cfg.display_dim_level);
+    dimmer.set_playing(last_playing);
+    const int64_t poll_us = esp_timer_get_time();
+    const bool was_blank =
+        dimmer.level(poll_us) == neon::ui::IdleDimmer::Level::kBlank;
     const int detents = halesp::encoder_take_detents();
     if (detents != 0) {
-      menu.on_rotate(detents);
+      dimmer.note_activity(poll_us);
+      if (!was_blank) {
+        menu.on_rotate(detents);
+      }
     }
     const int tempo_nudge = menu.take_tempo_nudge();
     if (tempo_nudge != 0) {
       control_queue_push(
           {ControlCommand::Kind::kNudgeTempo, tempo_nudge});
     }
-    handle_press(menu, halesp::encoder_take_press());
+    {
+      const halesp::EncoderPress press = halesp::encoder_take_press();
+      if (press != halesp::EncoderPress::kNone) {
+        dimmer.note_activity(poll_us);
+        if (!was_blank) {
+          handle_press(menu, press);
+        }
+      }
+    }
     commit_pending_home_short(menu);
     if (boot_locked() && menu.screen() != neon::MenuModel::Screen::kHome) {
       menu.go_home();
@@ -292,6 +317,8 @@ void ui_task(void*) {
       live.midi_nudge_us = ui_cfg.midi_nudge_us;
       live.start_stop_sync = ui_cfg.start_stop_sync;
       live.display_brightness = ui_cfg.display_brightness;
+      live.display_dim_s = ui_cfg.display_dim_s;
+      live.display_dim_level = ui_cfg.display_dim_level;
       live.big_beat_display = ui_cfg.big_beat_display;
       live.beat_style = ui_cfg.beat_style;
       neon_config_apply(live);
@@ -301,7 +328,8 @@ void ui_task(void*) {
       ui_cfg = neon_config();
     }
 
-    const uint8_t want_brightness = ui_cfg.display_brightness;
+    const uint8_t want_brightness = static_cast<uint8_t>(
+        dimmer.apply(ui_cfg.display_brightness, esp_timer_get_time()));
     if (have_display &&
         (!brightness_applied || want_brightness != applied_brightness)) {
       oledui::panel_set_brightness(want_brightness);
@@ -317,6 +345,7 @@ void ui_task(void*) {
     neon::UiStatus status;
     const int64_t now_us = esp_timer_get_time();
     assemble_status(&status, now_us, now_us);
+    last_playing = status.playing != 0;
     const uint32_t led_phase = status.phase_milli_beats;
     // LEDs follow Link time. The panel looks a couple of milliseconds
     // ahead on a big redraw so its last rows land on the audible
@@ -372,7 +401,13 @@ void ui_task(void*) {
       wait_until_us(target);
       wake = xTaskGetTickCount();
     } else {
-      vTaskDelayUntil(&wake, kFrameTicks);
+      const int hint = dimmer.frame_interval_hint_ms(esp_timer_get_time());
+      if (hint > 0) {
+        vTaskDelay(pdMS_TO_TICKS(hint));
+        wake = xTaskGetTickCount();
+      } else {
+        vTaskDelayUntil(&wake, kFrameTicks);
+      }
     }
   }
 }

@@ -27,6 +27,12 @@ bool lcd_gc9a01_init();
 // Backlight on/off (GPIO push, active-high per the MaTouch schematic).
 void lcd_gc9a01_backlight(bool on);
 
+// Graded backlight, 0..255, via 20 kHz LEDC PWM (flicker-free, above
+// audio). First call converts the pin from the plain GPIO the bool
+// variant drives; 0 is fully dark. This is what makes the BRIGHT menu
+// row and the idle dimmer real on this board.
+void lcd_gc9a01_backlight_level(uint8_t level);
+
 // Blit a full-frame RGB565 buffer (already byte-swapped) to the panel.
 bool lcd_gc9a01_blit(const uint16_t* rgb565, int x, int y, int w, int h);
 

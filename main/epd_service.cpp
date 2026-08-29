@@ -190,6 +190,10 @@ void epd_task(void*) {
   neon::Config ui_cfg = neon_config();
   neon::EpdFrontPanel ui(&ui_cfg);
   auto* canvas = new neon::EpdCanvas();
+  // What the glass currently shows, so a partial can stream only the
+  // dirty row band instead of the whole 27 KB frame.
+  auto* shown = new uint8_t[neon::EpdCanvas::kSize];
+  bool shown_valid = false;
   neon::EpdRefreshPlanner planner;
   uint32_t last_fp = 0;
   uint8_t last_overlay = 0xff;
@@ -353,14 +357,29 @@ void epd_task(void*) {
       }
       neon::render_linksync_panel(*canvas, st);
       ESP_LOGI(kTag, "paint %s overlay=%u invert=%d cursor=%d",
-               kind == Kind::kFull ? "full" : "partial",
+               kind == Kind::kFull   ? "full"
+               : kind == Kind::kFast ? "fast"
+                                     : "partial",
                static_cast<unsigned>(st.overlay), st.invert ? 1 : 0,
                st.cursor);
-      if (kind == Kind::kFull) {
-        halesp::epd5in79_display(canvas->data(), /*fast=*/false);
+      if (kind == Kind::kFull || kind == Kind::kFast) {
+        halesp::epd5in79_display(canvas->data(), kind == Kind::kFast);
       } else {
-        halesp::epd5in79_display_partial(canvas->data());
+        int r0 = 0;
+        int r1 = neon::EpdCanvas::kHeight - 1;
+        if (shown_valid &&
+            !neon::epd_dirty_row_span(shown, canvas->data(), &r0, &r1)) {
+          // Fingerprint moved but the rendered pixels did not (e.g. a
+          // field that rounds away). Nothing to stream.
+          r1 = r0 - 1;
+        }
+        if (r1 >= r0) {
+          halesp::epd5in79_display_partial_rows(canvas->data(), r0,
+                                                r1 - r0 + 1);
+        }
       }
+      std::memcpy(shown, canvas->data(), neon::EpdCanvas::kSize);
+      shown_valid = true;
       planner.note_painted(now, kind, user);
       last_fp = fp;
       last_overlay = st.overlay;

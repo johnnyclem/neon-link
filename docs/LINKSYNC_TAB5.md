@@ -45,3 +45,12 @@ S3 sdkconfig.
 
 SoftAP is `LINK-TAB-XXXX` (password on the glass). Grove HY2.0-4P
 (GPIO 53/54) is reserved for MIDI later.
+
+## Idle dimming
+
+With `Idle dim after` set (web editor System page; default off), the
+backlight dims via LEDC after that many seconds without a touch; a
+stopped transport blanks after three dim windows (a playing one only
+dims). While blank the 1.8 MB full-frame blit — the most expensive
+idle frame in the tree — is skipped, and the waking tap is swallowed.
+`neon::ui::IdleDimmer`, host-tested.

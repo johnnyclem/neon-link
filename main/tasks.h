@@ -47,6 +47,10 @@ void neon_start_rlcd_service();
 // Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
 void neon_start_telemetry_service();
 
+// Core 0: OSC over UDP — /neon/* control in, tempo/playing/beat/peers
+// out. Idles until cfg.osc_enabled is set (docs/OSC.md).
+void neon_start_osc_service();
+
 // Core 1: the I2S audio render loop, plus its core-0 control task.
 // A no-op unless CONFIG_NEON_AUDIO is set and audio is enabled in the
 // stored configuration.

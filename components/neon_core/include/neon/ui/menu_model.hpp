@@ -106,7 +106,7 @@ class MenuModel {
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
   // MIDI NDG, SS SYNC, BRIGHT, BEAT, STYLE, COLOUR, VERSION, REBOOT —
   // REBOOT last.
-  static constexpr int kSystemItems = 15;
+  static constexpr int kSystemItems = 17;
   // Read-only: the firmware version string, filled in by the renderer from
   // UiStatus rather than by item_value() (MenuModel has no platform code to
   // read esp_app_desc_t from). on_click() must not toggle editing_ for it.

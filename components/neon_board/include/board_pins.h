@@ -378,7 +378,7 @@ inline constexpr int kPinEthCs = -1;
 inline constexpr int kPinEthInt = -1;
 inline constexpr int kPinEthRst = -1;
 
-// CST816 touch bus. Not driven by the POC (encoder is the input path).
+// CST816 touch bus (live: taps and drags drive the settings panel).
 inline constexpr int kPinI2cSda = 38;
 inline constexpr int kPinI2cScl = 39;
 

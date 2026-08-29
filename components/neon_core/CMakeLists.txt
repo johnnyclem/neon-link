@@ -46,6 +46,7 @@ set(NEON_CORE_SRCS
   src/telemetry/linksync_csv.cpp
   src/telemetry/midi_pll_csv.cpp
   src/telemetry/emitter.cpp
+  src/osc/codec.cpp
 )
 
 if(ESP_PLATFORM)
