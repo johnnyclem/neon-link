@@ -47,6 +47,9 @@ add_executable(neon_tests
   tests/test_epd_canvas.cpp
   tests/test_epd_front.cpp
   tests/test_epd_refresh.cpp
+  tests/test_rlcd_pack.cpp
+  tests/test_rlcd_front.cpp
+  tests/test_rlcd_refresh.cpp
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
   tests/test_transport.cpp

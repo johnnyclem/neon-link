@@ -142,6 +142,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[docs/LINKSYNC.md](docs/LINKSYNC.md)** | Hardware / Firmware | **link-sync dongle** — Seeed XIAO ESP32S3, Ableton Link → TRS MIDI clock + transport + SPP. Reference board only |
 | **[docs/LINKSYNC_C3OLED.md](docs/LINKSYNC_C3OLED.md)** | Hardware / Firmware | link-sync on an **ESP32-C3 Super Mini + 0.42" OLED** — same clock, 72×40 status |
 | **[docs/LINKSYNC_EPD.md](docs/LINKSYNC_EPD.md)** | Hardware / Firmware | link-sync on a **Waveshare 5.79" e-Paper** + ESP32-S3 — same clock, panel for status |
+| **[docs/LINKSYNC_RLCD.md](docs/LINKSYNC_RLCD.md)** | Hardware / Firmware | link-sync on the **Waveshare ESP32-S3-RLCD-4.2** — 400×300 reflective LCD, live beat, battery gauge |
 | **[docs/elecrow_epaper_adapters.md](docs/elecrow_epaper_adapters.md)** | Hardware | Elecrow CrowPanel 5.79" IDC adapters — 2× DIN + 6N138 MIDI IN/OUT, TRS, battery, bring-up |
 | **[site/index.html](site/index.html)** | Everyone | Marketing page + interactive manual for the device and the web editor — self-contained, renders the real firmware screens |
 | **[docs/SCHEMATIC_OVERVIEW.md](docs/SCHEMATIC_OVERVIEW.md)** | Hardware / Firmware | High-level power, I/O, and core schematic description to accompany the diagrams |
@@ -288,6 +289,20 @@ adapters: **[docs/elecrow_epaper_adapters.md](docs/elecrow_epaper_adapters.md)**
 idf.py set-target esp32s3
 idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-epd" build
 ./scripts/flash_linksync-epd.sh
+```
+
+### Run on Waveshare ESP32-S3-RLCD-4.2 (reflective LCD)
+
+Same dongle firmware on the 4.2" ST7305 reflective panel — repaints in
+milliseconds with no flash, so the glass shows the beat live, then
+drops to a 1 Hz microamp scan when idle. Battery gauge on the panel,
+TRS MIDI on the expansion header's TXD/RXD pads.
+See **[docs/LINKSYNC_RLCD.md](docs/LINKSYNC_RLCD.md)**.
+
+```bash
+idf.py set-target esp32s3
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-rlcd" build
+./scripts/flash_linksync-rlcd.sh
 ```
 
 Host unit tests (no ESP-IDF):

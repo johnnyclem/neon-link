@@ -70,6 +70,9 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   ESP_LOGI(kTag, "link-sync firmware starting (C3 0.42 OLED) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
+  ESP_LOGI(kTag, "link-sync firmware starting (RLCD 4.2) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
 #endif
@@ -111,6 +114,8 @@ extern "C" void app_main(void) {
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-c3");
 #elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-mat");
+#elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-rlcd");
 #else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
 #endif

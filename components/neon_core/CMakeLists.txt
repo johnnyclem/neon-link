@@ -17,8 +17,11 @@ set(NEON_CORE_SRCS
   src/ext_clock.cpp
   src/gfx_framebuffer.cpp
   src/epd_canvas.cpp
+  src/rlcd_canvas.cpp
+  src/rlcd_pack.cpp
   src/menu_model.cpp
   src/epd_front.cpp
+  src/rlcd_front.cpp
   src/ui_widgets.cpp
   src/ui_render.cpp
   src/ble_midi_parser.cpp

@@ -3,11 +3,11 @@ idf_component_register(
        wifi.cpp link_service.cpp midi_service.cpp audio_service.cpp
        provision.cpp status_led_service.cpp epd_service.cpp
        lcd_service.cpp telemetry_service.cpp c3oled_service.cpp
-       matouch_service.cpp
+       matouch_service.cpp rlcd_service.cpp
   INCLUDE_DIRS .
   REQUIRES neon_core neon_hal neon_hal_esp ableton_link net_manager
            neon_board app_state oled_ui ble_midi web_ui amy_synth
            nvs_flash esp_timer esp_wifi esp_netif esp_event driver
-           esp_hw_support app_update esp_psram wifi_provisioning
+           esp_hw_support app_update esp_psram wifi_provisioning esp_adc
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
