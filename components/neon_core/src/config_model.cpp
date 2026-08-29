@@ -153,6 +153,14 @@ void config_sanitize(Config* cfg) {
     cfg->color_theme = ColorTheme::kTeal;
   }
   cfg->midi_trs_type = cfg->midi_trs_type ? 1 : 0;
+  if (cfg->display_dim_s > 3600) {
+    cfg->display_dim_s = 3600;
+  }
+  cfg->osc_enabled = cfg->osc_enabled ? 1 : 0;
+  if (cfg->osc_port == 0) {
+    cfg->osc_port = 9000;
+  }
+  cfg->osc_target[sizeof(cfg->osc_target) - 1] = '\0';
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -409,6 +417,19 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   if (h.version < 9) {
     // color_theme sits in what was v8 tail padding after midi_trs_type.
     out->color_theme = ColorTheme::kTeal;
+  }
+  if (h.version < 10) {
+    // display_dim_s/_level sit in what was v9 tail padding after
+    // color_theme. Dimming stays off until the user turns it on.
+    out->display_dim_s = 0;
+    out->display_dim_level = 64;
+  }
+  if (h.version < 11) {
+    // The OSC block is new tail after display_dim_level; stale padding
+    // must not enable a network control surface.
+    out->osc_enabled = 0;
+    out->osc_port = 9000;
+    std::memset(out->osc_target, 0, sizeof(out->osc_target));
   }
   config_sanitize(out);
   return true;

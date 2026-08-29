@@ -113,3 +113,12 @@ UART1. It does not affect the onboard C6.
 
 This unit: ESP32-P4 **rev v1.3**, MAC `e8:f6:0a:e0:44:a3`, 32 MB HEX
 PSRAM @ 200 MHz, IDF 5.5.5. Do not flash a `REV_MIN_301` image.
+
+## Idle dimming
+
+With `Idle dim after` set (web editor System page or SYSTEM > DIM on
+the panel; default off), the backlight dims through the STC8 expander
+PWM after that many seconds without a touch; a stopped transport
+blanks entirely after three dim windows (a playing one only dims).
+While blank, composition is skipped and the waking tap is swallowed so
+it cannot press a control blind. `neon::ui::IdleDimmer`, host-tested.

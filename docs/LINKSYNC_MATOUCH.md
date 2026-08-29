@@ -117,3 +117,16 @@ Monitor:
 ```
 idf.py -B build-linksync-matouch -p /dev/cu.usbmodem101 monitor
 ```
+
+## Brightness and idle dimming
+
+The BRIGHT row (and the web editor's Display brightness) is now real on
+this board: the backlight runs on 20 kHz LEDC PWM instead of a bare
+GPIO, so 0-255 is 0-255, not on/off. With `Idle dim after` set (web
+editor or the SYSTEM > DIM row; default off), the panel dims to the
+configured level after that many seconds without a touch or encoder
+input, and a *stopped* transport blanks entirely after three dim
+windows — a playing one only dims, the dial stays glanceable. While
+blank the 115 KB SPI blit is skipped and the waking touch or detent is
+swallowed (it turns the glass back on; it does not act on whatever was
+under it). `neon::ui::IdleDimmer`, host-tested.

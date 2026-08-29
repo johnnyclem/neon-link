@@ -16,6 +16,7 @@
 #include "neon/gfx/font5x7.hpp"
 #include "neon/timeline.hpp"
 #include "neon/transport.hpp"
+#include "neon/ui/idle_dimmer.hpp"
 #include "netman/net_manager.h"
 #include "wifi.h"
 
@@ -97,6 +98,18 @@ bool flush() {
     return false;
   }
   return data_write(g_fb, kFb);
+}
+
+// Runtime contrast (0x81) — the init blob bakes 0xAF in; this is what
+// makes display_brightness and the idle dimmer real on this panel.
+bool set_contrast(uint8_t level) {
+  const uint8_t cmds[] = {0x81, level};
+  return cmd_list(cmds, sizeof(cmds));
+}
+
+bool set_display_on(bool on) {
+  const uint8_t cmd = on ? 0xAF : 0xAE;
+  return cmd_list(&cmd, 1);
 }
 
 void fb_clear() { std::memset(g_fb, 0, sizeof(g_fb)); }
@@ -395,9 +408,41 @@ void oled_task(void*) {
     g_page = Page::Setup;
   }
 
+  neon::ui::IdleDimmer dimmer;
+  dimmer.note_activity(esp_timer_get_time());
+  bool swallow_press = false;
+  int applied_contrast = -1;
+  bool display_on = true;
+
   for (;;) {
     const int64_t now = esp_timer_get_time();
+    {
+      const neon::Config& live = neon_config();
+      dimmer.configure(live.display_dim_s, live.display_dim_level);
+    }
     const bool down = button_down();
+    if (down) {
+      dimmer.note_activity(now);
+    }
+    if (swallow_press) {
+      // This press only woke the blanked panel; drop it whole.
+      if (!down) {
+        swallow_press = false;
+      }
+      vTaskDelay(pdMS_TO_TICKS(80));
+      continue;
+    }
+    if (!display_on && down) {
+      // Wake press: light the panel now, act on nothing.
+      swallow_press = true;
+      held = false;
+      if (g_ok) {
+        set_display_on(true);
+        display_on = true;
+      }
+      vTaskDelay(pdMS_TO_TICKS(80));
+      continue;
+    }
     if (down && !held) {
       held = true;
       down_us = now;
@@ -417,8 +462,26 @@ void oled_task(void*) {
       }
     }
 
-    paint(snapshot());
-    vTaskDelay(pdMS_TO_TICKS(80));  // ~12 fps; 360-byte I2C flush is cheap
+    const Snap snap = snapshot();
+    dimmer.set_playing(snap.playing);
+    const int eff = dimmer.apply(neon_config().display_brightness, now);
+    if (g_ok) {
+      if (eff == 0 && display_on) {
+        set_display_on(false);
+        display_on = false;
+      } else if (eff != 0 && !display_on) {
+        set_display_on(true);
+        display_on = true;
+      }
+      if (eff != 0 && eff != applied_contrast) {
+        set_contrast(static_cast<uint8_t>(eff));
+        applied_contrast = eff;
+      }
+    }
+    if (display_on) {
+      paint(snap);
+    }
+    vTaskDelay(pdMS_TO_TICKS(80 + dimmer.frame_interval_hint_ms(now)));
   }
 }
 

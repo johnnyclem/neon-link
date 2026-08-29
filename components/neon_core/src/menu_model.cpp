@@ -459,7 +459,7 @@ const char* MenuModel::item_label(int index) const {
           "LATENCY",  "RESET",    "SOURCE",   "IN PPQN",
           "GATE CLK", "QUANTUM",  "RST EDGE", "MIDI NDG",
           "SS SYNC",  "BRIGHT",   "BEAT",     "STYLE",    "COLOUR",
-          "VERSION",  "REBOOT"};
+          "DIM",      "DIM LVL",  "VERSION",  "REBOOT"};
       return kItems[clamp_int(index, 0, kSystemItems - 1)];
     }
     default:
@@ -598,6 +598,18 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         break;
       case 12:
         std::snprintf(buf, cap, "%s", color_theme_name(cfg_->color_theme));
+        break;
+      case 13:
+        if (cfg_->display_dim_s == 0) {
+          std::snprintf(buf, cap, "OFF");
+        } else {
+          std::snprintf(buf, cap, "%us",
+                        static_cast<unsigned>(cfg_->display_dim_s));
+        }
+        break;
+      case 14:
+        std::snprintf(buf, cap, "%u",
+                      static_cast<unsigned>(cfg_->display_dim_level));
         break;
       default:
         break;
@@ -864,6 +876,24 @@ void MenuModel::adjust_system(int index, int delta) {
           wrap_int(static_cast<int>(cfg_->color_theme) + delta, n));
       break;
     }
+    case 13: {
+      // Idle-dim delay ladder; 0 = dimming off (the default).
+      static const uint16_t kDim[] = {0, 15, 30, 60, 120, 300};
+      constexpr int kDimN = static_cast<int>(sizeof(kDim) / sizeof(kDim[0]));
+      int i = 0;
+      for (int k = 0; k < kDimN; ++k) {
+        if (kDim[k] == cfg_->display_dim_s) {
+          i = k;
+          break;
+        }
+      }
+      cfg_->display_dim_s = kDim[wrap_int(i + delta, kDimN)];
+      break;
+    }
+    case 14:
+      cfg_->display_dim_level = static_cast<uint8_t>(clamp_int(
+          static_cast<int>(cfg_->display_dim_level) + delta * 8, 0, 255));
+      break;
     default:
       return;
   }

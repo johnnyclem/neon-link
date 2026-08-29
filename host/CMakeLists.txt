@@ -50,6 +50,8 @@ add_executable(neon_tests
   tests/test_rlcd_pack.cpp
   tests/test_rlcd_front.cpp
   tests/test_rlcd_refresh.cpp
+  tests/test_idle_dimmer.cpp
+  tests/test_osc.cpp
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
   tests/test_transport.cpp

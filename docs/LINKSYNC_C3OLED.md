@@ -114,3 +114,13 @@ RX rings, and keeps the OLED flush to 360 bytes. If `app_main` boots
 and then the heap collapses on STA associate, the next knob is
 `CONFIG_LWIP_MAX_SOCKETS` (already 10) and dropping the gzipped
 editor — do not re-enable NimBLE to "see if it fits".
+
+## Brightness and idle dimming
+
+`display_brightness` now drives the panel's contrast register (it used
+to be baked into the init blob and the setting was ignored). With
+`Idle dim after` set (web editor; default off), the OLED dims after
+that many seconds without a BOOT press and a stopped transport turns
+the panel off entirely after three dim windows — the best burn-in
+insurance a 0.42" always-on OLED can get. The waking press only wakes;
+it does not cycle the page or toggle transport.

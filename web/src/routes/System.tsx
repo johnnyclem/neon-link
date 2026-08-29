@@ -214,6 +214,22 @@ export function System(props: PageProps) {
             onChange={(v) => patch((d) => (d.display_brightness = v))}
             hint="0 blanks the panel"
           />
+          <NumberField
+            label="Idle dim after (s)"
+            value={cfg.display_dim_s}
+            min={0}
+            max={3600}
+            onChange={(v) => patch((d) => (d.display_dim_s = v))}
+            hint="0 = never dim; stopped panels blank after 3x this"
+          />
+          <NumberField
+            label="Idle dim level"
+            value={cfg.display_dim_level}
+            min={0}
+            max={255}
+            onChange={(v) => patch((d) => (d.display_dim_level = v))}
+            hint="brightness while dimmed"
+          />
           <Toggle
             label="Beat display"
             checked={cfg.big_beat_display !== false}
@@ -242,6 +258,33 @@ export function System(props: PageProps) {
           value={isThemeId(cfg.color_theme) ? cfg.color_theme : undefined}
           onChange={(id) => patch((d) => (d.color_theme = id))}
         />
+      </Card>
+
+      <Card
+        title="OSC"
+        note="UDP control on the local network: /neon/tempo, /neon/transport, /neon/toggle, /neon/tap, /neon/nudge, /neon/resync in; tempo, playing, beat, and peers out. Unauthenticated — leave off unless your network is yours."
+      >
+        <div class="fields">
+          <Toggle
+            label="OSC enabled"
+            checked={cfg.osc.enabled}
+            onChange={(v) => patch((d) => (d.osc.enabled = v))}
+          />
+          <NumberField
+            label="Listen port"
+            value={cfg.osc.listen_port}
+            min={1}
+            max={65535}
+            onChange={(v) => patch((d) => (d.osc.listen_port = v))}
+          />
+          <TextField
+            label="Send target"
+            value={cfg.osc.target}
+            maxLength={39}
+            onChange={(v) => patch((d) => (d.osc.target = v))}
+            hint="host:port for outbound status; empty = listen only"
+          />
+        </div>
       </Card>
       </>
       ) : null}

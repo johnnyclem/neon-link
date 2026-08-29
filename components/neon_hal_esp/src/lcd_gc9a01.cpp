@@ -6,6 +6,7 @@
 
 #include "board_pins.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -128,8 +129,54 @@ bool lcd_gc9a01_init() {
   return true;
 }
 
+namespace {
+
+bool g_bl_pwm = false;
+
+bool backlight_pwm_init() {
+  if (g_bl_pwm) {
+    return true;
+  }
+  // 20 kHz / 10-bit, per the SolarOS ili9341 backlight: above audio,
+  // no visible flicker. Nothing else on this board uses LEDC.
+  ledc_timer_config_t timer = {};
+  timer.speed_mode = LEDC_LOW_SPEED_MODE;
+  timer.duty_resolution = LEDC_TIMER_10_BIT;
+  timer.timer_num = LEDC_TIMER_1;
+  timer.freq_hz = 20000;
+  timer.clk_cfg = LEDC_AUTO_CLK;
+  if (ledc_timer_config(&timer) != ESP_OK) {
+    return false;
+  }
+  ledc_channel_config_t ch = {};
+  ch.gpio_num = kPinDispBlk;
+  ch.speed_mode = LEDC_LOW_SPEED_MODE;
+  ch.channel = LEDC_CHANNEL_0;
+  ch.timer_sel = LEDC_TIMER_1;
+  ch.duty = 0;
+  ch.hpoint = 0;
+  if (ledc_channel_config(&ch) != ESP_OK) {
+    return false;
+  }
+  g_bl_pwm = true;
+  return true;
+}
+
+}  // namespace
+
 void lcd_gc9a01_backlight(bool on) {
-  gpio_set_level(static_cast<gpio_num_t>(kPinDispBlk), on ? 1 : 0);
+  lcd_gc9a01_backlight_level(on ? 255 : 0);
+}
+
+void lcd_gc9a01_backlight_level(uint8_t level) {
+  if (!backlight_pwm_init()) {
+    // LEDC unavailable — fall back to the old on/off GPIO behavior.
+    gpio_set_level(static_cast<gpio_num_t>(kPinDispBlk), level != 0 ? 1 : 0);
+    return;
+  }
+  const uint32_t duty = (static_cast<uint32_t>(level) * 1023u) / 255u;
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }
 
 bool lcd_gc9a01_blit(const uint16_t* rgb565, int x, int y, int w, int h) {

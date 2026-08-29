@@ -20,6 +20,7 @@
 #include "neon/transport.hpp"
 #include "neon/ui/hero_font_gen.hpp"
 #include "neon/ui/menu_model.hpp"
+#include "neon/ui/idle_dimmer.hpp"
 #include "neon/ui/theme_gen.hpp"
 #include "netman/net_manager.h"
 #include "provision.h"
@@ -411,6 +412,13 @@ bool in_rect(int x, int y, int rx, int ry, int rw, int rh) {
 neon::Config g_cfg;
 neon::MenuModel g_menu(&g_cfg);
 bool g_settings = false;
+
+// Idle display power (docs/SOLAROS_PORTS_HANDOFF.md §3): dims after
+// display_dim_s without a touch, blanks a stopped transport. The
+// waking touch is swallowed so it cannot tap a control blind.
+neon::ui::IdleDimmer g_dimmer;
+bool g_swallow_touch = false;
+int g_bl_applied = -1;
 int g_scroll_px = 0;
 
 constexpr int kTabCount = 5;
@@ -473,7 +481,20 @@ void clamp_scroll(const Snap& s) {
 }
 
 void apply_backlight(uint8_t brightness) {
+  // STC8 (P4LCD) / LEDC (Tab5) both take 0-100 percent.
   halesp::lcd_rgb_backlight(static_cast<uint8_t>((brightness * 100u) / 255u));
+}
+
+// Dimmer-aware brightness, written only on change (the P4LCD backlight
+// is an I2C register on the STC8 expander — no per-frame writes).
+void apply_effective_backlight(int64_t now_us) {
+  const uint8_t base = g_settings ? g_cfg.display_brightness
+                                  : neon_config().display_brightness;
+  const int eff = g_dimmer.apply(base, now_us);
+  if (eff != g_bl_applied) {
+    apply_backlight(static_cast<uint8_t>(eff));
+    g_bl_applied = eff;
+  }
 }
 
 void commit_menu() {
@@ -493,10 +514,13 @@ void commit_menu() {
   live.display_brightness = g_cfg.display_brightness;
   live.big_beat_display = g_cfg.big_beat_display;
   live.beat_style = g_cfg.beat_style;
+  live.display_dim_s = g_cfg.display_dim_s;
+  live.display_dim_level = g_cfg.display_dim_level;
   live.audio = g_cfg.audio;
   neon_config_apply(live);
   g_cfg = live;
-  apply_backlight(live.display_brightness);
+  g_bl_applied = -1;  // force a rewrite with the committed brightness
+  apply_effective_backlight(esp_timer_get_time());
 }
 
 void open_settings() {
@@ -1345,6 +1369,16 @@ Touch poll_touch(const Snap& s) {
   int y = 0;
   const bool down = halesp::lcd_touch_poll(&x, &y);
   const int64_t now = esp_timer_get_time();
+  if (down) {
+    g_dimmer.note_activity(now);
+  }
+  if (g_swallow_touch) {
+    // This gesture only woke the blanked panel; drop it whole.
+    if (!down) {
+      g_swallow_touch = false;
+    }
+    return Touch{};
+  }
   static bool was_down = false;
   static bool press_in_settings = false;
   static Touch held{};
@@ -1447,7 +1481,8 @@ void lcd_task(void*) {
     ESP_LOGW(kTag, "touch init failed — display only");
   }
   g_cfg = neon_config();
-  apply_backlight(g_cfg.display_brightness);
+  g_dimmer.note_activity(esp_timer_get_time());
+  apply_effective_backlight(esp_timer_get_time());
   // Compose straight into the panel's back buffer where the HAL offers
   // one (RGB path): no full-frame copy racing the scanout, and the flip
   // lands on a frame boundary so large repaints (RUN↔STOP) cannot tear.
@@ -1468,8 +1503,35 @@ void lcd_task(void*) {
            halesp::lcd_touch_ok() ? 1 : 0,
            dbuf ? "double-buffered" : "blit");
   for (;;) {
+    const int64_t now = esp_timer_get_time();
+    {
+      const neon::Config& live = neon_config();
+      g_dimmer.configure(live.display_dim_s, live.display_dim_level);
+    }
+    if (g_dimmer.level(now) == neon::ui::IdleDimmer::Level::kBlank) {
+      // Panel dark: drain the touch without acting on it (the waking
+      // tap must not press a control blind) and skip composition — on
+      // the Tab5 that is a 1.8 MB blit saved every frame.
+      int tx = 0;
+      int ty = 0;
+      if (halesp::lcd_touch_poll(&tx, &ty)) {
+        g_dimmer.note_activity(now);
+        g_swallow_touch = true;
+      }
+      // A transport started remotely must un-blank (playing never
+      // blanks — the tempo stays glanceable).
+      neon::TimelineSnapshot tl{};
+      timeline_bus().read(tl);
+      g_dimmer.set_playing(tl.playing != 0);
+      apply_effective_backlight(now);
+      vTaskDelay(pdMS_TO_TICKS(g_dimmer.frame_interval_hint_ms(now)));
+      continue;
+    }
     const Snap s = snapshot();
     const Touch pressed = poll_touch(s);
+    g_dimmer.set_playing(s.playing);
+    apply_effective_backlight(now);
+    const int hint = g_dimmer.frame_interval_hint_ms(now);
     if (dbuf) {
       uint16_t* fb = halesp::lcd_rgb_next_frame();
       paint(fb, s, pressed);
@@ -1478,13 +1540,13 @@ void lcd_task(void*) {
       }
       // present() already blocked to the frame boundary (~60 Hz); one
       // tick keeps touch responsive and lands the loop near 30 fps.
-      vTaskDelay(pdMS_TO_TICKS(15));
+      vTaskDelay(pdMS_TO_TICKS(15 + hint));
     } else {
       paint(own_fb, s, pressed);
       if (!halesp::lcd_rgb_blit(own_fb, 0, 0, halesp::kLcdW, halesp::kLcdH)) {
         ESP_LOGW(kTag, "blit failed");
       }
-      vTaskDelay(pdMS_TO_TICKS(40));  // ~25 Hz
+      vTaskDelay(pdMS_TO_TICKS(40 + hint));  // ~25 Hz active, relaxed dim
     }
   }
 }
