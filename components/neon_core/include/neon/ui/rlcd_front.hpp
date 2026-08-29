@@ -12,20 +12,30 @@ namespace neon {
 // short/long. The rlcd task maps debounced GPIO edges onto these
 // calls; this type never talks to GPIO or NVS.
 //
-// Live: KEY short toggles transport, BOOT short/long nudges BPM
-// up/down, KEY long opens the settings list. Menu: BOOT short/long
-// moves the cursor down/up, KEY short activates (the last row opens
-// the power popup), KEY long returns to live. Edit: BOOT steps the
-// value, KEY short commits, KEY long reverts. Idle 25 s returns to
-// live; the boot splash clears itself after a few seconds.
+// Live: KEY short toggles transport, BOOT short taps BPM up by one,
+// BOOT long opens the Tempo screen (where BOTH directions live), KEY
+// long opens the settings list. Tempo: KEY nudges up, BOOT nudges
+// down, either held auto-repeats (accelerating), and it self-closes
+// after a few idle seconds. Menu: BOOT short/long moves the cursor
+// down/up, KEY short activates (the last row opens the power popup),
+// KEY long returns to live. Edit: BOOT steps the value, KEY short
+// commits, KEY long reverts. Idle returns to live; the boot splash
+// clears itself after a few seconds.
+//
+// Why a Tempo screen rather than BOOT-tap-up / BOOT-hold-down: with
+// only the side KEY and BOOT usable (the third front button is the
+// hardware RESET line), a single button cannot host both directions
+// discoverably. A brief hold surfaces a screen where each button
+// owns one direction and the labels say so.
 class RlcdFrontPanel {
  public:
-  enum class Mode : uint8_t { kSplash, kLive, kMenu, kEdit, kPower };
+  enum class Mode : uint8_t { kSplash, kLive, kMenu, kEdit, kPower, kTempo };
   enum class Action : uint8_t { kNone, kReboot, kPowerOff };
 
   static constexpr int kItems = 7;  // 6 settings + POWER
   static constexpr int kPowerItem = 6;
   static constexpr int64_t kIdleUs = 25000000;
+  static constexpr int64_t kTempoIdleUs = 3000000;  // Tempo screen auto-close
   static constexpr int64_t kSplashUs = 6000000;
   static constexpr int kPowerChoices = 3;  // Restart, Power Off, Cancel
 
@@ -33,8 +43,10 @@ class RlcdFrontPanel {
 
   void on_key_short(int64_t now_us);
   void on_key_long(int64_t now_us);
+  void on_key_repeat(int64_t now_us);
   void on_boot_short(int64_t now_us);
   void on_boot_long(int64_t now_us);
+  void on_boot_repeat(int64_t now_us);
   void tick(int64_t now_us);
 
   Mode mode() const { return mode_; }

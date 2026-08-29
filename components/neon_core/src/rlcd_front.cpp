@@ -41,6 +41,10 @@ void RlcdFrontPanel::on_key_short(int64_t now_us) {
     case Mode::kLive:
       toggle_ = true;
       return;
+    case Mode::kTempo:
+      // In the Tempo screen KEY is the up button.
+      nudge_ += 1;
+      return;
     case Mode::kMenu:
       if (cursor_ == kPowerItem) {
         mode_ = Mode::kPower;
@@ -78,6 +82,10 @@ void RlcdFrontPanel::on_key_long(int64_t now_us) {
       mode_ = Mode::kMenu;
       cursor_ = 0;
       return;
+    case Mode::kTempo:
+      // KEY held ramps up; the repeats that follow keep climbing.
+      nudge_ += 1;
+      return;
     case Mode::kMenu:
       mode_ = Mode::kLive;
       return;
@@ -91,6 +99,25 @@ void RlcdFrontPanel::on_key_long(int64_t now_us) {
   }
 }
 
+// Auto-repeat only means something on the Tempo screen, where holding a
+// button walks the tempo. Every other mode ignores it (a held button
+// there has already done its one job at the long-press threshold).
+void RlcdFrontPanel::on_key_repeat(int64_t now_us) {
+  if (mode_ != Mode::kTempo) {
+    return;
+  }
+  touch(now_us);
+  nudge_ += 1;
+}
+
+void RlcdFrontPanel::on_boot_repeat(int64_t now_us) {
+  if (mode_ != Mode::kTempo) {
+    return;
+  }
+  touch(now_us);
+  nudge_ -= 1;
+}
+
 void RlcdFrontPanel::on_boot_short(int64_t now_us) {
   touch(now_us);
   switch (mode_) {
@@ -99,6 +126,10 @@ void RlcdFrontPanel::on_boot_short(int64_t now_us) {
       return;
     case Mode::kLive:
       nudge_ += 1;
+      return;
+    case Mode::kTempo:
+      // In the Tempo screen BOOT is the down button.
+      nudge_ -= 1;
       return;
     case Mode::kMenu:
       cursor_ = wrap(cursor_ + 1, kItems);
@@ -119,6 +150,11 @@ void RlcdFrontPanel::on_boot_long(int64_t now_us) {
       leave_splash(now_us);
       return;
     case Mode::kLive:
+      // Open the Tempo screen. Keep holding and the repeats that follow
+      // ramp the tempo down without a second press.
+      mode_ = Mode::kTempo;
+      return;
+    case Mode::kTempo:
       nudge_ -= 1;
       return;
     case Mode::kMenu:
@@ -145,7 +181,8 @@ void RlcdFrontPanel::tick(int64_t now_us) {
   if (mode_ == Mode::kLive) {
     return;
   }
-  if (last_us_ != 0 && now_us - last_us_ >= kIdleUs) {
+  const int64_t idle = (mode_ == Mode::kTempo) ? kTempoIdleUs : kIdleUs;
+  if (last_us_ != 0 && now_us - last_us_ >= idle) {
     if (mode_ == Mode::kEdit) {
       revert();
     }

@@ -202,6 +202,16 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     }
   }
 
+  if (s.overlay == 5) {
+    // Tempo screen: the big BPM above already tracks each nudge; here we
+    // just name the screen and say which button goes which way, since a
+    // reflective panel can afford a couple of instruction lines.
+    c.draw_text(12, 118, "TEMPO", 4);
+    c.draw_text(12, 168, "KEY  = UP", 3);
+    c.draw_text(12, 205, "BOOT = DOWN", 3);
+    c.draw_text(12, 246, "HOLD TO RAMP", 2);
+  }
+
   if (s.overlay == 1 || s.overlay == 2) {
     const int row0 = 116;
     const int row_h = 22;
@@ -230,7 +240,7 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 
   // Footer detail line.
-  if (s.overlay != 3) {
+  if (s.overlay != 3 && s.overlay != 5) {
     if (s.detail[0] != '\0') {
       c.draw_text(12, 276, s.detail, 2);
     } else {

@@ -9,10 +9,6 @@ using neon::RlcdFrontPanel;
 using Mode = neon::RlcdFrontPanel::Mode;
 using Action = neon::RlcdFrontPanel::Action;
 
-namespace {
-constexpr int64_t kSec = 1000000;
-}
-
 TEST_CASE("splash clears on any button or after the timeout") {
   Config cfg;
   {
@@ -30,18 +26,61 @@ TEST_CASE("splash clears on any button or after the timeout") {
   }
 }
 
-TEST_CASE("live: KEY toggles transport, BOOT nudges tempo both ways") {
+TEST_CASE("live: KEY toggles transport, BOOT taps up, BOOT hold opens tempo") {
   Config cfg;
   RlcdFrontPanel ui(&cfg);
   ui.on_key_short(1);  // leave splash
   ui.on_key_short(2);
   CHECK(ui.take_toggle());
   CHECK_FALSE(ui.take_toggle());
-  ui.on_boot_short(3);
-  ui.on_boot_short(4);
-  ui.on_boot_long(5);
-  CHECK(ui.take_nudge() == 1);
+  ui.on_boot_short(3);  // +1
+  ui.on_boot_short(4);  // +1
+  CHECK(ui.take_nudge() == 2);
+  ui.on_boot_long(5);  // opens the Tempo screen, no change on entry
+  CHECK(ui.mode() == Mode::kTempo);
   CHECK(ui.take_nudge() == 0);
+}
+
+TEST_CASE("tempo screen: KEY up, BOOT down, hold auto-repeats, idle closes") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);   // leave splash -> live
+  ui.on_boot_long(2);   // open the Tempo screen
+  CHECK(ui.mode() == Mode::kTempo);
+
+  ui.on_boot_short(3);  // -1
+  ui.on_boot_short(4);  // -1
+  ui.on_key_short(5);   // +1
+  CHECK(ui.take_nudge() == -1);
+
+  // Holding BOOT ramps down: long then repeats keep firing.
+  ui.on_boot_long(6);
+  ui.on_boot_repeat(7);
+  ui.on_boot_repeat(8);
+  CHECK(ui.take_nudge() == -3);
+
+  // Holding KEY ramps up the same way.
+  ui.on_key_long(9);
+  ui.on_key_repeat(10);
+  CHECK(ui.take_nudge() == 2);
+
+  // Repeats do nothing outside the Tempo screen.
+  ui.on_key_long(11);  // KEY hold in tempo = +1 (keeps screen alive)
+  CHECK(ui.take_nudge() == 1);
+
+  // Idle for the short tempo window returns to live.
+  ui.tick(11 + RlcdFrontPanel::kTempoIdleUs);
+  CHECK(ui.mode() == Mode::kLive);
+}
+
+TEST_CASE("auto-repeat is inert outside the tempo screen") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);   // live
+  ui.on_boot_repeat(2);
+  ui.on_key_repeat(3);
+  CHECK(ui.take_nudge() == 0);
+  CHECK(ui.mode() == Mode::kLive);
 }
 
 TEST_CASE("menu navigation with two buttons") {

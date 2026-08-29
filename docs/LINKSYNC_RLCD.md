@@ -27,8 +27,15 @@ Board reference: <https://docs.waveshare.com/ESP32-S3-RLCD-4.2>
 │ MIDI CLOCK  24 PPQN  TRS-A       │
 └──────────────────────────────────┘
    KEY tap = play/stop   KEY hold = menu
-   BOOT tap = +1 BPM     BOOT hold = -1 BPM
+   BOOT tap = +1 BPM     BOOT hold = tempo screen
 ```
+
+Tapping BOOT trims the tempo up by one. To go the other way — or to
+move fast — **hold BOOT** to open the Tempo screen: there KEY is up,
+BOOT is down, and holding either one auto-repeats (accelerating). The
+screen closes itself a few seconds after the last press. There is no
+dedicated "down" button because the third front button is the chip's
+RESET line, which firmware cannot read.
 
 ## Why a reflective LCD
 
@@ -60,8 +67,12 @@ rollback. Plus, unique to this face:
 - **Battery gauge** — VBAT through the ÷3 divider on GPIO4, coarse
   LiPo curve, quantized so ADC jitter never repaints the glass.
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
-  - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap/hold =
-    nudge BPM up/down.
+  - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
+    BOOT hold = Tempo screen.
+  - Tempo: KEY = up, BOOT = down, hold either to auto-repeat
+    (accelerating). Self-closes after a few idle seconds. This is the
+    home for both directions, since only two front buttons are usable
+    (the third is the hardware RESET line).
   - Menu: BOOT tap/hold = cursor down/up, KEY tap = edit, KEY hold =
     back. Same six settings as the e-paper face plus a POWER row
     (restart / power off / cancel).

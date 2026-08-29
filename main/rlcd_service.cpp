@@ -49,6 +49,13 @@ const char* kTag = "rlcd";
 constexpr int64_t kLongPressUs = 500000;
 constexpr int64_t kDebounceUs = 30000;
 constexpr int64_t kBatteryPeriodUs = 2000000;
+// Auto-repeat once a button is held past the long-press threshold: a
+// lead-in, then a slow cadence that accelerates. Only the Tempo screen
+// acts on these, where holding walks the BPM up or down.
+constexpr int64_t kRepeatLeadUs = 300000;
+constexpr int64_t kRepeatSlowUs = 150000;
+constexpr int64_t kRepeatFastUs = 60000;
+constexpr int kRepeatAccelAfter = 5;
 
 uint32_t hash_text(uint32_t h, const char* p) {
   for (; p != nullptr && *p != '\0'; ++p) {
@@ -86,16 +93,20 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   return h;
 }
 
-// Debounced two-gesture button: short fires on release, long fires
-// once at the hold threshold (so the menu opens while the finger is
-// still down, like every appliance the user already owns).
+// Debounced button: short fires on release, long fires once at the hold
+// threshold (so the menu/tempo screen opens while the finger is still
+// down, like every appliance the user already owns), and repeat fires
+// on a cadence while the hold continues past that — the Tempo screen
+// uses it to ramp the BPM.
 class Button {
  public:
   explicit Button(int pin) : pin_(pin) {}
 
-  void poll(int64_t now, bool* short_fire, bool* long_fire) {
+  void poll(int64_t now, bool* short_fire, bool* long_fire,
+            bool* repeat_fire) {
     *short_fire = false;
     *long_fire = false;
+    *repeat_fire = false;
     const bool raw =
         gpio_get_level(static_cast<gpio_num_t>(pin_)) == 0;  // active low
     if (raw != raw_) {
@@ -109,9 +120,16 @@ class Button {
       down_ = true;
       down_us_ = now;
       long_fired_ = false;
+      repeats_ = 0;
     } else if (raw_ && down_ && !long_fired_ && now - down_us_ >= kLongPressUs) {
       long_fired_ = true;
       *long_fire = true;
+      next_repeat_us_ = now + kRepeatLeadUs;
+    } else if (raw_ && down_ && long_fired_ && now >= next_repeat_us_) {
+      *repeat_fire = true;
+      ++repeats_;
+      next_repeat_us_ =
+          now + (repeats_ >= kRepeatAccelAfter ? kRepeatFastUs : kRepeatSlowUs);
     } else if (!raw_ && down_) {
       down_ = false;
       if (!long_fired_) {
@@ -125,8 +143,10 @@ class Button {
   bool raw_ = false;
   bool down_ = false;
   bool long_fired_ = false;
+  int repeats_ = 0;
   int64_t edge_us_ = 0;
   int64_t down_us_ = 0;
+  int64_t next_repeat_us_ = 0;
 };
 
 class Battery {
@@ -252,6 +272,8 @@ void fill_status(neon::RlcdPanelStatus* rs, neon::RlcdFrontPanel& ui,
     s->overlay = 3;
   } else if (ui.mode() == neon::RlcdFrontPanel::Mode::kSplash) {
     s->overlay = 4;
+  } else if (ui.mode() == neon::RlcdFrontPanel::Mode::kTempo) {
+    s->overlay = 5;
   } else {
     s->overlay = 0;
   }
@@ -330,15 +352,20 @@ void rlcd_task(void*) {
     bool user = false;
     bool ks = false;
     bool kl = false;
+    bool kr = false;
     bool bs = false;
     bool bl = false;
-    key.poll(now, &ks, &kl);
-    boot.poll(now, &bs, &bl);
+    bool br = false;
+    key.poll(now, &ks, &kl, &kr);
+    boot.poll(now, &bs, &bl, &br);
     if (ks) {
       ui.on_key_short(now);
     }
     if (kl) {
       ui.on_key_long(now);
+    }
+    if (kr) {
+      ui.on_key_repeat(now);
     }
     if (bs) {
       ui.on_boot_short(now);
@@ -346,7 +373,10 @@ void rlcd_task(void*) {
     if (bl) {
       ui.on_boot_long(now);
     }
-    if (ks || kl || bs || bl) {
+    if (br) {
+      ui.on_boot_repeat(now);
+    }
+    if (ks || kl || kr || bs || bl || br) {
       user = true;
       planner.note_user(now);
     }
