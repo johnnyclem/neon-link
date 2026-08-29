@@ -42,8 +42,8 @@ void RlcdFrontPanel::on_key_short(int64_t now_us) {
       toggle_ = true;
       return;
     case Mode::kTempo:
-      // In the Tempo screen KEY is the up button.
-      nudge_ += 1;
+      // In the Tempo screen KEY is the down button.
+      nudge_ -= 1;
       return;
     case Mode::kMenu:
       if (cursor_ == kPowerItem) {
@@ -83,8 +83,8 @@ void RlcdFrontPanel::on_key_long(int64_t now_us) {
       cursor_ = 0;
       return;
     case Mode::kTempo:
-      // KEY held ramps up; the repeats that follow keep climbing.
-      nudge_ += 1;
+      // KEY held ramps down; the repeats that follow keep falling.
+      nudge_ -= 1;
       return;
     case Mode::kMenu:
       mode_ = Mode::kLive;
@@ -107,7 +107,7 @@ void RlcdFrontPanel::on_key_repeat(int64_t now_us) {
     return;
   }
   touch(now_us);
-  nudge_ += 1;
+  nudge_ -= 1;
 }
 
 void RlcdFrontPanel::on_boot_repeat(int64_t now_us) {
@@ -115,7 +115,7 @@ void RlcdFrontPanel::on_boot_repeat(int64_t now_us) {
     return;
   }
   touch(now_us);
-  nudge_ -= 1;
+  nudge_ += 1;
 }
 
 void RlcdFrontPanel::on_boot_short(int64_t now_us) {
@@ -128,8 +128,8 @@ void RlcdFrontPanel::on_boot_short(int64_t now_us) {
       nudge_ += 1;
       return;
     case Mode::kTempo:
-      // In the Tempo screen BOOT is the down button.
-      nudge_ -= 1;
+      // In the Tempo screen BOOT is the up button.
+      nudge_ += 1;
       return;
     case Mode::kMenu:
       cursor_ = wrap(cursor_ + 1, kItems);
@@ -151,11 +151,11 @@ void RlcdFrontPanel::on_boot_long(int64_t now_us) {
       return;
     case Mode::kLive:
       // Open the Tempo screen. Keep holding and the repeats that follow
-      // ramp the tempo down without a second press.
+      // ramp the tempo up without a second press.
       mode_ = Mode::kTempo;
       return;
     case Mode::kTempo:
-      nudge_ -= 1;
+      nudge_ += 1;
       return;
     case Mode::kMenu:
       cursor_ = wrap(cursor_ - 1, kItems);

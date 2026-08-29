@@ -31,8 +31,8 @@ Board reference: <https://docs.waveshare.com/ESP32-S3-RLCD-4.2>
 ```
 
 Tapping BOOT trims the tempo up by one. To go the other way — or to
-move fast — **hold BOOT** to open the Tempo screen: there KEY is up,
-BOOT is down, and holding either one auto-repeats (accelerating). The
+move fast — **hold BOOT** to open the Tempo screen: there BOOT is up,
+KEY is down, and holding either one auto-repeats (accelerating). The
 screen closes itself a few seconds after the last press. There is no
 dedicated "down" button because the third front button is the chip's
 RESET line, which firmware cannot read.
@@ -69,7 +69,7 @@ rollback. Plus, unique to this face:
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
   - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
     BOOT hold = Tempo screen.
-  - Tempo: KEY = up, BOOT = down, hold either to auto-repeat
+  - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable
     (the third is the hardware RESET line).

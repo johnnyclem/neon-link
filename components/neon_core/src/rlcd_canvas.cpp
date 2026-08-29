@@ -207,8 +207,8 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     // just name the screen and say which button goes which way, since a
     // reflective panel can afford a couple of instruction lines.
     c.draw_text(12, 118, "TEMPO", 4);
-    c.draw_text(12, 168, "KEY  = UP", 3);
-    c.draw_text(12, 205, "BOOT = DOWN", 3);
+    c.draw_text(12, 168, "BOOT = UP", 3);
+    c.draw_text(12, 205, "KEY  = DOWN", 3);
     c.draw_text(12, 246, "HOLD TO RAMP", 2);
   }
 

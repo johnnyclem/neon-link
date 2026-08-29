@@ -41,32 +41,32 @@ TEST_CASE("live: KEY toggles transport, BOOT taps up, BOOT hold opens tempo") {
   CHECK(ui.take_nudge() == 0);
 }
 
-TEST_CASE("tempo screen: KEY up, BOOT down, hold auto-repeats, idle closes") {
+TEST_CASE("tempo screen: BOOT up, KEY down, hold auto-repeats, idle closes") {
   Config cfg;
   RlcdFrontPanel ui(&cfg);
   ui.on_key_short(1);   // leave splash -> live
   ui.on_boot_long(2);   // open the Tempo screen
   CHECK(ui.mode() == Mode::kTempo);
 
-  ui.on_boot_short(3);  // -1
-  ui.on_boot_short(4);  // -1
-  ui.on_key_short(5);   // +1
-  CHECK(ui.take_nudge() == -1);
+  ui.on_boot_short(3);  // +1
+  ui.on_boot_short(4);  // +1
+  ui.on_key_short(5);   // -1
+  CHECK(ui.take_nudge() == 1);
 
-  // Holding BOOT ramps down: long then repeats keep firing.
+  // Holding BOOT ramps up: long then repeats keep firing.
   ui.on_boot_long(6);
   ui.on_boot_repeat(7);
   ui.on_boot_repeat(8);
-  CHECK(ui.take_nudge() == -3);
+  CHECK(ui.take_nudge() == 3);
 
-  // Holding KEY ramps up the same way.
+  // Holding KEY ramps down the same way.
   ui.on_key_long(9);
   ui.on_key_repeat(10);
-  CHECK(ui.take_nudge() == 2);
+  CHECK(ui.take_nudge() == -2);
 
-  // Repeats do nothing outside the Tempo screen.
-  ui.on_key_long(11);  // KEY hold in tempo = +1 (keeps screen alive)
-  CHECK(ui.take_nudge() == 1);
+  // KEY hold in tempo = -1 (and keeps the screen alive).
+  ui.on_key_long(11);
+  CHECK(ui.take_nudge() == -1);
 
   // Idle for the short tempo window returns to live.
   ui.tick(11 + RlcdFrontPanel::kTempoIdleUs);
