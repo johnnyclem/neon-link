@@ -43,16 +43,16 @@ TEST_CASE("ambient changes keep their floors") {
   CHECK(p.plan(t0 + kSec, true, true, false, false) == Kind::kPartial);
 }
 
-TEST_CASE("layout flips force a full refresh") {
+TEST_CASE("layout flips repaint everything with the non-flash fast mode") {
   EpdRefreshPlanner p;
   p.note_painted(0, Kind::kFull, true);
-  CHECK(p.plan(1000, true, true, /*layout=*/true, false) == Kind::kFull);
-  // A full repaint re-arms partials.
-  p.note_painted(1000, Kind::kFull, true);
+  CHECK(p.plan(1000, true, true, /*layout=*/true, false) == Kind::kFast);
+  // A fast repaint re-seeds the base, so partials follow immediately.
+  p.note_painted(1000, Kind::kFast, true);
   CHECK(p.plan(2000, true, true, false, false) == Kind::kPartial);
 }
 
-TEST_CASE("ghosting hygiene: full after kMaxPartials partials") {
+TEST_CASE("ghosting hygiene: full after kMaxPartials non-GC paints") {
   EpdRefreshPlanner p;
   p.note_painted(0, Kind::kFull, true);
   int64_t t = 0;
@@ -63,8 +63,24 @@ TEST_CASE("ghosting hygiene: full after kMaxPartials partials") {
   }
   t += 1000;
   CHECK(p.plan(t, true, true, false, false) == Kind::kFull);
+  // Even a layout flip yields to the pending GC — fast mode does not
+  // clear ghosting.
+  CHECK(p.plan(t, true, true, /*layout=*/true, false) == Kind::kFull);
   p.note_painted(t, Kind::kFull, true);
   CHECK(p.plan(t + 1000, true, true, false, false) == Kind::kPartial);
+}
+
+TEST_CASE("fast refreshes count toward the ghosting-hygiene full") {
+  EpdRefreshPlanner p;
+  p.note_painted(0, Kind::kFull, true);
+  int64_t t = 0;
+  for (int i = 0; i < EpdRefreshPlanner::kMaxPartials; ++i) {
+    t += 1000;
+    REQUIRE(p.plan(t, true, true, /*layout=*/true, false) == Kind::kFast);
+    p.note_painted(t, Kind::kFast, true);
+  }
+  t += 1000;
+  CHECK(p.plan(t, true, true, /*layout=*/true, false) == Kind::kFull);
 }
 
 TEST_CASE("sleep discards the base; a sleeping panel paints full") {

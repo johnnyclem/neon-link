@@ -130,3 +130,27 @@ TEST_CASE("e-paper panel is static text — same status, same pixels") {
   neon::render_linksync_panel(b, s);
   CHECK(std::memcmp(a.data(), b.data(), neon::EpdCanvas::kSize) == 0);
 }
+
+TEST_CASE("dirty row span brackets exactly the changed rows") {
+  auto* a = new neon::EpdCanvas();
+  auto* b = new neon::EpdCanvas();
+  int r0 = -1;
+  int r1 = -1;
+  CHECK_FALSE(neon::epd_dirty_row_span(a->data(), b->data(), &r0, &r1));
+
+  b->set_pixel(10, 40, true);
+  b->set_pixel(700, 200, true);
+  CHECK(neon::epd_dirty_row_span(a->data(), b->data(), &r0, &r1));
+  CHECK(r0 == 40);
+  CHECK(r1 == 200);
+
+  // A single-row change yields a single-row band.
+  neon::EpdCanvas c1;
+  neon::EpdCanvas c2;
+  c2.fill_rect(0, 271, 792, 1, true);
+  CHECK(neon::epd_dirty_row_span(c1.data(), c2.data(), &r0, &r1));
+  CHECK(r0 == 271);
+  CHECK(r1 == 271);
+  delete a;
+  delete b;
+}

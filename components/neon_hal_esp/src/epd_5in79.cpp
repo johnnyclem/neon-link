@@ -33,6 +33,10 @@ bool g_ready = false;
 // partial refresh can diff against them. Only a full display seeds
 // them; reset (init/awaken) discards them.
 bool g_base = false;
+// The LUT was loaded with a temperature operand (0x1A + 0x22{0x91}),
+// which is what makes the 0xC7 fast refresh actually drive the glass.
+// Reset discards it along with everything else.
+bool g_fast_lut = false;
 
 struct PinMap {
   const char* name;
@@ -153,22 +157,32 @@ bool probe_busy(int rst, int busy, int pwr) {
   return saw_high;
 }
 
-void window() {
+// Y-banded RAM window for buffer rows [row0, row0+rows). Buffer row 0
+// sits at gate 271 and the data entry mode is Y-descending (0x11=0x01),
+// so the window runs from gate 271-row0 down to 271-(row0+rows-1).
+// row0=0, rows=272 reproduces the original full window byte for byte.
+void window_rows(int row0, int rows) {
+  const int ys = (kHeight - 1) - row0;
+  const int ye = (kHeight - 1) - (row0 + rows - 1);
+  const uint8_t ys_lo = static_cast<uint8_t>(ys & 0xff);
+  const uint8_t ys_hi = static_cast<uint8_t>((ys >> 8) & 0xff);
+  const uint8_t ye_lo = static_cast<uint8_t>(ye & 0xff);
+  const uint8_t ye_hi = static_cast<uint8_t>((ye >> 8) & 0xff);
   cmd(0x11);
   data(0x01);
   cmd(0x44);
   data(0x00);
   data(0x31);
   cmd(0x45);
-  data(0x0f);
-  data(0x01);
-  data(0x00);
-  data(0x00);
+  data(ys_lo);
+  data(ys_hi);
+  data(ye_lo);
+  data(ye_hi);
   cmd(0x4e);
   data(0x00);
   cmd(0x4f);
-  data(0x0f);
-  data(0x01);
+  data(ys_lo);
+  data(ys_hi);
   wait_busy();
   cmd(0x91);
   data(0x00);
@@ -176,16 +190,34 @@ void window() {
   data(0x31);
   data(0x00);
   cmd(0xc5);
-  data(0x0f);
-  data(0x01);
-  data(0x00);
-  data(0x00);
+  data(ys_lo);
+  data(ys_hi);
+  data(ye_lo);
+  data(ye_hi);
   cmd(0xce);
   data(0x31);
   cmd(0xcf);
-  data(0x0f);
-  data(0x01);
+  data(ys_lo);
+  data(ys_hi);
   wait_busy();
+}
+
+void window() { window_rows(0, kHeight); }
+
+// Load the LUT from OTP with a written temperature operand. This is
+// the step the vendor demo hides inside Init_Fast() and the reason a
+// bare 0x22{0xC7} never updated the glass (see the note in display()
+// history). Sequence per SolarOS epd_ssd1683.c legacy init:
+// 0x1A temperature write, 0x22{0x91} load temp+LUT, 0x20 activate.
+void load_fast_lut() {
+  cmd(0x1a);
+  data(0x6e);
+  cmd(0x22);
+  data(0x91);
+  cmd(0x20);
+  delay_ms(10);
+  wait_busy();
+  g_fast_lut = true;
 }
 
 void turn_on(uint8_t mode) {
@@ -202,18 +234,25 @@ void turn_on(uint8_t mode) {
 // Dual-IC RAM split, exactly as the full display path streams it:
 // M part (0x24/0x26) gets bytes 0..width_ic-1 of each row, S part
 // (0xA4/0xA6) bytes width_ic-1..2*width_ic-2, per the Waveshare demo.
-void write_planes(const uint8_t* frame, uint8_t cmd_m, uint8_t cmd_s) {
+// Streams only buffer rows [row0, row0+rows) — the RAM window must
+// already be set to the same band (window_rows).
+void write_planes_rows(const uint8_t* frame, int row0, int rows,
+                       uint8_t cmd_m, uint8_t cmd_s) {
   const int width_ic = (kWidth % 16 == 0) ? (kWidth / 16) : (kWidth / 16 + 1);
   const int stride = kWidth / 8;
   cmd(cmd_m);
-  for (int y = 0; y < kHeight; ++y) {
+  for (int y = row0; y < row0 + rows; ++y) {
     data_buf(frame + y * stride, static_cast<size_t>(width_ic));
   }
   cmd(cmd_s);
-  for (int y = 0; y < kHeight; ++y) {
+  for (int y = row0; y < row0 + rows; ++y) {
     data_buf(frame + y * stride + (width_ic - 1),
              static_cast<size_t>(width_ic));
   }
+}
+
+void write_planes(const uint8_t* frame, uint8_t cmd_m, uint8_t cmd_s) {
+  write_planes_rows(frame, 0, kHeight, cmd_m, cmd_s);
 }
 
 void fill_planes(uint8_t value, uint8_t cmd_m, uint8_t cmd_s) {
@@ -311,6 +350,7 @@ bool epd5in79_init(int sck, int mosi, int cs, int dc, int rst, int busy,
   wait_busy();
   cmd(0x12);
   wait_busy();
+  load_fast_lut();
   window();
   g_ready = true;
   ESP_LOGI(kTag,
@@ -329,6 +369,7 @@ void epd5in79_awaken() {
   wait_busy();
   cmd(0x12);
   wait_busy();
+  load_fast_lut();
   window();
   g_ready = true;
   g_base = false;
@@ -356,14 +397,16 @@ void epd5in79_display(const uint8_t* frame, bool fast) {
     return;
   }
   const int64_t t0 = esp_timer_get_time();
-  ESP_LOGI(kTag, "display begin fast=%d busy=%d", fast ? 1 : 0, busy_level());
+  // 0xC7 only works after load_fast_lut() primed the LUT with a
+  // temperature operand — a bare 0x12 + window + 0xC7 never updates
+  // the glass, which is why this flag used to be ignored.
+  const bool use_fast = fast && g_fast_lut;
+  ESP_LOGI(kTag, "display begin fast=%d busy=%d", use_fast ? 1 : 0,
+           busy_level());
   write_planes(frame, 0x24, 0xa4);
   fill_planes(0x00, 0x26, 0xa6);
-  // 0xC7 is Waveshare Init_Fast() only (temp register load). Regular
-  // 0x12 + window + 0xC7 does not update the glass. Always 0xF7.
-  (void)fast;
-  turn_on(0xf7);
-  // Waveshare Display_Base: after the flash, copy the frame into the
+  turn_on(use_fast ? 0xc7 : 0xf7);
+  // Waveshare Display_Base: after the refresh, copy the frame into the
   // old RAM so the next partial diffs against what is on the glass.
   write_planes(frame, 0x26, 0xa6);
   g_base = true;
@@ -371,8 +414,12 @@ void epd5in79_display(const uint8_t* frame, bool fast) {
            (esp_timer_get_time() - t0) / 1000, busy_level());
 }
 
-void epd5in79_display_partial(const uint8_t* frame) {
+void epd5in79_display_partial_rows(const uint8_t* frame, int row0, int rows) {
   if (!g_ready || frame == nullptr) {
+    return;
+  }
+  if (row0 < 0 || rows <= 0 || row0 + rows > kHeight) {
+    ESP_LOGW(kTag, "partial band [%d,+%d) out of range", row0, rows);
     return;
   }
   if (!g_base) {
@@ -384,19 +431,32 @@ void epd5in79_display_partial(const uint8_t* frame) {
   }
   const int64_t t0 = esp_timer_get_time();
   // Waveshare Display_Partial: re-enable clock + analog (the previous
-  // update sequence powered them down), then rewrite the windows and
-  // stream the new frame. Mode 0xFF diffs against the old RAM and
-  // ping-pongs it, so repeated partials need no old-RAM rewrites.
+  // update sequence powered them down), then set the banded window and
+  // stream only those rows. Mode 0xFF diffs against the old RAM.
   cmd(0x22);
   data(0xc0);
   cmd(0x20);
   delay_ms(5);
   wait_busy();
-  window();
-  write_planes(frame, 0x24, 0xa4);
+  window_rows(row0, rows);
+  write_planes_rows(frame, row0, rows, 0x24, 0xa4);
   turn_on(0xff);
-  ESP_LOGI(kTag, "partial done %lld ms busy=%d",
+  // 0xFF ping-pongs the RAM planes, so after the update the "new"
+  // plane holds two-frames-old data outside the band we wrote. Restore
+  // the invariant old == new == glass by writing the band into BOTH
+  // planes (outside the band they were already identical, and stay
+  // untouched). Without this, the next partial with a different band
+  // repaints stale content (SolarOS epd_ssd1683.c carries the same
+  // fix). Costs one extra band write per plane at SPI speed.
+  window_rows(row0, rows);
+  write_planes_rows(frame, row0, rows, 0x24, 0xa4);
+  write_planes_rows(frame, row0, rows, 0x26, 0xa6);
+  ESP_LOGI(kTag, "partial rows[%d,+%d) done %lld ms busy=%d", row0, rows,
            (esp_timer_get_time() - t0) / 1000, busy_level());
+}
+
+void epd5in79_display_partial(const uint8_t* frame) {
+  epd5in79_display_partial_rows(frame, 0, kHeight);
 }
 
 void epd5in79_sleep() {
