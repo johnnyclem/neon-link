@@ -129,6 +129,27 @@ const char* beat_style_str(BeatStyle s) {
   }
 }
 
+const char* mono_theme_str(MonoTheme t) {
+  switch (t) {
+    case MonoTheme::kInk:
+      return "ink";
+    case MonoTheme::kDots:
+      return "dots";
+    case MonoTheme::kHero:
+      return "hero";
+    case MonoTheme::kConsole:
+      return "console";
+    case MonoTheme::kGrid:
+      return "grid";
+    case MonoTheme::kPulse:
+      return "pulse";
+    case MonoTheme::kNight:
+      return "night";
+    default:
+      return "classic";
+  }
+}
+
 const char* color_theme_str(ColorTheme t) {
   switch (t) {
     case ColorTheme::kVoid:
@@ -327,6 +348,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
   cJSON_AddStringToObject(root, "beat_style", beat_style_str(cfg.beat_style));
   cJSON_AddStringToObject(root, "color_theme", color_theme_str(cfg.color_theme));
+  cJSON_AddStringToObject(root, "mono_theme", mono_theme_str(cfg.mono_theme));
 
   cJSON* osc = cJSON_AddObjectToObject(root, "osc");
   cJSON_AddBoolToObject(osc, "enabled", cfg.osc_enabled != 0);
@@ -555,6 +577,26 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       cfg->color_theme = ColorTheme::kMagenta;
     } else if (str_eq(theme, "paper")) {
       cfg->color_theme = ColorTheme::kPaper;
+    }
+  }
+  {
+    const cJSON* theme = cJSON_GetObjectItemCaseSensitive(root, "mono_theme");
+    if (str_eq(theme, "classic")) {
+      cfg->mono_theme = MonoTheme::kClassic;
+    } else if (str_eq(theme, "ink")) {
+      cfg->mono_theme = MonoTheme::kInk;
+    } else if (str_eq(theme, "dots")) {
+      cfg->mono_theme = MonoTheme::kDots;
+    } else if (str_eq(theme, "hero")) {
+      cfg->mono_theme = MonoTheme::kHero;
+    } else if (str_eq(theme, "console")) {
+      cfg->mono_theme = MonoTheme::kConsole;
+    } else if (str_eq(theme, "grid")) {
+      cfg->mono_theme = MonoTheme::kGrid;
+    } else if (str_eq(theme, "pulse")) {
+      cfg->mono_theme = MonoTheme::kPulse;
+    } else if (str_eq(theme, "night")) {
+      cfg->mono_theme = MonoTheme::kNight;
     }
   }
 

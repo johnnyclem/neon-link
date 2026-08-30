@@ -1,5 +1,6 @@
 #include "neon/gfx/rlcd_canvas.hpp"
 
+#include "neon/config/model.hpp"
 #include "neon/gfx/font5x7.hpp"
 
 #include <cstdio>
@@ -145,6 +146,94 @@ void draw_left_arrow(RlcdCanvas& c, int cy) {
   c.fill_rect(tip_x + half - 2, cy - 4, 26, 8, true);
 }
 
+int text_w(const char* s, int scale) {
+  return static_cast<int>(std::strlen(s)) * 6 * scale;
+}
+
+// Draws `s` horizontally centered; returns the x it started at.
+int draw_text_centered(RlcdCanvas& c, int y, const char* s, int scale) {
+  const int x = (c.width() - text_w(s, scale)) / 2;
+  c.draw_text(x, y, s, scale);
+  return x;
+}
+
+// The largest glyph scale that keeps `len` characters inside `max_w`,
+// clamped to [1, cap].
+int fit_scale(int len, int max_w, int cap) {
+  int s = max_w / (len * 6);
+  if (s > cap) {
+    s = cap;
+  }
+  return s < 1 ? 1 : s;
+}
+
+// draw_text with a gap carved between the glyph pixels, so big digits come
+// out as a dot-matrix / pixel-block display rather than solid strokes.
+int draw_text_dotted(RlcdCanvas& c, int x, int y, const char* s, int scale) {
+  if (s == nullptr || scale < 2) {
+    return c.draw_text(x, y, s, scale < 1 ? 1 : scale);
+  }
+  const int gap = scale >= 6 ? scale / 3 : 1;
+  int cx = x;
+  for (const char* p = s; *p != '\0'; ++p) {
+    const uint8_t* g = gfx::glyph5x7(*p);
+    for (int col = 0; col < 5; ++col) {
+      const uint8_t bits = g[col];
+      for (int row = 0; row < 7; ++row) {
+        if ((bits >> row) & 1u) {
+          c.fill_rect(cx + col * scale, y + row * scale, scale - gap,
+                      scale - gap, true);
+        }
+      }
+    }
+    cx += 6 * scale;
+  }
+  return cx - x;
+}
+
+// Milli-BPM as "128.0".
+void bpm_text(const LinkSyncPanelStatus& s, char* buf, size_t cap) {
+  std::snprintf(buf, cap, "%u.%u", static_cast<unsigned>(s.milli_bpm / 1000u),
+                static_cast<unsigned>((s.milli_bpm / 100u) % 10u));
+}
+
+uint32_t safe_quantum(const RlcdPanelStatus& rs) {
+  return rs.quantum >= 1 && rs.quantum <= 8 ? rs.quantum : 4;
+}
+
+// One box per quantum beat, the current one filled, centered on `w`.
+void beat_row_centered(RlcdCanvas& c, const RlcdPanelStatus& rs, int y,
+                       int dot, int gap) {
+  const LinkSyncPanelStatus& s = rs.base;
+  const uint32_t quantum = safe_quantum(rs);
+  const int total =
+      static_cast<int>(quantum) * dot + (static_cast<int>(quantum) - 1) * gap;
+  const int x0 = (c.width() - total) / 2;
+  for (uint32_t i = 0; i < quantum; ++i) {
+    const int x = x0 + static_cast<int>(i) * (dot + gap);
+    if (s.playing && rs.beat == i + 1) {
+      c.fill_rect(x, y, dot, dot, true);
+    } else {
+      c.draw_rect(x, y, dot, dot, 2, true);
+    }
+  }
+}
+
+// Setup credentials, pinned to the bottom edge. The minimal faces drop the
+// classic network column, but a box that is offering its setup AP must
+// still print the way in — physical access is the credential.
+void setup_footer(RlcdCanvas& c, const LinkSyncPanelStatus& s) {
+  const bool show_ap = (s.setup_ap || !s.provisioned) && s.ap_pass[0] != '\0';
+  if (!show_ap) {
+    return;
+  }
+  char line[sizeof(s.ap_ssid) + sizeof(s.ap_pass) + 2];
+  std::snprintf(line, sizeof(line), "%s  %s",
+                s.ap_ssid[0] != '\0' ? s.ap_ssid : "SETUP AP", s.ap_pass);
+  const int scale = text_w(line, 2) <= c.width() - 8 ? 2 : 1;
+  draw_text_centered(c, c.height() - (scale == 2 ? 22 : 14), line, scale);
+}
+
 }  // namespace
 
 void render_rlcd_splash(RlcdCanvas& c) {
@@ -242,9 +331,9 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 
   if (s.overlay == 1 || s.overlay == 2) {
-    const int row0 = 116;
-    const int row_h = 22;
-    for (int i = 0; i < s.n_items && i < 8; ++i) {
+    const int row0 = 112;
+    const int row_h = 20;
+    for (int i = 0; i < s.n_items && i < 10; ++i) {
       const int y = row0 + i * row_h;
       char line[48];
       std::snprintf(line, sizeof(line), "%-9s %s", s.item_label[i],
@@ -254,7 +343,7 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
         c.invert_rect(10, y - 3, 300, row_h - 2);
       }
     }
-    c.draw_text(330, 116, s.overlay == 2 ? "EDIT" : "MENU", 2);
+    c.draw_text(330, 112, s.overlay == 2 ? "EDIT" : "MENU", 2);
   } else if (s.overlay == 3) {
     c.fill_rect(70, 82, 260, 136, true);
     c.fill_rect(74, 86, 252, 128, false);
@@ -275,10 +364,6 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     } else {
       c.draw_text(12, 276, "MIDI CLOCK  24 PPQN  TRS-A", 2);
     }
-  }
-
-  if (s.invert) {
-    c.invert();
   }
 }
 
@@ -346,10 +431,10 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 
   if (s.overlay == 1 || s.overlay == 2) {
-    c.draw_text(14, 92, s.overlay == 2 ? "EDIT" : "MENU", 2);
-    const int row0 = 120;
-    const int row_h = 30;
-    for (int i = 0; i < s.n_items && i < 8; ++i) {
+    c.draw_text(14, 98, s.overlay == 2 ? "EDIT" : "MENU", 2);
+    const int row0 = 118;
+    const int row_h = 28;
+    for (int i = 0; i < s.n_items && i < 10; ++i) {
       const int y = row0 + i * row_h;
       char line[48];
       std::snprintf(line, sizeof(line), "%-9s %s", s.item_label[i],
@@ -377,21 +462,361 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     c.draw_text(14, 372, s.detail[0] != '\0' ? s.detail
                                              : "MIDI CLOCK  24 PPQN", 2);
   }
+}
 
-  if (s.invert) {
-    c.invert();
+// ---------------------------------------------------------------------------
+// Theme faces. Each draws the LIVE status face (overlay 0) only, ink on
+// white, using logical width()/height() so one layout serves both
+// orientations. The dark themes are flipped by the caller via base.invert;
+// PULSE manages its own accent flash.
+
+// INK (designer mockup 4): the chrome-free light face. Peers and battery up
+// top, then nothing but the tempo, the beat, and the transport state.
+static void render_theme_ink(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+
+  char peers[16];
+  std::snprintf(peers, sizeof(peers), "PEERS %u",
+                static_cast<unsigned>(s.peers));
+  c.draw_text(12, 12, peers, 2);
+  draw_battery(c, w - 50, 10, rs.battery_pct);
+
+  char bpm[24];
+  bpm_text(s, bpm, sizeof(bpm));
+  const int scale = fit_scale(static_cast<int>(std::strlen(bpm)), w - 28, 12);
+  const int bpm_y = h / 2 - (7 * scale) / 2 - h / 10;
+  draw_text_centered(c, bpm_y, bpm, scale);
+
+  const int dot = 30;
+  beat_row_centered(c, rs, bpm_y + 7 * scale + 26, dot, 12);
+
+  draw_text_centered(c, h - 74, s.playing ? "PLAYING" : "STOPPED", 4);
+  setup_footer(c, s);
+}
+
+// DOTS (designer mockup 1): dark, dot-matrix hero digits under a small
+// legend for the three top-edge buttons; PEERS carries the live count.
+static void render_theme_dots(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+
+  char peers[16];
+  std::snprintf(peers, sizeof(peers), "PEERS %u",
+                static_cast<unsigned>(s.peers));
+  const char* legend[3] = {"TAP", peers, "LINK"};
+  for (int i = 0; i < 3; ++i) {
+    const int cx = w * (2 * i + 1) / 6;
+    c.fill_rect(cx - 1, 4, 2, 6, true);
+    c.draw_text(cx - text_w(legend[i], 2) / 2, 14, legend[i], 2);
+  }
+  c.fill_rect(8, 8, w / 6 - 32, 2, true);
+  c.fill_rect(w - w / 6 + 24, 8, w / 6 - 32, 2, true);
+
+  char bpm[24];
+  bpm_text(s, bpm, sizeof(bpm));
+  const int scale = fit_scale(static_cast<int>(std::strlen(bpm)), w - 24, 12);
+  const int bpm_y = h / 2 - (7 * scale) / 2 - h / 12;
+  draw_text_dotted(c, (w - text_w(bpm, scale)) / 2, bpm_y, bpm, scale);
+
+  beat_row_centered(c, rs, bpm_y + 7 * scale + 30, 34, 12);
+
+  draw_text_centered(c, h - 64, s.playing ? "PLAYING" : "STOPPED", 4);
+  setup_footer(c, s);
+}
+
+// HERO (designer mockup 2): one giant integer BPM and almost nothing else.
+static void render_theme_hero(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+
+  char peers[16];
+  std::snprintf(peers, sizeof(peers), "PEERS %u",
+                static_cast<unsigned>(s.peers));
+  c.draw_text(12, 12, peers, 2);
+  draw_battery(c, w - 50, 10, rs.battery_pct);
+
+  char bpm[8];
+  std::snprintf(bpm, sizeof(bpm), "%u",
+                static_cast<unsigned>((s.milli_bpm + 500u) / 1000u));
+  const int len = static_cast<int>(std::strlen(bpm));
+  int scale = (h - 130) / 7;
+  if (scale > (w - 20) / (len * 6)) {
+    scale = (w - 20) / (len * 6);
+  }
+  const int bpm_y = 40 + (h - 130 - 7 * scale) / 2;
+  draw_text_centered(c, bpm_y, bpm, scale);
+
+  // Beat ticks: one small mark per quantum beat, the current one grown.
+  const uint32_t quantum = safe_quantum(rs);
+  const int gap = 22;
+  const int x0 = (w - (static_cast<int>(quantum) - 1) * gap) / 2;
+  for (uint32_t i = 0; i < quantum; ++i) {
+    const int x = x0 + static_cast<int>(i) * gap;
+    if (s.playing && rs.beat == i + 1) {
+      c.fill_rect(x - 3, h - 96, 6, 20, true);
+    } else {
+      c.fill_rect(x - 1, h - 90, 3, 12, true);
+    }
+  }
+
+  draw_text_centered(c, h - 56, s.playing ? "PLAYING" : "STOPPED", 3);
+  setup_footer(c, s);
+}
+
+// CONSOLE (designer mockup 3): the instrument panel. LINK with a session
+// box, a data column (current beat / peers / battery), the tempo, and a
+// RUN / STOP indicator with the active word underlined.
+static void render_theme_console(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+  const bool portrait = h > w;
+
+  c.draw_text(14, 14, "LINK", 4);
+  c.draw_rect(w - 48, 10, 34, 34, 3, true);
+  if (s.peers > 0) {
+    c.fill_rect(w - 41, 17, 20, 20, true);
+  }
+
+  char tap[8];
+  char np[8];
+  char batt[8];
+  std::snprintf(tap, sizeof(tap), "%u", static_cast<unsigned>(rs.beat));
+  std::snprintf(np, sizeof(np), "%u", static_cast<unsigned>(s.peers));
+  if (rs.battery_pct < 0) {
+    std::snprintf(batt, sizeof(batt), "?");
+  } else {
+    std::snprintf(batt, sizeof(batt), "%d", rs.battery_pct);
+  }
+  const char* labels[3] = {"TAP", "PEERS", "BATT"};
+  const char* values[3] = {tap, np, batt};
+  const int col_y0 = portrait ? 90 : 76;
+  const int col_dy = portrait ? 72 : 66;
+  for (int i = 0; i < 3; ++i) {
+    const int y = col_y0 + i * col_dy;
+    c.draw_text(14, y, labels[i], 2);
+    c.draw_text(14, y + 20, values[i], 3);
+  }
+
+  char bpm[24];
+  bpm_text(s, bpm, sizeof(bpm));
+  const int bx = portrait ? 104 : 120;
+  const int bscale = fit_scale(static_cast<int>(std::strlen(bpm)), w - bx - 10,
+                               portrait ? 6 : 7);
+  c.draw_text(bx, portrait ? 100 : 84, bpm, bscale);
+
+  // Beat boxes under the tempo, aligned with it.
+  const uint32_t quantum = safe_quantum(rs);
+  const int dot = portrait ? 22 : 26;
+  const int gap = portrait ? 9 : 10;
+  const int dots_y = (portrait ? 100 : 84) + 7 * bscale + 26;
+  for (uint32_t i = 0; i < quantum; ++i) {
+    const int x = bx + static_cast<int>(i) * (dot + gap);
+    if (s.playing && rs.beat == i + 1) {
+      c.fill_rect(x, dots_y, dot, dot, true);
+    } else {
+      c.draw_rect(x, dots_y, dot, dot, 2, true);
+    }
+  }
+
+  // RUN / STOP, active word underlined.
+  const char* run = "RUN";
+  const char* sep = " / ";
+  const char* stop = "STOP";
+  const int rs_scale = 3;
+  const int total =
+      text_w(run, rs_scale) + text_w(sep, rs_scale) + text_w(stop, rs_scale);
+  const int rx = (w - total) / 2;
+  const int ry = h - 52;
+  c.draw_text(rx, ry, run, rs_scale);
+  c.draw_text(rx + text_w(run, rs_scale), ry, sep, rs_scale);
+  const int stop_x = rx + text_w(run, rs_scale) + text_w(sep, rs_scale);
+  c.draw_text(stop_x, ry, stop, rs_scale);
+  if (s.playing) {
+    c.fill_rect(rx, ry + 7 * rs_scale + 5, text_w(run, rs_scale) - rs_scale, 4,
+                true);
+  } else {
+    c.fill_rect(stop_x, ry + 7 * rs_scale + 5, text_w(stop, rs_scale) - rs_scale,
+                4, true);
+  }
+  setup_footer(c, s);
+}
+
+// GRID (designer mockup 5): everything in boxes. Title bar, tempo row, one
+// tall cell per beat, an inverted state banner, and a peer tick row.
+static void render_theme_grid(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+  const bool portrait = h > w;
+  const int m = 10;
+
+  // Title bar with the device name and the battery inside it.
+  c.draw_rect(m, m, w - 2 * m, 36, 2, true);
+  char name[24];
+  std::snprintf(name, sizeof(name), "%s",
+                s.title[0] != '\0' ? s.title : "NEON LINK");
+  for (char* p = name; *p != '\0'; ++p) {
+    if (*p >= 'a' && *p <= 'z') {
+      *p = static_cast<char>(*p - 'a' + 'A');
+    }
+  }
+  c.draw_text(m + 10, m + 11, name, 2);
+  draw_battery(c, w - m - 46, m + 10, rs.battery_pct);
+
+  // Tempo row.
+  const int bpm_y = m + 48;
+  c.draw_text(m + 6, bpm_y + 14, "BPM", 3);
+  char bpm[24];
+  bpm_text(s, bpm, sizeof(bpm));
+  c.draw_text(m + 6 + text_w("BPM", 3) + 10, bpm_y, bpm, 6);
+
+  // One tall bordered cell per quantum beat, the current one filled.
+  const uint32_t quantum = safe_quantum(rs);
+  const int cells_y = bpm_y + 58;
+  const int cell_h = portrait ? 128 : 66;
+  const int cell_gap = 8;
+  const int cell_w =
+      (w - 2 * m - (static_cast<int>(quantum) - 1) * cell_gap) /
+      static_cast<int>(quantum);
+  for (uint32_t i = 0; i < quantum; ++i) {
+    const int x = m + static_cast<int>(i) * (cell_w + cell_gap);
+    if (s.playing && rs.beat == i + 1) {
+      c.fill_rect(x, cells_y, cell_w, cell_h, true);
+    } else {
+      c.draw_rect(x, cells_y, cell_w, cell_h, 2, true);
+    }
+  }
+
+  // State banner: black bar, knocked-out text.
+  const int banner_y = cells_y + cell_h + 12;
+  draw_text_centered(c, banner_y + 7, s.playing ? "PLAYING" : "STOPPED", 3);
+  c.invert_rect(m, banner_y, w - 2 * m, 34);
+
+  // Peer ticks: six boxes, one slash per connected peer.
+  const int peers_y = banner_y + 44;
+  c.draw_text(m + 2, peers_y + 3, "PEERS", 2);
+  const int tick = 20;
+  int tx = m + 2 + text_w("PEERS", 2) + 10;
+  for (int i = 0; i < 6; ++i) {
+    c.draw_rect(tx, peers_y, tick, tick, 2, true);
+    if (static_cast<uint32_t>(i) < s.peers) {
+      for (int d = 0; d < tick - 8; ++d) {
+        c.fill_rect(tx + 4 + d, peers_y + tick - 6 - d, 2, 2, true);
+      }
+    }
+    tx += tick + 6;
+  }
+  setup_footer(c, s);
+}
+
+// PULSE (ours): the metronome face. While playing, the whole screen is the
+// beat — a giant count that flashes inverted on the one, readable from the
+// back of the stage. Stopped, it settles into a big-BPM standby.
+static void render_theme_pulse(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+
+  char peers[16];
+  std::snprintf(peers, sizeof(peers), "PEERS %u",
+                static_cast<unsigned>(s.peers));
+  char bpm[24];
+  bpm_text(s, bpm, sizeof(bpm));
+
+  if (!s.playing) {
+    c.draw_text(12, 12, peers, 2);
+    draw_battery(c, w - 50, 10, rs.battery_pct);
+    const int scale = fit_scale(static_cast<int>(std::strlen(bpm)), w - 28, 10);
+    draw_text_centered(c, h / 2 - (7 * scale) / 2 - 20, bpm, scale);
+    draw_text_centered(c, h - 74, "STOPPED", 4);
+    setup_footer(c, s);
+    return;
+  }
+
+  c.draw_text(12, 12, bpm, 2);
+  c.draw_text(w - 12 - text_w(peers, 2), 12, peers, 2);
+
+  char digit[8];
+  std::snprintf(digit, sizeof(digit), "%u", static_cast<unsigned>(rs.beat));
+  int scale = (h - 90) / 7;
+  if (scale > (w - 20) / 6) {
+    scale = (w - 20) / 6;
+  }
+  draw_text_centered(c, 44 + (h - 100 - 7 * scale) / 2, digit, scale);
+
+  const uint32_t quantum = safe_quantum(rs);
+  const int gap = 22;
+  const int x0 = (w - (static_cast<int>(quantum) - 1) * gap) / 2;
+  for (uint32_t i = 0; i < quantum; ++i) {
+    const int x = x0 + static_cast<int>(i) * gap;
+    if (rs.beat == i + 1) {
+      c.fill_rect(x - 3, h - 34, 6, 18, true);
+    } else {
+      c.fill_rect(x - 1, h - 29, 3, 10, true);
+    }
+  }
+
+  if (rs.beat == 1) {
+    c.invert();  // accent flash on the one
   }
 }
 
 void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   if (rs.base.overlay == 4) {
     render_rlcd_splash(c);
+    if (rs.base.invert) {
+      c.invert();
+    }
     return;
   }
-  if (c.orientation() == RlcdCanvas::Orientation::kPortrait) {
+  if (rs.base.overlay == 0) {
+    // The live face is the theme's to draw; CLASSIC and NIGHT share the
+    // original layout (NIGHT is the invert flag doing the work).
+    switch (static_cast<MonoTheme>(rs.theme)) {
+      case MonoTheme::kInk:
+        render_theme_ink(c, rs);
+        break;
+      case MonoTheme::kDots:
+        render_theme_dots(c, rs);
+        break;
+      case MonoTheme::kHero:
+        render_theme_hero(c, rs);
+        break;
+      case MonoTheme::kConsole:
+        render_theme_console(c, rs);
+        break;
+      case MonoTheme::kGrid:
+        render_theme_grid(c, rs);
+        break;
+      case MonoTheme::kPulse:
+        render_theme_pulse(c, rs);
+        break;
+      default:
+        if (c.orientation() == RlcdCanvas::Orientation::kPortrait) {
+          render_portrait(c, rs);
+        } else {
+          render_landscape(c, rs);
+        }
+        break;
+    }
+  } else if (c.orientation() == RlcdCanvas::Orientation::kPortrait) {
     render_portrait(c, rs);
   } else {
     render_landscape(c, rs);
+  }
+  if (rs.base.invert) {
+    c.invert();
   }
 }
 

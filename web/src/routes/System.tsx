@@ -247,6 +247,22 @@ export function System(props: PageProps) {
             onChange={(v) => patch((d) => (d.beat_style = v))}
             hint="Full-screen animation while playing"
           />
+          <SelectField
+            label="Panel theme"
+            value={cfg.mono_theme ?? "classic"}
+            options={[
+              { value: "classic", label: "Classic" },
+              { value: "ink", label: "Ink" },
+              { value: "dots", label: "Dots" },
+              { value: "hero", label: "Hero" },
+              { value: "console", label: "Console" },
+              { value: "grid", label: "Grid" },
+              { value: "pulse", label: "Pulse" },
+              { value: "night", label: "Night" },
+            ]}
+            onChange={(v) => patch((d) => (d.mono_theme = v))}
+            hint="Live face on the reflective LCD and e-paper builds"
+          />
         </div>
       </Card>
 

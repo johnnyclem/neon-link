@@ -82,8 +82,9 @@ rollback. Plus, unique to this face:
     home for both directions, since only two front buttons are usable
     (the third is the PWR button, reserved for power on/off).
   - Menu: BOOT tap/hold = cursor down/up, KEY tap = edit, KEY hold =
-    back. Seven settings (the e-paper six plus SCREEN = landscape /
-    portrait) and a POWER row (restart / power off / cancel).
+    back. Eight settings (the e-paper six plus SCREEN = landscape /
+    portrait and THEME, below) and a POWER row (restart / power off /
+    cancel).
   - Power off paints the splash, drops the panel to LPM (the image
     persists), and deep-sleeps the ESP32. KEY wakes it.
 
@@ -105,6 +106,33 @@ rollback. Plus, unique to this face:
   The rotation lives entirely in `RlcdCanvas` (host-tested): portrait
   draw ops take logical 300×400 coordinates that map into the physical
   400×300 buffer, so the packer and ST7305 driver are untouched.
+
+- **Themes** — the THEME menu row (also `config.mono_theme` in the web
+  editor / JSON API) switches the live status face. Every theme renders
+  in both orientations; the settings/tempo/power overlays keep one shared
+  layout and simply invert with the dark themes, so the whole UI reads as
+  one piece. A theme only restyles the live face — the buttons, menu, and
+  data are identical everywhere. The faces (`neon::MonoTheme`,
+  host-tested, previewable via the render code on the host):
+  - `CLASSIC` — the original face: header, BPM, beat dots, network,
+    footer. The default.
+  - `INK` — light and chrome-free: peers + battery, a big centered BPM,
+    beat dots, transport state.
+  - `DOTS` — dark, dot-matrix hero digits under a small button legend.
+  - `HERO` — dark, one giant integer BPM readable across a room.
+  - `CONSOLE` — dark instrument panel: LINK session box, a TAP / PEERS /
+    BATT data column, RUN / STOP with the active word underlined.
+  - `GRID` — light, everything boxed: title bar, tempo row, one tall cell
+    per beat, an inverted state banner, peer tick boxes.
+  - `PULSE` — the metronome face: while playing the whole screen is a
+    giant beat count that flashes inverted on the one (the reflective
+    panel repaints in milliseconds, so it can afford to be a metronome);
+    stopped, it settles into a big-BPM standby.
+  - `NIGHT` — the classic face inverted for dark rooms.
+  The minimal faces still print the setup-AP credentials along the bottom
+  edge whenever the box is offering its setup network — physical access
+  stays the credential. The enum is named `MonoTheme` (not `RlcdTheme`)
+  so the e-paper faces can adopt the same vocabulary later.
 
 ## Pin map
 

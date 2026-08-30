@@ -195,7 +195,7 @@ void render_linksync_panel(EpdCanvas& c, const LinkSyncPanelStatus& s) {
   if (s.overlay == 1 || s.overlay == 2) {
     const int row0 = 160;
     const int row_h = 18;
-    for (int i = 0; i < s.n_items && i < 8; ++i) {
+    for (int i = 0; i < s.n_items && i < 10; ++i) {
       const int y = row0 + i * row_h;
       char line[48];
       std::snprintf(line, sizeof(line), "%s  %s", s.item_label[i],

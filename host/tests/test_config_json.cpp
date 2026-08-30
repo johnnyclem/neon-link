@@ -37,6 +37,28 @@ TEST_CASE("config JSON: color_theme names") {
   CHECK(b.color_theme == neon::ColorTheme::kPaper);
 }
 
+TEST_CASE("config JSON: mono_theme names") {
+  neon::Config a;
+  CHECK(a.mono_theme == neon::MonoTheme::kClassic);
+  const std::string json = encode(a);
+  CHECK(json.find("\"mono_theme\":\"classic\"") != std::string::npos);
+
+  a.mono_theme = neon::MonoTheme::kConsole;
+  neon::Config b;
+  const std::string console_json = encode(a);
+  REQUIRE(
+      neon::config_from_json(console_json.c_str(), console_json.size(), &b));
+  CHECK(b.mono_theme == neon::MonoTheme::kConsole);
+
+  const char* night = "{\"mono_theme\":\"night\"}";
+  REQUIRE(neon::config_from_json(night, std::strlen(night), &b));
+  CHECK(b.mono_theme == neon::MonoTheme::kNight);
+
+  const char* junk = "{\"mono_theme\":\"chrome\"}";
+  REQUIRE(neon::config_from_json(junk, std::strlen(junk), &b));
+  CHECK(b.mono_theme == neon::MonoTheme::kNight);  // unknown = keep current
+}
+
 TEST_CASE("config JSON: beat_style names") {
   neon::Config a;
   CHECK(a.beat_style == neon::BeatStyle::kNumber);

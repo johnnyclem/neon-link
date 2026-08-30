@@ -56,7 +56,7 @@ uint32_t fingerprint(const neon::LinkSyncPanelStatus& s) {
   h = hash_text(h, s.ap_ssid);
   h = hash_text(h, s.ap_pass);
   h = hash_text(h, s.detail);
-  for (int i = 0; i < s.n_items && i < 8; ++i) {
+  for (int i = 0; i < s.n_items && i < 10; ++i) {
     h = hash_text(h, s.item_label[i]);
     h = hash_text(h, s.item_value[i]);
   }

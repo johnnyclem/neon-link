@@ -31,8 +31,8 @@ struct LinkSyncPanelStatus {
   uint8_t overlay = 0;
   int cursor = 0;
   int n_items = 0;
-  char item_label[8][20] = {};
-  char item_value[8][16] = {};
+  char item_label[10][20] = {};
+  char item_value[10][16] = {};
   int power_cursor = 0;
 };
 

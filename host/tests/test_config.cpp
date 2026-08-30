@@ -532,6 +532,45 @@ TEST_CASE("display_portrait survives a current-version round trip") {
   CHECK(b.display_portrait == 1);
 }
 
+TEST_CASE("a v12 config blob defaults mono_theme to classic") {
+  neon::Config a;
+  a.mono_theme = neon::MonoTheme::kConsole;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 12;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.mono_theme == neon::MonoTheme::kClassic);
+}
+
+TEST_CASE("mono_theme survives a round trip and sanitizes junk") {
+  neon::Config a;
+  a.mono_theme = neon::MonoTheme::kPulse;
+  std::vector<uint8_t> buf(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
+  neon::Config b;
+  REQUIRE(neon::config_decode(buf.data(), buf.size(), &b));
+  CHECK(b.mono_theme == neon::MonoTheme::kPulse);
+
+  neon::Config c;
+  c.mono_theme = static_cast<neon::MonoTheme>(200);
+  neon::config_sanitize(&c);
+  CHECK(c.mono_theme == neon::MonoTheme::kClassic);
+}
+
 TEST_CASE("a v6 config blob defaults the beat style to number") {
   neon::Config a;
   a.beat_style = neon::BeatStyle::kPulse;
