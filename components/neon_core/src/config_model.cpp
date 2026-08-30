@@ -161,6 +161,7 @@ void config_sanitize(Config* cfg) {
     cfg->osc_port = 9000;
   }
   cfg->osc_target[sizeof(cfg->osc_target) - 1] = '\0';
+  cfg->display_portrait = cfg->display_portrait ? 1 : 0;
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -430,6 +431,11 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
     out->osc_enabled = 0;
     out->osc_port = 9000;
     std::memset(out->osc_target, 0, sizeof(out->osc_target));
+  }
+  if (h.version < 12) {
+    // display_portrait sits in what was v11 tail padding after osc_target.
+    // Default landscape so existing units keep their current orientation.
+    out->display_portrait = 0;
   }
   config_sanitize(out);
   return true;

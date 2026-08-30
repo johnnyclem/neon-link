@@ -7,13 +7,32 @@
 
 namespace neon {
 
+namespace {
+// Logical (x, y) -> physical buffer (px, py). Landscape is identity;
+// portrait rotates the logical 300×400 plane into the physical 400×300
+// buffer so that, composed with the packer's built-in R1 rotation, the
+// image lands upright in the panel's native portrait orientation.
+inline void to_physical(RlcdCanvas::Orientation o, int x, int y, int* px,
+                        int* py) {
+  if (o == RlcdCanvas::Orientation::kPortrait) {
+    *px = y;
+    *py = RlcdCanvas::kHeight - 1 - x;
+  } else {
+    *px = x;
+    *py = y;
+  }
+}
+}  // namespace
+
 void RlcdCanvas::set_pixel(int x, int y, bool ink) {
-  if (x < 0 || x >= kWidth || y < 0 || y >= kHeight) {
+  int px, py;
+  to_physical(orient_, x, y, &px, &py);
+  if (px < 0 || px >= kWidth || py < 0 || py >= kHeight) {
     return;
   }
-  uint8_t* p = &buf_[static_cast<size_t>(y) * kStride +
-                     static_cast<size_t>(x / 8)];
-  const uint8_t bit = static_cast<uint8_t>(0x80u >> (x & 7));
+  uint8_t* p = &buf_[static_cast<size_t>(py) * kStride +
+                     static_cast<size_t>(px / 8)];
+  const uint8_t bit = static_cast<uint8_t>(0x80u >> (px & 7));
   if (ink) {
     *p = static_cast<uint8_t>(*p & ~bit);  // black
   } else {
@@ -22,12 +41,14 @@ void RlcdCanvas::set_pixel(int x, int y, bool ink) {
 }
 
 bool RlcdCanvas::pixel(int x, int y) const {
-  if (x < 0 || x >= kWidth || y < 0 || y >= kHeight) {
+  int px, py;
+  to_physical(orient_, x, y, &px, &py);
+  if (px < 0 || px >= kWidth || py < 0 || py >= kHeight) {
     return false;
   }
-  const uint8_t b = buf_[static_cast<size_t>(y) * kStride +
-                         static_cast<size_t>(x / 8)];
-  return (b & (0x80u >> (x & 7))) == 0;  // true = black
+  const uint8_t b = buf_[static_cast<size_t>(py) * kStride +
+                         static_cast<size_t>(px / 8)];
+  return (b & (0x80u >> (px & 7))) == 0;  // true = black
 }
 
 void RlcdCanvas::fill_rect(int x, int y, int w, int h, bool ink) {
@@ -118,16 +139,17 @@ void draw_left_arrow(RlcdCanvas& c, int cy) {
 
 void render_rlcd_splash(RlcdCanvas& c) {
   c.clear();
-  constexpr int kW = RlcdCanvas::kWidth;
-  constexpr int kH = RlcdCanvas::kHeight;
+  const bool portrait = c.orientation() == RlcdCanvas::Orientation::kPortrait;
+  const int kW = c.width();
+  const int kH = c.height();
   draw_left_arrow(c, kH / 5);
   draw_left_arrow(c, (kH * 4) / 5);
 
   const char* mark = "NEON LINK";
-  const int mark_scale = 6;
+  const int mark_scale = portrait ? 4 : 6;  // 9 chars must fit the width
   const int mark_w = static_cast<int>(std::strlen(mark)) * 6 * mark_scale;
   const int mark_x = (kW - mark_w) / 2;
-  const int mark_y = 108;
+  const int mark_y = portrait ? 150 : 108;
   c.fill_rect(mark_x - 10, mark_y - 14, mark_w + 20, 5, true);
   c.draw_text(mark_x, mark_y, mark, mark_scale);
   c.fill_rect(mark_x - 10, mark_y + 7 * mark_scale + 9, mark_w + 20, 5, true);
@@ -135,15 +157,12 @@ void render_rlcd_splash(RlcdCanvas& c) {
   const char* line = "press a button to start";
   const int line_scale = 2;
   const int line_w = static_cast<int>(std::strlen(line)) * 6 * line_scale;
-  c.draw_text((kW - line_w) / 2, 208, line, line_scale);
+  c.draw_text((kW - line_w) / 2, portrait ? 280 : 208, line, line_scale);
 }
 
-void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+// The 400×300 landscape status face — the original layout, unchanged.
+static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   const LinkSyncPanelStatus& s = rs.base;
-  if (s.overlay == 4) {
-    render_rlcd_splash(c);
-    return;
-  }
   c.clear();
   constexpr int kW = RlcdCanvas::kWidth;
 
@@ -250,6 +269,119 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   if (s.invert) {
     c.invert();
+  }
+}
+
+// The 300×400 portrait status face. Same information, reflowed tall so it
+// reads upright in a portrait stand. Coordinates are logical; the canvas
+// rotates them into the physical buffer.
+static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const LinkSyncPanelStatus& s = rs.base;
+  c.clear();
+  const int kW = c.width();  // 300
+
+  // Header: name left, battery right, rule underneath.
+  c.draw_text(10, 10, s.title[0] != '\0' ? s.title : "link-rlcd", 2);
+  draw_battery(c, kW - 44, 9, rs.battery_pct);
+  c.fill_rect(10, 34, kW - 20, 2, true);
+
+  // BPM, the reason this box exists.
+  char bpm[24];
+  std::snprintf(bpm, sizeof(bpm), "%u.%u",
+                static_cast<unsigned>(s.milli_bpm / 1000u),
+                static_cast<unsigned>((s.milli_bpm / 100u) % 10u));
+  const int bpm_w = c.draw_text(14, 60, bpm, 5);
+  c.draw_text(14 + bpm_w + 10, 74, "BPM", 3);
+
+  if (s.overlay == 0) {
+    // Beat dots: one box per quantum beat, the current one filled.
+    const uint32_t quantum =
+        rs.quantum >= 1 && rs.quantum <= 8 ? rs.quantum : 4;
+    const int dot = 24;
+    const int gap = 9;
+    for (uint32_t i = 0; i < quantum; ++i) {
+      const int x = 14 + static_cast<int>(i) * (dot + gap);
+      const int y = 120;
+      if (s.playing && rs.beat == i + 1) {
+        c.fill_rect(x, y, dot, dot, true);
+      } else {
+        c.draw_rect(x, y, dot, dot, 2, true);
+      }
+    }
+    c.draw_text(14, 170, s.playing ? "PLAYING" : "STOPPED", 4);
+
+    char peers[16];
+    std::snprintf(peers, sizeof(peers), "PEERS %u",
+                  static_cast<unsigned>(s.peers));
+    c.draw_text(14, 220, peers, 2);
+
+    const bool show_ap =
+        (s.setup_ap || !s.provisioned) && s.ap_pass[0] != '\0';
+    if (show_ap) {
+      c.draw_text(14, 250, s.ap_ssid[0] != '\0' ? s.ap_ssid : "SETUP AP", 2);
+      c.draw_text(14, 276, s.ap_pass, 3);
+    } else {
+      const char* net = !s.provisioned ? "UNPROVISIONED"
+                        : s.wifi_up    ? s.ssid
+                                       : "CONNECTING";
+      c.draw_text(14, 250, net, 2);
+    }
+  }
+
+  if (s.overlay == 5) {
+    c.draw_text(14, 120, "TEMPO", 4);
+    c.draw_text(14, 175, "BOOT = UP", 3);
+    c.draw_text(14, 215, "KEY  = DOWN", 3);
+    c.draw_text(14, 262, "HOLD TO RAMP", 2);
+  }
+
+  if (s.overlay == 1 || s.overlay == 2) {
+    c.draw_text(14, 92, s.overlay == 2 ? "EDIT" : "MENU", 2);
+    const int row0 = 120;
+    const int row_h = 30;
+    for (int i = 0; i < s.n_items && i < 8; ++i) {
+      const int y = row0 + i * row_h;
+      char line[48];
+      std::snprintf(line, sizeof(line), "%-9s %s", s.item_label[i],
+                    s.item_value[i]);
+      c.draw_text(16, y, line, 2);
+      if (i == s.cursor) {
+        c.invert_rect(10, y - 4, kW - 20, row_h - 2);
+      }
+    }
+  } else if (s.overlay == 3) {
+    c.fill_rect(30, 120, 240, 176, true);
+    c.fill_rect(34, 124, 232, 168, false);
+    static const char* kPower[3] = {"RESTART", "POWER OFF", "CANCEL"};
+    for (int i = 0; i < 3; ++i) {
+      const int y = 140 + i * 48;
+      c.draw_text(56, y, kPower[i], 3);
+      if (i == s.power_cursor) {
+        c.invert_rect(44, y - 6, 212, 34);
+      }
+    }
+  }
+
+  // Footer detail line.
+  if (s.overlay != 3 && s.overlay != 5) {
+    c.draw_text(14, 372, s.detail[0] != '\0' ? s.detail
+                                             : "MIDI CLOCK  24 PPQN", 2);
+  }
+
+  if (s.invert) {
+    c.invert();
+  }
+}
+
+void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  if (rs.base.overlay == 4) {
+    render_rlcd_splash(c);
+    return;
+  }
+  if (c.orientation() == RlcdCanvas::Orientation::kPortrait) {
+    render_portrait(c, rs);
+  } else {
+    render_landscape(c, rs);
   }
 }
 

@@ -81,6 +81,24 @@ rollback. Plus, unique to this face:
   - Power off paints the splash, drops the panel to LPM (the image
     persists), and deep-sleeps the ESP32. KEY wakes it.
 
+- **Landscape / portrait** — the panel is a 300×400 portrait controller
+  the firmware normally drives as 400×300 landscape. `config.display_portrait`
+  picks a genuine portrait layout (300×400, the status face reflowed
+  tall) for a portrait stand. There is no accelerometer, so it is a
+  stored preference toggled two ways:
+  - **Blind chord:** hold **KEY + BOOT together for 3 s**. After ~0.7 s
+    a "ROTATING TO …" countdown appears in the orientation it is about
+    to switch to (so it reads upright in the stand you are turning
+    toward); release early to cancel. Chosen over a menu item because a
+    wrong-orientation screen is unreadable, but the chord is not — and
+    over the PWR button, which is not a readable GPIO. The individual
+    KEY/BOOT gestures are suppressed for the duration, so the flip never
+    also opens the menu or Tempo screen.
+  - **Web editor:** the `display_portrait` field, for a non-blind path.
+  The rotation lives entirely in `RlcdCanvas` (host-tested): portrait
+  draw ops take logical 300×400 coordinates that map into the physical
+  400×300 buffer, so the packer and ST7305 driver are untouched.
+
 ## Pin map
 
 From the vendor board manifest and schematic

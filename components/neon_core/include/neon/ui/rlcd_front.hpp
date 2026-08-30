@@ -50,6 +50,15 @@ class RlcdFrontPanel {
   void on_boot_repeat(int64_t now_us);
   void tick(int64_t now_us);
 
+  // Force the live face (drops any open menu/tempo/power overlay). The
+  // rlcd task calls this after an orientation flip so the rotated screen
+  // comes up on the status face rather than a half-navigated menu.
+  void show_live(int64_t now_us) {
+    touch(now_us);
+    mode_ = Mode::kLive;
+    cursor_ = 0;
+  }
+
   Mode mode() const { return mode_; }
   int cursor() const { return cursor_; }
   int power_cursor() const { return power_cur_; }

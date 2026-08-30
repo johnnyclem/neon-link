@@ -56,6 +56,12 @@ constexpr int64_t kRepeatLeadUs = 300000;
 constexpr int64_t kRepeatSlowUs = 150000;
 constexpr int64_t kRepeatFastUs = 60000;
 constexpr int kRepeatAccelAfter = 5;
+// Hold KEY+BOOT together this long to flip landscape<->portrait. Blind
+// gesture (no accelerometer, PWR is not readable): long enough that the
+// two control buttons are never both held this long by accident, and a
+// "keep holding" cue appears partway through.
+constexpr int64_t kOrientHoldUs = 3000000;
+constexpr int64_t kOrientHintUs = 700000;
 
 uint32_t hash_text(uint32_t h, const char* p) {
   for (; p != nullptr && *p != '\0'; ++p) {
@@ -136,6 +142,21 @@ class Button {
         *short_fire = true;
       }
     }
+  }
+
+  int pin() const { return pin_; }
+
+  // Drop any in-progress press without emitting an event. Used when the
+  // KEY+BOOT chord takes over: the button that was pressed first must not
+  // fire a stray short/long/tempo once the chord releases.
+  void reset() {
+    raw_ = false;
+    down_ = false;
+    long_fired_ = false;
+    repeats_ = 0;
+    edge_us_ = 0;
+    down_us_ = 0;
+    next_repeat_us_ = 0;
   }
 
  private:
@@ -309,6 +330,24 @@ void keys_init() {
   gpio_config(&io);
 }
 
+// Full-screen "keep holding to rotate" cue with a countdown, centered for
+// the current canvas orientation.
+void render_orient_hint(neon::RlcdCanvas& c, bool to_portrait, int secs) {
+  c.clear();
+  const int w = c.width();
+  const int h = c.height();
+  auto center = [&](int y, const char* str, int sc) {
+    const int tw = static_cast<int>(std::strlen(str)) * 6 * sc;
+    c.draw_text((w - tw) / 2, y, str, sc);
+  };
+  center(h / 2 - 76, "ROTATING TO", 2);
+  center(h / 2 - 40, to_portrait ? "PORTRAIT" : "LANDSCAPE", 4);
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "HOLD %d", secs < 0 ? 0 : secs);
+  center(h / 2 + 24, buf, 3);
+  center(h / 2 + 74, "RELEASE TO CANCEL", 2);
+}
+
 void power_off(neon::RlcdCanvas* canvas, uint8_t* packed) {
   ESP_LOGW(kTag, "power off → splash, then deep sleep");
   neon_config_flush_now();
@@ -347,38 +386,105 @@ void rlcd_task(void*) {
   uint32_t battery_mv = 0;
   int64_t battery_us = -kBatteryPeriodUs;
 
+  auto orient_of = [](const neon::Config& c) {
+    return c.display_portrait ? neon::RlcdCanvas::Orientation::kPortrait
+                              : neon::RlcdCanvas::Orientation::kLandscape;
+  };
+  canvas->set_orientation(orient_of(ui_cfg));
+
+  // KEY+BOOT chord state: kIdle polls normally; kChord counts the hold and
+  // fires once; kDrain waits for both buttons to fully release so the chord
+  // does not spill a stray press into normal input.
+  enum ChordState { kIdle, kChord, kDrain };
+  ChordState chord = kIdle;
+  int64_t chord_since = 0;
+  bool chord_fired = false;
+
   for (;;) {
     const int64_t now = esp_timer_get_time();
     bool user = false;
-    bool ks = false;
-    bool kl = false;
-    bool kr = false;
-    bool bs = false;
-    bool bl = false;
-    bool br = false;
-    key.poll(now, &ks, &kl, &kr);
-    boot.poll(now, &bs, &bl, &br);
-    if (ks) {
-      ui.on_key_short(now);
-    }
-    if (kl) {
-      ui.on_key_long(now);
-    }
-    if (kr) {
-      ui.on_key_repeat(now);
-    }
-    if (bs) {
-      ui.on_boot_short(now);
-    }
-    if (bl) {
-      ui.on_boot_long(now);
-    }
-    if (br) {
-      ui.on_boot_repeat(now);
-    }
-    if (ks || kl || kr || bs || bl || br) {
+
+    // Orientation chord: both control buttons held together. While a chord
+    // is active (or draining) the individual button state machines are held
+    // reset, so no menu/tempo/transport event escapes.
+    const bool key_raw =
+        gpio_get_level(static_cast<gpio_num_t>(key.pin())) == 0;
+    const bool boot_raw =
+        gpio_get_level(static_cast<gpio_num_t>(boot.pin())) == 0;
+    bool orient_hint = false;
+    if (key_raw && boot_raw) {
+      if (chord != kChord) {
+        chord = kChord;
+        chord_since = now;
+        chord_fired = false;
+      }
+      key.reset();
+      boot.reset();
       user = true;
       planner.note_user(now);
+      if (!chord_fired && now - chord_since >= kOrientHoldUs) {
+        chord_fired = true;
+        ui_cfg.display_portrait = ui_cfg.display_portrait ? 0 : 1;
+        canvas->set_orientation(orient_of(ui_cfg));
+        ui.show_live(now);
+        neon::Config live = neon_config();
+        live.display_portrait = ui_cfg.display_portrait;
+        neon_config_apply(live);
+        ui_cfg = neon_config();
+        have_fp = false;  // force a full repaint in the new orientation
+        ESP_LOGI(kTag, "orientation -> %s",
+                 ui_cfg.display_portrait ? "portrait" : "landscape");
+      } else if (!chord_fired && now - chord_since >= kOrientHintUs) {
+        orient_hint = true;
+      }
+    } else if (chord != kIdle) {
+      // A chord just ended: swallow input until both buttons are released.
+      key.reset();
+      boot.reset();
+      if (!key_raw && !boot_raw) {
+        chord = kIdle;
+      } else {
+        chord = kDrain;
+      }
+    } else {
+      bool ks = false, kl = false, kr = false;
+      bool bs = false, bl = false, br = false;
+      key.poll(now, &ks, &kl, &kr);
+      boot.poll(now, &bs, &bl, &br);
+      if (ks) ui.on_key_short(now);
+      if (kl) ui.on_key_long(now);
+      if (kr) ui.on_key_repeat(now);
+      if (bs) ui.on_boot_short(now);
+      if (bl) ui.on_boot_long(now);
+      if (br) ui.on_boot_repeat(now);
+      if (ks || kl || kr || bs || bl || br) {
+        user = true;
+        planner.note_user(now);
+      }
+    }
+
+    // While the chord is being held past the hint threshold, take over the
+    // glass with a live "keep holding" cue and a countdown, drawn in the
+    // orientation we are about to switch TO so it reads upright in the stand
+    // the user is turning the panel toward. The flip is the confirmation.
+    if (orient_hint) {
+      const int secs =
+          static_cast<int>((kOrientHoldUs - (now - chord_since)) / 1000000) + 1;
+      const auto cur = canvas->orientation();
+      const auto target =
+          ui_cfg.display_portrait ? neon::RlcdCanvas::Orientation::kLandscape
+                                  : neon::RlcdCanvas::Orientation::kPortrait;
+      canvas->set_orientation(target);
+      halesp::rlcd_st7305_set_power(true);
+      hpm = true;
+      render_orient_hint(
+          *canvas, target == neon::RlcdCanvas::Orientation::kPortrait, secs);
+      neon::rlcd::pack_frame(canvas->data(), packed);
+      halesp::rlcd_st7305_present(packed);
+      canvas->set_orientation(cur);  // restore; the real flip is on fire
+      have_fp = false;
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
     }
 
     ui.tick(now);
@@ -405,6 +511,13 @@ void rlcd_task(void*) {
       ui_cfg = neon_config();
     }
     neon_config_flush(now);
+
+    // Keep the panel orientation in step with config — covers a change made
+    // in the web editor as well as the chord toggle above.
+    if (canvas->orientation() != orient_of(ui_cfg)) {
+      canvas->set_orientation(orient_of(ui_cfg));
+      have_fp = false;
+    }
 
     const auto act = ui.take_action();
     if (act == neon::RlcdFrontPanel::Action::kReboot) {

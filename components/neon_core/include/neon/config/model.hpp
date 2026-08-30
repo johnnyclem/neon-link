@@ -236,10 +236,17 @@ struct Config {
   uint8_t osc_enabled = 0;
   uint16_t osc_port = 9000;      // inbound listen port
   char osc_target[40] = "";      // "host:port" for outbound; empty = in only
+
+  // Appended in v12. Panel orientation for the RLCD face: 0 = landscape
+  // (the 400×300 default), 1 = portrait (300×400, upright in a portrait
+  // stand). There is no accelerometer, so this is a stored preference,
+  // toggled blind by holding KEY+BOOT together (see main/rlcd_service).
+  // Ignored on boards whose panel is not rotatable.
+  uint8_t display_portrait = 0;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 11;
+inline constexpr uint16_t kConfigVersion = 12;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

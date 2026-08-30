@@ -323,6 +323,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(root, "display_brightness", cfg.display_brightness);
   cJSON_AddNumberToObject(root, "display_dim_s", cfg.display_dim_s);
   cJSON_AddNumberToObject(root, "display_dim_level", cfg.display_dim_level);
+  cJSON_AddBoolToObject(root, "display_portrait", cfg.display_portrait != 0);
   cJSON_AddBoolToObject(root, "big_beat_display", cfg.big_beat_display != 0);
   cJSON_AddStringToObject(root, "beat_style", beat_style_str(cfg.beat_style));
   cJSON_AddStringToObject(root, "color_theme", color_theme_str(cfg.color_theme));
@@ -526,6 +527,7 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
   get_u8(root, "display_brightness", &cfg->display_brightness);
   get_u16(root, "display_dim_s", &cfg->display_dim_s);
   get_u8(root, "display_dim_level", &cfg->display_dim_level);
+  get_bool_u8(root, "display_portrait", &cfg->display_portrait);
   get_bool_u8(root, "big_beat_display", &cfg->big_beat_display);
   {
     const cJSON* style = cJSON_GetObjectItemCaseSensitive(root, "beat_style");

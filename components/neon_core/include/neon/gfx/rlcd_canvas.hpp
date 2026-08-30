@@ -30,17 +30,40 @@ struct RlcdPanelStatus {
   bool low_power = false;
 };
 
+// The buffer is always the panel's physical 400×300 landscape frame (the
+// packer and ST7305 driver only ever see that). Portrait is a drawing-time
+// rotation: in kPortrait every draw op takes logical 300×400 coordinates
+// and set_pixel/pixel map them into the physical buffer, so one layout call
+// comes out upright when the glass is mounted in a portrait stand. Nothing
+// downstream of the canvas changes.
 class RlcdCanvas {
  public:
-  static constexpr int kWidth = 400;
-  static constexpr int kHeight = 300;
+  static constexpr int kWidth = 400;   // physical buffer width
+  static constexpr int kHeight = 300;  // physical buffer height
   static constexpr int kStride = kWidth / 8;  // 50
   static constexpr size_t kSize = static_cast<size_t>(kStride * kHeight);
+
+  enum class Orientation : uint8_t { kLandscape, kPortrait };
 
   RlcdCanvas() { clear(); }
 
   void clear() { std::memset(buf_, 0xff, sizeof(buf_)); }  // white
 
+  void set_orientation(Orientation o) { orient_ = o; }
+  Orientation orientation() const { return orient_; }
+
+  // Logical drawing extent for the current orientation: 400×300 landscape,
+  // 300×400 portrait. Layout code centers and positions against these.
+  int width() const {
+    return orient_ == Orientation::kPortrait ? kHeight : kWidth;
+  }
+  int height() const {
+    return orient_ == Orientation::kPortrait ? kWidth : kHeight;
+  }
+
+  // All coordinates below are LOGICAL (see width()/height()); set_pixel and
+  // pixel apply the orientation transform, so every higher-level primitive
+  // rotates for free.
   // ink=true draws black.
   void set_pixel(int x, int y, bool ink);
   bool pixel(int x, int y) const;
@@ -60,6 +83,7 @@ class RlcdCanvas {
 
  private:
   uint8_t buf_[kSize];
+  Orientation orient_ = Orientation::kLandscape;
 };
 
 void render_rlcd_splash(RlcdCanvas& c);

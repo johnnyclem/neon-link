@@ -498,6 +498,40 @@ TEST_CASE("a v8 config blob defaults the colour theme to teal") {
   CHECK(b.color_theme == neon::ColorTheme::kTeal);
 }
 
+TEST_CASE("a v11 config blob defaults display_portrait to landscape") {
+  neon::Config a;
+  a.display_portrait = 1;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 11;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.display_portrait == 0);
+}
+
+TEST_CASE("display_portrait survives a current-version round trip") {
+  neon::Config a;
+  a.display_portrait = 1;
+  std::vector<uint8_t> buf(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
+  neon::Config b;
+  REQUIRE(neon::config_decode(buf.data(), buf.size(), &b));
+  CHECK(b.display_portrait == 1);
+}
+
 TEST_CASE("a v6 config blob defaults the beat style to number") {
   neon::Config a;
   a.beat_style = neon::BeatStyle::kPulse;
