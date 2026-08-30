@@ -120,6 +120,29 @@ enum class ColorTheme : uint8_t {
   kCount = 6,
 };
 
+// Live-face layouts for the 1-bit panels (RLCD today; the e-paper faces
+// can adopt the same vocabulary). A theme picks what the status screen
+// looks like — the settings/tempo/power overlays keep one shared layout,
+// dark-inverted for the dark themes so the whole UI reads as one piece.
+enum class MonoTheme : uint8_t {
+  kClassic = 0,  // the original face: header, BPM, dots, network, footer
+  kInk = 1,      // light, centered, chrome-free: BPM + dots + state
+  kDots = 2,     // dark, dot-matrix hero digits, button legend up top
+  kHero = 3,     // dark, one giant integer BPM
+  kConsole = 4,  // dark instrument panel: LINK box, data column, RUN/STOP
+  kGrid = 5,     // light, everything boxed: title bar, cells, peer ticks
+  kPulse = 6,    // metronome face: giant beat number, flashes on the one
+  kNight = 7,    // the classic face, inverted for dark rooms
+  kCount = 8,
+};
+
+// Dark themes render ink-on-white and are flipped at present time, so the
+// menu overlays invert with them for free.
+inline bool mono_theme_dark(MonoTheme t) {
+  return t == MonoTheme::kDots || t == MonoTheme::kHero ||
+         t == MonoTheme::kConsole || t == MonoTheme::kNight;
+}
+
 struct Config {
   EngineConfig engine;
 
@@ -243,10 +266,15 @@ struct Config {
   // toggled blind by holding KEY+BOOT together (see main/rlcd_service).
   // Ignored on boards whose panel is not rotatable.
   uint8_t display_portrait = 0;
+
+  // Appended in v13. Live-face theme for the 1-bit panels (see MonoTheme).
+  // Editable from the RLCD's own settings menu; a v12 blob decodes with
+  // this back at kClassic — see config_decode.
+  MonoTheme mono_theme = MonoTheme::kClassic;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 12;
+inline constexpr uint16_t kConfigVersion = 13;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

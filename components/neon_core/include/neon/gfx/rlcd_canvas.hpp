@@ -28,6 +28,9 @@ struct RlcdPanelStatus {
   int battery_pct = -1;
   // The ST7305 is sitting in low-power (≤8 Hz) refresh.
   bool low_power = false;
+  // Which live face to draw (a MonoTheme value). Overlays keep the shared
+  // layout; base.invert flips the whole frame for the dark themes.
+  uint8_t theme = 0;
 };
 
 // The buffer is always the panel's physical 400×300 landscape frame (the

@@ -204,6 +204,39 @@ TEST_CASE("SCREEN row toggles portrait and renders its value") {
   CHECK(ui.take_dirty());
 }
 
+TEST_CASE("THEME row cycles the mono theme and reverts on cancel") {
+  Config cfg;
+  cfg.mono_theme = neon::MonoTheme::kClassic;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  for (int i = 0; i < 7; ++i) {
+    ui.on_boot_short(3 + i);  // cursor -> 7 = THEME
+  }
+  CHECK(ui.cursor() == 7);
+  char v[16];
+  ui.item_value(7, v, sizeof(v));
+  CHECK(std::strcmp(v, "CLASSIC") == 0);
+
+  ui.on_key_short(20);   // enter edit
+  ui.on_boot_short(21);  // CLASSIC -> INK
+  CHECK(cfg.mono_theme == neon::MonoTheme::kInk);
+  ui.item_value(7, v, sizeof(v));
+  CHECK(std::strcmp(v, "INK") == 0);
+  ui.on_boot_long(22);  // back down -> CLASSIC
+  ui.on_boot_long(23);  // wraps to NIGHT
+  CHECK(cfg.mono_theme == neon::MonoTheme::kNight);
+  ui.on_key_long(24);  // cancel
+  CHECK(cfg.mono_theme == neon::MonoTheme::kClassic);
+  CHECK_FALSE(ui.take_dirty());
+
+  ui.on_key_short(25);   // re-enter edit
+  ui.on_boot_short(26);  // -> INK
+  ui.on_key_short(27);   // commit
+  CHECK(ui.take_dirty());
+  CHECK(cfg.mono_theme == neon::MonoTheme::kInk);
+}
+
 TEST_CASE("menu idles back to live and reverts a pending edit") {
   Config cfg;
   cfg.start_stop_sync = 1;

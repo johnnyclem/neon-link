@@ -83,6 +83,8 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   h = h * 33u + static_cast<uint32_t>(s.power_cursor);
   h = h * 33u + rs.beat;
   h = h * 33u + rs.quantum;
+  h = h * 33u + rs.theme;
+  h = h * 33u + (s.invert ? 1u : 0u);
   // Quantize so ADC jitter never repaints the gauge.
   h = h * 33u + static_cast<uint32_t>(rs.battery_pct < 0
                                           ? 0x7fffffff
@@ -92,7 +94,7 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   h = hash_text(h, s.ap_ssid);
   h = hash_text(h, s.ap_pass);
   h = hash_text(h, s.detail);
-  for (int i = 0; i < s.n_items && i < 8; ++i) {
+  for (int i = 0; i < s.n_items && i < 10; ++i) {
     h = hash_text(h, s.item_label[i]);
     h = hash_text(h, s.item_value[i]);
   }
@@ -300,8 +302,13 @@ void fill_status(neon::RlcdPanelStatus* rs, neon::RlcdFrontPanel& ui,
   }
   s->cursor = ui.cursor();
   s->power_cursor = ui.power_cursor();
+  // Theme + dark flag come from the committed config, not the copy being
+  // edited — the face changes when the edit commits, and the menu overlay
+  // flips dark with it so the whole UI reads as one piece.
+  rs->theme = static_cast<uint8_t>(cfg.mono_theme);
+  s->invert = neon::mono_theme_dark(cfg.mono_theme);
   s->n_items = neon::RlcdFrontPanel::kItems;
-  for (int i = 0; i < s->n_items && i < 8; ++i) {
+  for (int i = 0; i < s->n_items && i < 10; ++i) {
     std::snprintf(s->item_label[i], sizeof(s->item_label[i]), "%s",
                   ui.item_label(i));
     ui.item_value(i, s->item_value[i], sizeof(s->item_value[i]));
@@ -316,6 +323,7 @@ void apply_ui_config(const neon::Config& ui_cfg) {
   live.midi_clock_out = ui_cfg.midi_clock_out;
   live.midi_trs_type = ui_cfg.midi_trs_type;
   live.display_portrait = ui_cfg.display_portrait;
+  live.mono_theme = ui_cfg.mono_theme;
   neon_config_apply(live);
 }
 

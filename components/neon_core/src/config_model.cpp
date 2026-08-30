@@ -162,6 +162,9 @@ void config_sanitize(Config* cfg) {
   }
   cfg->osc_target[sizeof(cfg->osc_target) - 1] = '\0';
   cfg->display_portrait = cfg->display_portrait ? 1 : 0;
+  if (cfg->mono_theme >= MonoTheme::kCount) {
+    cfg->mono_theme = MonoTheme::kClassic;
+  }
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -436,6 +439,10 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
     // display_portrait sits in what was v11 tail padding after osc_target.
     // Default landscape so existing units keep their current orientation.
     out->display_portrait = 0;
+  }
+  if (h.version < 13) {
+    // mono_theme sits in what was v12 tail padding after display_portrait.
+    out->mono_theme = MonoTheme::kClassic;
   }
   config_sanitize(out);
   return true;

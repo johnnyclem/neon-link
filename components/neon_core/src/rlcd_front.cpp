@@ -214,10 +214,19 @@ bool RlcdFrontPanel::take_toggle() {
   return t;
 }
 
+namespace {
+// Order matches MonoTheme; kept to <= 15 chars so a value fits its slot.
+const char* kThemeNames[] = {"CLASSIC", "INK",  "DOTS",  "HERO",
+                             "CONSOLE", "GRID", "PULSE", "NIGHT"};
+static_assert(sizeof(kThemeNames) / sizeof(kThemeNames[0]) ==
+                  static_cast<size_t>(MonoTheme::kCount),
+              "theme name per MonoTheme value");
+}  // namespace
+
 const char* RlcdFrontPanel::item_label(int index) const {
   static const char* kLabels[kItems] = {"PPQN",     "TRS",      "AP",
                                         "QUANTUM",  "SS SYNC",  "MIDI CLK",
-                                        "SCREEN",   "POWER"};
+                                        "SCREEN",   "THEME",    "POWER"};
   if (index < 0 || index >= kItems) {
     return "";
   }
@@ -256,6 +265,11 @@ void RlcdFrontPanel::item_value(int index, char* buf, int cap) const {
       std::snprintf(buf, cap, "%s", cfg_->display_portrait ? "PORT" : "LAND");
       break;
     case 7:
+      std::snprintf(buf, cap, "%s",
+                    kThemeNames[static_cast<uint8_t>(cfg_->mono_theme) %
+                                static_cast<uint8_t>(MonoTheme::kCount)]);
+      break;
+    case 8:
       std::snprintf(buf, cap, ">");
       break;
     default:
@@ -295,6 +309,9 @@ void RlcdFrontPanel::stash() {
     case 6:
       stash8_ = cfg_->display_portrait;
       break;
+    case 7:
+      stash8_ = static_cast<uint8_t>(cfg_->mono_theme);
+      break;
     default:
       break;
   }
@@ -322,6 +339,9 @@ void RlcdFrontPanel::revert() {
       break;
     case 6:
       cfg_->display_portrait = stash8_;
+      break;
+    case 7:
+      cfg_->mono_theme = static_cast<MonoTheme>(stash8_);
       break;
     default:
       break;
@@ -362,6 +382,13 @@ void RlcdFrontPanel::step(int delta) {
     case 6:
       cfg_->display_portrait = cfg_->display_portrait ? 0 : 1;
       break;
+    case 7: {
+      const int n = static_cast<int>(MonoTheme::kCount);
+      const int t =
+          wrap(static_cast<int>(cfg_->mono_theme) + (delta > 0 ? 1 : -1), n);
+      cfg_->mono_theme = static_cast<MonoTheme>(t);
+      break;
+    }
     default:
       break;
   }

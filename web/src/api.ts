@@ -181,6 +181,16 @@ export interface Config {
   beat_style?: "number" | "pie" | "pendulum" | "pulse";
   /** Colour LCD / web palette. MaTouch GC9A01 and this editor. */
   color_theme?: "void" | "teal" | "phosphor" | "amber" | "magenta" | "paper";
+  /** Live-face layout for the 1-bit panels (RLCD, e-paper). */
+  mono_theme?:
+    | "classic"
+    | "ink"
+    | "dots"
+    | "hero"
+    | "console"
+    | "grid"
+    | "pulse"
+    | "night";
   audio: AudioConfig;
   tempo_milli_bpm: number;
   wifi: { networks: WifiNetwork[]; retries: number; ssid: string; pass: string };
