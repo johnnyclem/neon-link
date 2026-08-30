@@ -33,8 +33,8 @@ class RlcdFrontPanel {
   enum class Mode : uint8_t { kSplash, kLive, kMenu, kEdit, kPower, kTempo };
   enum class Action : uint8_t { kNone, kReboot, kPowerOff };
 
-  static constexpr int kItems = 7;  // 6 settings + POWER
-  static constexpr int kPowerItem = 6;
+  static constexpr int kItems = 8;  // 7 settings + POWER
+  static constexpr int kPowerItem = 7;
   static constexpr int64_t kIdleUs = 25000000;
   static constexpr int64_t kTempoIdleUs = 3000000;  // Tempo screen auto-close
   static constexpr int64_t kSplashUs = 6000000;

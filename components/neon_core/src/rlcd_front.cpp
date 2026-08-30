@@ -215,9 +215,9 @@ bool RlcdFrontPanel::take_toggle() {
 }
 
 const char* RlcdFrontPanel::item_label(int index) const {
-  static const char* kLabels[kItems] = {"PPQN",    "TRS",      "AP",
-                                        "QUANTUM", "SS SYNC",  "MIDI CLK",
-                                        "POWER"};
+  static const char* kLabels[kItems] = {"PPQN",     "TRS",      "AP",
+                                        "QUANTUM",  "SS SYNC",  "MIDI CLK",
+                                        "SCREEN",   "POWER"};
   if (index < 0 || index >= kItems) {
     return "";
   }
@@ -253,6 +253,9 @@ void RlcdFrontPanel::item_value(int index, char* buf, int cap) const {
       std::snprintf(buf, cap, "%s", cfg_->midi_clock_out ? "ON" : "OFF");
       break;
     case 6:
+      std::snprintf(buf, cap, "%s", cfg_->display_portrait ? "PORT" : "LAND");
+      break;
+    case 7:
       std::snprintf(buf, cap, ">");
       break;
     default:
@@ -289,6 +292,9 @@ void RlcdFrontPanel::stash() {
     case 5:
       stash8_ = cfg_->midi_clock_out;
       break;
+    case 6:
+      stash8_ = cfg_->display_portrait;
+      break;
     default:
       break;
   }
@@ -313,6 +319,9 @@ void RlcdFrontPanel::revert() {
       break;
     case 5:
       cfg_->midi_clock_out = stash8_;
+      break;
+    case 6:
+      cfg_->display_portrait = stash8_;
       break;
     default:
       break;
@@ -349,6 +358,9 @@ void RlcdFrontPanel::step(int delta) {
       break;
     case 5:
       cfg_->midi_clock_out = cfg_->midi_clock_out ? 0 : 1;
+      break;
+    case 6:
+      cfg_->display_portrait = cfg_->display_portrait ? 0 : 1;
       break;
     default:
       break;

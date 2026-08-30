@@ -315,6 +315,7 @@ void apply_ui_config(const neon::Config& ui_cfg) {
   live.start_stop_sync = ui_cfg.start_stop_sync;
   live.midi_clock_out = ui_cfg.midi_clock_out;
   live.midi_trs_type = ui_cfg.midi_trs_type;
+  live.display_portrait = ui_cfg.display_portrait;
   neon_config_apply(live);
 }
 

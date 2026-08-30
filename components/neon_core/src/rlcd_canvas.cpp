@@ -11,12 +11,14 @@ namespace {
 // Logical (x, y) -> physical buffer (px, py). Landscape is identity;
 // portrait rotates the logical 300×400 plane into the physical 400×300
 // buffer so that, composed with the packer's built-in R1 rotation, the
-// image lands upright in the panel's native portrait orientation.
+// image lands upright with the three buttons on the LEFT — the way the
+// panel sits in a portrait stand (buttons are on top in landscape, so a
+// counter-clockwise turn to portrait moves them to the left edge).
 inline void to_physical(RlcdCanvas::Orientation o, int x, int y, int* px,
                         int* py) {
   if (o == RlcdCanvas::Orientation::kPortrait) {
-    *px = y;
-    *py = RlcdCanvas::kHeight - 1 - x;
+    *px = RlcdCanvas::kWidth - 1 - y;
+    *py = x;
   } else {
     *px = x;
     *py = y;
@@ -258,8 +260,8 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     }
   }
 
-  // Footer detail line.
-  if (s.overlay != 3 && s.overlay != 5) {
+  // Footer detail line (live face only; overlays own the lower rows).
+  if (s.overlay == 0) {
     if (s.detail[0] != '\0') {
       c.draw_text(12, 276, s.detail, 2);
     } else {
@@ -362,8 +364,8 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     }
   }
 
-  // Footer detail line.
-  if (s.overlay != 3 && s.overlay != 5) {
+  // Footer detail line (live face only).
+  if (s.overlay == 0) {
     c.draw_text(14, 372, s.detail[0] != '\0' ? s.detail
                                              : "MIDI CLOCK  24 PPQN", 2);
   }

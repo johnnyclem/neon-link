@@ -180,6 +180,30 @@ TEST_CASE("quantum steps through the ladder and the value renders") {
   CHECK(std::strcmp(v, "8") == 0);
 }
 
+TEST_CASE("SCREEN row toggles portrait and renders its value") {
+  Config cfg;
+  cfg.display_portrait = 0;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  for (int i = 0; i < 6; ++i) {
+    ui.on_boot_short(3 + i);  // cursor -> 6 = SCREEN
+  }
+  CHECK(ui.cursor() == 6);
+  char v[16];
+  ui.item_value(6, v, sizeof(v));
+  CHECK(std::strcmp(v, "LAND") == 0);
+
+  ui.on_key_short(10);   // enter edit
+  ui.on_boot_short(11);  // toggle
+  CHECK(cfg.display_portrait == 1);
+  ui.item_value(6, v, sizeof(v));
+  CHECK(std::strcmp(v, "PORT") == 0);
+  ui.on_key_short(12);  // commit
+  CHECK(ui.mode() == Mode::kMenu);
+  CHECK(ui.take_dirty());
+}
+
 TEST_CASE("menu idles back to live and reverts a pending edit") {
   Config cfg;
   cfg.start_stop_sync = 1;

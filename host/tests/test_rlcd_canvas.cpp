@@ -18,9 +18,9 @@ TEST_CASE("logical extent follows orientation") {
 }
 
 TEST_CASE("portrait maps logical coords into the physical buffer") {
-  // Portrait logical (x, y) -> physical (y, kHeight-1-x). The mapping is a
+  // Portrait logical (x, y) -> physical (kWidth-1-y, x). The mapping is a
   // bijection between the 300x400 logical plane and the 400x300 buffer, so
-  // a pixel set in portrait reads back at the mirrored spot in landscape.
+  // a pixel set in portrait reads back at the rotated spot in landscape.
   RlcdCanvas c;
   c.set_orientation(Orientation::kPortrait);
   c.set_pixel(0, 0, true);      // logical top-left
@@ -29,8 +29,8 @@ TEST_CASE("portrait maps logical coords into the physical buffer") {
   CHECK(c.pixel(299, 399));
 
   c.set_orientation(Orientation::kLandscape);
-  CHECK(c.pixel(0, 299));   // (0,0)  -> physical (0, 299)
-  CHECK(c.pixel(399, 0));   // (299,399) -> physical (399, 0)
+  CHECK(c.pixel(399, 0));   // (0,0)     -> physical (399, 0)
+  CHECK(c.pixel(0, 299));   // (299,399) -> physical (0, 299)
 }
 
 TEST_CASE("filling the whole logical area fills the whole buffer") {
