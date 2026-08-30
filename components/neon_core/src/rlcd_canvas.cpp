@@ -586,9 +586,9 @@ static void render_theme_console(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     c.fill_rect(w - 41, 17, 20, 20, true);
   }
 
-  char tap[8];
-  char np[8];
-  char batt[8];
+  char tap[12];
+  char np[12];
+  char batt[12];
   std::snprintf(tap, sizeof(tap), "%u", static_cast<unsigned>(rs.beat));
   std::snprintf(np, sizeof(np), "%u", static_cast<unsigned>(s.peers));
   if (rs.battery_pct < 0) {
