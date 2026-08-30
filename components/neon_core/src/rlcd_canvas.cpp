@@ -482,7 +482,7 @@ static void render_theme_ink(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   std::snprintf(peers, sizeof(peers), "PEERS %u",
                 static_cast<unsigned>(s.peers));
   c.draw_text(12, 12, peers, 2);
-  draw_battery(c, w - 50, 10, rs.battery_pct);
+  draw_battery(c, w - 50, 10, rs.battery_pct, s.usb_power);
 
   char bpm[24];
   bpm_text(s, bpm, sizeof(bpm));
@@ -540,7 +540,7 @@ static void render_theme_hero(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   std::snprintf(peers, sizeof(peers), "PEERS %u",
                 static_cast<unsigned>(s.peers));
   c.draw_text(12, 12, peers, 2);
-  draw_battery(c, w - 50, 10, rs.battery_pct);
+  draw_battery(c, w - 50, 10, rs.battery_pct, s.usb_power);
 
   char bpm[8];
   std::snprintf(bpm, sizeof(bpm), "%u",
@@ -671,7 +671,7 @@ static void render_theme_grid(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     }
   }
   c.draw_text(m + 10, m + 11, name, 2);
-  draw_battery(c, w - m - 46, m + 10, rs.battery_pct);
+  draw_battery(c, w - m - 46, m + 10, rs.battery_pct, s.usb_power);
 
   // Tempo row.
   const int bpm_y = m + 48;
@@ -736,7 +736,7 @@ static void render_theme_pulse(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   if (!s.playing) {
     c.draw_text(12, 12, peers, 2);
-    draw_battery(c, w - 50, 10, rs.battery_pct);
+    draw_battery(c, w - 50, 10, rs.battery_pct, s.usb_power);
     const int scale = fit_scale(static_cast<int>(std::strlen(bpm)), w - 28, 10);
     draw_text_centered(c, h / 2 - (7 * scale) / 2 - 20, bpm, scale);
     draw_text_centered(c, h - 74, "STOPPED", 4);
