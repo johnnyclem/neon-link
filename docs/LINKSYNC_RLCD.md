@@ -67,7 +67,13 @@ rollback. Plus, unique to this face:
 
 - **Live beat dots** — one box per quantum beat, filled on the beat.
 - **Battery gauge** — VBAT through the ÷3 divider on GPIO4, coarse
-  LiPo curve, quantized so ADC jitter never repaints the glass.
+  LiPo curve, quantized so ADC jitter never repaints the glass. The
+  board loses ~160 mV before the divider, so the reading is corrected
+  by that fixed offset (a full pack read ~4.04 V raw and never hit
+  100%). When on external power the gauge shows a lightning bolt
+  instead of a level: there is no charge-status GPIO, so "charging" is
+  inferred from the rail sitting near 4.2 V under load (a charger holds
+  it there; an unplugged pack sags), with hysteresis to avoid flicker.
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
   - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
     BOOT hold = Tempo screen.

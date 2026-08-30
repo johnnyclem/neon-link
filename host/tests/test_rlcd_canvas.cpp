@@ -50,6 +50,24 @@ TEST_CASE("out-of-range logical writes are clipped, not wrapped") {
   CHECK(c.black_pixels() == 0);
 }
 
+TEST_CASE("the charging bolt changes the battery glyph") {
+  RlcdPanelStatus rs{};
+  rs.base.milli_bpm = 120000;
+  rs.battery_pct = 100;
+  std::snprintf(rs.base.title, sizeof(rs.base.title), "link-rlcd");
+
+  RlcdCanvas full;
+  rs.base.usb_power = false;
+  neon::render_rlcd_panel(full, rs);
+
+  RlcdCanvas charging;
+  rs.base.usb_power = true;
+  neon::render_rlcd_panel(charging, rs);
+
+  // Same status apart from usb_power must render a different battery glyph.
+  CHECK(full.black_pixels() != charging.black_pixels());
+}
+
 TEST_CASE("both orientations render a non-empty status face") {
   RlcdPanelStatus rs{};
   rs.base.milli_bpm = 128000;

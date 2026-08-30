@@ -113,11 +113,19 @@ int RlcdCanvas::black_pixels() const {
 
 namespace {
 
-// Chunky battery outline with a proportional fill. pct < 0 draws the
-// outline with a "?" instead of a level.
-void draw_battery(RlcdCanvas& c, int x, int y, int pct) {
+// Chunky battery outline. When charging it carries a lightning bolt (on
+// external power); otherwise a proportional fill, or a "?" if unknown.
+void draw_battery(RlcdCanvas& c, int x, int y, int pct, bool charging) {
   c.draw_rect(x, y, 34, 16, 2, true);
-  c.fill_rect(x + 34, y + 4, 4, 8, true);
+  c.fill_rect(x + 34, y + 4, 4, 8, true);  // positive nub
+  if (charging) {
+    // Lightning bolt: a left-stepping zig-zag inside the body.
+    c.fill_rect(x + 16, y + 3, 9, 2, true);
+    c.fill_rect(x + 11, y + 6, 12, 2, true);
+    c.fill_rect(x + 14, y + 8, 9, 2, true);
+    c.fill_rect(x + 18, y + 10, 4, 2, true);
+    return;
+  }
   if (pct < 0) {
     c.draw_text(x + 12, y + 4, "?", 1);
     return;
@@ -174,7 +182,7 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   std::snprintf(peers, sizeof(peers), "PEERS %u",
                 static_cast<unsigned>(s.peers));
   c.draw_text(216, 10, peers, 2);
-  draw_battery(c, kW - 46, 9, rs.battery_pct);
+  draw_battery(c, kW - 46, 9, rs.battery_pct, s.usb_power);
   c.fill_rect(12, 32, kW - 24, 2, true);
 
   // BPM, the reason this box exists. 6× digits leave room for the
@@ -284,7 +292,7 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   // Header: name left, battery right, rule underneath.
   c.draw_text(10, 10, s.title[0] != '\0' ? s.title : "link-rlcd", 2);
-  draw_battery(c, kW - 44, 9, rs.battery_pct);
+  draw_battery(c, kW - 44, 9, rs.battery_pct, s.usb_power);
   c.fill_rect(10, 34, kW - 20, 2, true);
 
   // BPM, the reason this box exists.

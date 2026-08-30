@@ -62,6 +62,14 @@ constexpr int kRepeatAccelAfter = 5;
 // "keep holding" cue appears partway through.
 constexpr int64_t kOrientHoldUs = 3000000;
 constexpr int64_t kOrientHintUs = 700000;
+// Battery: fixed correction for the ~160 mV lost before the divider, and a
+// charging heuristic. There is no charge-status GPIO on this board, so we
+// infer "on external power" from the rail: a charger holds VBAT near 4.2 V
+// even under the ~100 mA Wi-Fi load, while an unplugged pack sags. The
+// hysteresis band keeps the bolt from flickering near the boundary.
+constexpr uint32_t kVbatCalMv = 160;
+constexpr uint32_t kChargeOnMv = 4185;
+constexpr uint32_t kChargeOffMv = 4120;
 
 uint32_t hash_text(uint32_t h, const char* p) {
   for (; p != nullptr && *p != '\0'; ++p) {
@@ -78,6 +86,7 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   h = h * 33u + (s.provisioned ? 1u : 0u);
   h = h * 33u + (s.wifi_up ? 1u : 0u);
   h = h * 33u + (s.setup_ap ? 1u : 0u);
+  h = h * 33u + (s.usb_power ? 1u : 0u);
   h = h * 33u + s.overlay;
   h = h * 33u + static_cast<uint32_t>(s.cursor);
   h = h * 33u + static_cast<uint32_t>(s.power_cursor);
@@ -203,11 +212,14 @@ class Battery {
       return 0;
     }
     int mv = 0;
-    if (cali_ != nullptr && adc_cali_raw_to_voltage(cali_, raw, &mv) == ESP_OK) {
-      return static_cast<uint32_t>(mv) * 3u;
-    }
-    // Uncalibrated fallback: 12-bit full scale ≈ 3100 mV at 12 dB.
-    return static_cast<uint32_t>(raw) * 3100u / 4095u * 3u;
+    const uint32_t vbat =
+        (cali_ != nullptr && adc_cali_raw_to_voltage(cali_, raw, &mv) == ESP_OK)
+            ? static_cast<uint32_t>(mv) * 3u
+            : static_cast<uint32_t>(raw) * 3100u / 4095u * 3u;
+    // The board drops ~160 mV between the cell and the divider (an
+    // ideal-diode/FET path), so a full pack read ~4.04 V raw and the gauge
+    // never reached 100%. Add it back, measured against a known-full cell.
+    return vbat + kVbatCalMv;
   }
 
  private:
@@ -386,6 +398,7 @@ void rlcd_task(void*) {
   bool hpm = true;
   uint32_t battery_mv = 0;
   int64_t battery_us = -kBatteryPeriodUs;
+  bool charging = false;
 
   auto orient_of = [](const neon::Config& c) {
     return c.display_portrait ? neon::RlcdCanvas::Orientation::kPortrait
@@ -535,12 +548,18 @@ void rlcd_task(void*) {
       const uint32_t mv = battery.millivolts();
       // Light EMA so the gauge doesn't wander with load spikes.
       battery_mv = battery_mv == 0 ? mv : (battery_mv * 3 + mv) / 4;
+      if (battery_mv >= kChargeOnMv) {
+        charging = true;
+      } else if (battery_mv < kChargeOffMv) {
+        charging = false;
+      }
     }
 
     neon::RlcdPanelStatus st{};
     fill_status(&st, ui, now);
     st.battery_mv = battery_mv;
     st.battery_pct = battery_percent(battery_mv);
+    st.base.usb_power = charging;
     st.low_power = !hpm;
 
     const uint32_t fp = fingerprint(st);
