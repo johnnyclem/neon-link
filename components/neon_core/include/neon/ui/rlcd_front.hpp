@@ -73,6 +73,14 @@ class RlcdFrontPanel {
   static const char* power_label(int index);
 
  private:
+  // In portrait the panel is turned so the buttons run down the left edge
+  // with BOOT on top and KEY on the bottom (the same reason the Tempo
+  // screen's BOOT=up/KEY=down reads right there). A vertical list must
+  // follow suit: BOOT (top) walks the cursor up, not down. Landscape keeps
+  // the original one-button convention (tap down, hold up).
+  bool portrait() const { return cfg_ != nullptr && cfg_->display_portrait; }
+  int nav_step() const { return portrait() ? -1 : 1; }
+
   bool readonly(int index) const;
   void touch(int64_t now_us);
   void leave_splash(int64_t now_us);

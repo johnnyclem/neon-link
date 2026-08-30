@@ -99,6 +99,20 @@ TEST_CASE("menu navigation with two buttons") {
   CHECK(ui.mode() == Mode::kLive);
 }
 
+TEST_CASE("portrait reverses menu navigation so the top button walks up") {
+  Config cfg;
+  cfg.display_portrait = 1;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  CHECK(ui.mode() == Mode::kMenu);
+  CHECK(ui.cursor() == 0);
+  ui.on_boot_short(3);  // BOOT (top button in portrait) taps up -> wraps
+  CHECK(ui.cursor() == RlcdFrontPanel::kItems - 1);
+  ui.on_boot_long(4);   // BOOT hold walks down
+  CHECK(ui.cursor() == 0);
+}
+
 TEST_CASE("editing TRS commits on KEY short and reverts on KEY long") {
   Config cfg;
   cfg.midi_trs_type = 0;

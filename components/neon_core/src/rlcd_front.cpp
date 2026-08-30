@@ -132,13 +132,13 @@ void RlcdFrontPanel::on_boot_short(int64_t now_us) {
       nudge_ += 1;
       return;
     case Mode::kMenu:
-      cursor_ = wrap(cursor_ + 1, kItems);
+      cursor_ = wrap(cursor_ + nav_step(), kItems);
       return;
     case Mode::kEdit:
       step(1);
       return;
     case Mode::kPower:
-      power_cur_ = wrap(power_cur_ + 1, kPowerChoices);
+      power_cur_ = wrap(power_cur_ + nav_step(), kPowerChoices);
       return;
   }
 }
@@ -158,13 +158,13 @@ void RlcdFrontPanel::on_boot_long(int64_t now_us) {
       nudge_ += 1;
       return;
     case Mode::kMenu:
-      cursor_ = wrap(cursor_ - 1, kItems);
+      cursor_ = wrap(cursor_ - nav_step(), kItems);
       return;
     case Mode::kEdit:
       step(-1);
       return;
     case Mode::kPower:
-      power_cur_ = wrap(power_cur_ - 1, kPowerChoices);
+      power_cur_ = wrap(power_cur_ - nav_step(), kPowerChoices);
       return;
   }
 }
