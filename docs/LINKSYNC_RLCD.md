@@ -3,8 +3,10 @@
 An always-legible, battery-friendly Ableton Link peer. Same repo, same
 GPLv2+ license, same MIDI-clock path as the XIAO dongle
 ([docs/LINKSYNC.md](LINKSYNC.md)). The 4.2" reflective panel is the
-status surface; the side KEY and BOOT buttons are the whole front
-panel.
+status surface; the KEY and BOOT buttons are the whole front panel.
+There are three buttons across the top edge — KEY, BOOT, and PWR in
+the middle — but only KEY and BOOT are user-readable GPIOs; PWR is the
+board's power on/off button (single click on, long press off).
 
 **Reference board:** Waveshare **ESP32-S3-RLCD-4.2**
 (ESP32-S3-WROOM-1-N16R8 — 16 MB flash, 8 MB octal PSRAM, native
@@ -34,8 +36,8 @@ Tapping BOOT trims the tempo up by one. To go the other way — or to
 move fast — **hold BOOT** to open the Tempo screen: there BOOT is up,
 KEY is down, and holding either one auto-repeats (accelerating). The
 screen closes itself a few seconds after the last press. There is no
-dedicated "down" button because the third front button is the chip's
-RESET line, which firmware cannot read.
+dedicated "down" button because the third top button is the PWR
+button (power on/off), leaving only KEY and BOOT for control.
 
 ## Why a reflective LCD
 
@@ -72,7 +74,7 @@ rollback. Plus, unique to this face:
   - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable
-    (the third is the hardware RESET line).
+    (the third is the PWR button, reserved for power on/off).
   - Menu: BOOT tap/hold = cursor down/up, KEY tap = edit, KEY hold =
     back. Same six settings as the e-paper face plus a POWER row
     (restart / power off / cancel).
@@ -92,7 +94,7 @@ From the vendor board manifest and schematic
 | I2C SDA / SCL (RTC, SHTC3, codecs) | 13 / 14 |
 | TRS MIDI TX / RX (UART1 @ 31250) | 43 / 44 |
 | Battery ADC (÷3) | 4 |
-| Side KEY (active-low) / BOOT | 18 / 0 |
+| KEY / BOOT (top edge, active-low) | 18 / 0 |
 | I2S MCLK / BCLK / WS / DOUT / DIN | 16 / 9 / 45 / 8 / 10 |
 | Speaker amp enable | 46 |
 | SDMMC CLK / CMD / D0 (unused) | 38 / 21 / 39 |

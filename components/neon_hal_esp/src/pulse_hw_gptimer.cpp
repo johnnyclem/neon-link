@@ -36,12 +36,15 @@ bool PulseHwGptimer::init(const int* gpios, size_t count, bool virtual_channels)
   virtual_ = virtual_channels;
   g_levels.store(0, std::memory_order_relaxed);
   for (size_t i = 0; i < count; ++i) {
+    if (virtual_) {
+      continue;  // no real pin to claim, and the ISR never touches the
+                 // w1ts register for a virtual channel — so the 0..31
+                 // limit below does not apply (linksync boards park the
+                 // Run gate on a >31 pin like GPIO42 and drive MIDI only).
+    }
     if (gpios[i] < 0 || gpios[i] >= 32) {
       ESP_LOGE(kTag, "pulse GPIO %d out of w1ts range", gpios[i]);
       return false;
-    }
-    if (virtual_) {
-      continue;  // no real pin to claim
     }
     gpio_config_t io = {};
     io.pin_bit_mask = 1ull << gpios[i];

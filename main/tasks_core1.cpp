@@ -38,8 +38,11 @@ constexpr int64_t kHorizonUs = 67000;
 constexpr int64_t kLeadUs = 2000;
 constexpr TickType_t kRefillTicks = pdMS_TO_TICKS(5);
 
-// Edge-stream channel index -> GPIO (all < 32; see board_pins.h).
-// On AMYboard these are virtual bit indices, not real pins.
+// Edge-stream channel index -> GPIO. Real (non-virtual) pins must be
+// 0..31 to be reachable by the ISR's w1ts register write; virtual
+// channels are bit indices / placeholders and may sit higher (the
+// linksync Run gate is GPIO42, virtual, and drives MIDI only).
+// See board_pins.h.
 constexpr int kChannelGpio[neon::kChannelCount] = {
     kPinClk1, kPinClk2, kPinClk3, kPinClk4, kPinReset, kPinRun,
 };

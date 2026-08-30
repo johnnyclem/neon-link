@@ -422,7 +422,9 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 //   SD (1-bit):  CLK 38  CMD 21  D0 39 (unused)
 //   Audio I2S0:  MCLK 16  BCLK 9  WS 45  DOUT 8  DIN 10  PA 46
 //   Battery:     ADC GPIO4, ÷3 divider
-//   Buttons:     side KEY 18 (active-low), BOOT 0
+//   Buttons:     top edge KEY 18, BOOT 0 (active-low). A third top
+//                button, PWR, handles power on/off and is not on a
+//                user-readable GPIO.
 
 inline constexpr int kPinClk1 = 1;
 inline constexpr int kPinClk2 = 2;

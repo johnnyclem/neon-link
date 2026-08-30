@@ -22,11 +22,12 @@ namespace neon {
 // commits, KEY long reverts. Idle returns to live; the boot splash
 // clears itself after a few seconds.
 //
-// Why a Tempo screen rather than BOOT-tap-up / BOOT-hold-down: with
-// only the side KEY and BOOT usable (the third front button is the
-// hardware RESET line), a single button cannot host both directions
-// discoverably. A brief hold surfaces a screen where each button
-// owns one direction and the labels say so.
+// Why a Tempo screen rather than BOOT-tap-up / BOOT-hold-down: the
+// board's three top-edge buttons are KEY, BOOT, and PWR, but only KEY
+// and BOOT are user-readable GPIOs (PWR is the power on/off button).
+// With just two control buttons, a single button cannot host both
+// directions discoverably. A brief hold surfaces a screen where each
+// button owns one direction and the labels say so.
 class RlcdFrontPanel {
  public:
   enum class Mode : uint8_t { kSplash, kLive, kMenu, kEdit, kPower, kTempo };
