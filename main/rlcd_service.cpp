@@ -24,6 +24,7 @@
 #include "wifi.h"
 
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 
 #if CONFIG_NEON_BOARD_LINKSYNC_RLCD
 #include "esp_adc/adc_cali.h"
@@ -375,11 +376,18 @@ void power_off(neon::RlcdCanvas* canvas, uint8_t* packed) {
   neon::render_rlcd_splash(*canvas);
   neon::rlcd::pack_frame(canvas->data(), packed);
   halesp::rlcd_st7305_present(packed);
-  // Leave the splash on the glass: LPM scan holds the image for
-  // microamps while the ESP deep-sleeps. KEY wakes the box.
+  // Leave the "press a button to start" splash on the glass: the LPM scan
+  // holds the image for microamps while the ESP deep-sleeps. This is the
+  // battery-friendly off — KEY wakes it with no USB needed.
   halesp::rlcd_st7305_set_power(false);
-  const uint64_t wake = 1ull << static_cast<unsigned>(kPinKeyUser);
-  esp_sleep_enable_ext1_wakeup(wake, ESP_EXT1_WAKEUP_ANY_LOW);
+  // Hold KEY high through deep sleep so EXT1 ANY_LOW only fires on a real
+  // press (the internal pull-up is otherwise powered down in deep sleep,
+  // leaving the pin free to float and wake spuriously or not at all).
+  const gpio_num_t wake_pin = static_cast<gpio_num_t>(kPinKeyUser);
+  rtc_gpio_pullup_en(wake_pin);
+  rtc_gpio_pulldown_dis(wake_pin);
+  esp_sleep_enable_ext1_wakeup(1ull << static_cast<unsigned>(kPinKeyUser),
+                               ESP_EXT1_WAKEUP_ANY_LOW);
   esp_deep_sleep_start();
 }
 
