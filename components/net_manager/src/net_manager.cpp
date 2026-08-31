@@ -530,6 +530,19 @@ bool ap_start(const ApParams& params) {
   if (!wifi_driver_init()) {
     return false;
   }
+  // Native boards start the AP netif — and with it the DHCP server — from
+  // the shared default WIFI_EVENT handler set that
+  // esp_netif_create_default_wifi_sta() installs (see kApSelfStartsNetif:
+  // on_ap_event deliberately does NOT add the netif a second time). The
+  // setup-AP-only path never runs main/wifi.cpp's neon_wifi_start() (it
+  // early-returns with no credentials), and BLE provisioning can fail
+  // before creating STA too — so without this the AP beacons but hands out
+  // no leases and clients hang on "obtaining IP address". Create the STA
+  // netif here so the handler exists; STA stays dormant in AP-only mode.
+  if (!kApSelfStartsNetif &&
+      esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == nullptr) {
+    esp_netif_create_default_wifi_sta();
+  }
 #if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   if (g_nearby < 0) {
     g_nearby = c3_listen_probe();
