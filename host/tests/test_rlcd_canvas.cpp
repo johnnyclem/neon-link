@@ -72,6 +72,48 @@ TEST_CASE("the charging bolt changes the battery glyph") {
   CHECK(full.black_pixels() != charging.black_pixels());
 }
 
+namespace {
+int ink_in(const RlcdCanvas& c, int x0, int y0, int x1, int y1) {
+  int n = 0;
+  for (int y = y0; y < y1; ++y)
+    for (int x = x0; x < x1; ++x)
+      if (c.pixel(x, y)) ++n;
+  return n;
+}
+}  // namespace
+
+TEST_CASE("button tabs are drawn at the edge on every mode") {
+  for (uint8_t overlay : {0, 1, 2, 3, 5}) {
+    RlcdPanelStatus rs{};
+    rs.base.milli_bpm = 120000;
+    rs.base.overlay = overlay;
+    RlcdCanvas c;
+    neon::render_rlcd_panel(c, rs);
+    // The top-left tab frame guarantees ink there in every mode.
+    CHECK(ink_in(c, 2, 2, 152, 44) > 0);
+  }
+}
+
+TEST_CASE("the KEY tab reflects transport state") {
+  RlcdPanelStatus stopped{};
+  stopped.base.milli_bpm = 120000;
+  stopped.base.playing = false;
+  RlcdPanelStatus playing = stopped;
+  playing.base.playing = true;
+
+  RlcdCanvas a;
+  neon::render_rlcd_panel(a, stopped);
+  RlcdCanvas b;
+  neon::render_rlcd_panel(b, playing);
+
+  // PLAY vs STOP must change the KEY tab (top-left), not just the body.
+  int diff = 0;
+  for (int y = 2; y < 44; ++y)
+    for (int x = 2; x < 152; ++x)
+      if (a.pixel(x, y) != b.pixel(x, y)) ++diff;
+  CHECK(diff > 0);
+}
+
 TEST_CASE("both orientations render a non-empty status face") {
   RlcdPanelStatus rs{};
   rs.base.milli_bpm = 128000;

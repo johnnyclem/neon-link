@@ -321,13 +321,10 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 
   if (s.overlay == 5) {
-    // Tempo screen: the big BPM above already tracks each nudge; here we
-    // just name the screen and say which button goes which way, since a
-    // reflective panel can afford a couple of instruction lines.
+    // Tempo screen: the big BPM above tracks each nudge; the button tabs
+    // name up/down, so here we only title the screen and note the ramp.
     c.draw_text(12, 118, "TEMPO", 4);
-    c.draw_text(12, 168, "BOOT = UP", 3);
-    c.draw_text(12, 205, "KEY  = DOWN", 3);
-    c.draw_text(12, 246, "HOLD TO RAMP", 2);
+    c.draw_text(12, 170, "HOLD TO RAMP", 2);
   }
 
   if (s.overlay == 1 || s.overlay == 2) {
@@ -425,15 +422,15 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   if (s.overlay == 5) {
     c.draw_text(14, 120, "TEMPO", 4);
-    c.draw_text(14, 175, "BOOT = UP", 3);
-    c.draw_text(14, 215, "KEY  = DOWN", 3);
-    c.draw_text(14, 262, "HOLD TO RAMP", 2);
+    c.draw_text(14, 172, "HOLD TO RAMP", 2);
   }
 
   if (s.overlay == 1 || s.overlay == 2) {
     c.draw_text(14, 98, s.overlay == 2 ? "EDIT" : "MENU", 2);
-    const int row0 = 118;
-    const int row_h = 28;
+    // Rows sit between the top BOOT tab and the bottom KEY tab (all nine
+    // settings must clear the KEY tab that starts at height-44).
+    const int row0 = 116;
+    const int row_h = 26;
     for (int i = 0; i < s.n_items && i < 10; ++i) {
       const int y = row0 + i * row_h;
       char line[48];
@@ -772,6 +769,66 @@ static void render_theme_pulse(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 }
 
+// Soft-button tabs pinned to the physical button edge. KEY and BOOT are the
+// two usable buttons; each shows its tap action and, where different, its
+// hold action. Landscape has them on the top edge (KEY left, BOOT right);
+// portrait turns the panel so they run down the left edge (BOOT top, KEY
+// bottom — the same reason Tempo's BOOT=up/KEY=down reads right there).
+static void tab_actions(const RlcdPanelStatus& rs, bool portrait,
+                        const char** k_tap, const char** k_hold,
+                        const char** b_tap, const char** b_hold) {
+  switch (rs.base.overlay) {
+    case 1:  // settings menu
+      *k_tap = "SELECT"; *k_hold = "BACK";
+      *b_tap = portrait ? "UP" : "DOWN"; *b_hold = portrait ? "DOWN" : "UP";
+      break;
+    case 2:  // editing a value
+      *k_tap = "SAVE"; *k_hold = "CANCEL";
+      *b_tap = "NEXT"; *b_hold = "PREV";
+      break;
+    case 3:  // power popup
+      *k_tap = "SELECT"; *k_hold = "BACK";
+      *b_tap = portrait ? "UP" : "DOWN"; *b_hold = portrait ? "DOWN" : "UP";
+      break;
+    case 5:  // tempo screen (tap and hold go the same way; hold auto-repeats)
+      *k_tap = "DOWN"; *k_hold = "";
+      *b_tap = "UP"; *b_hold = "";
+      break;
+    default:  // live face
+      *k_tap = rs.base.playing ? "STOP" : "PLAY"; *k_hold = "MENU";
+      *b_tap = "+BPM"; *b_hold = "TEMPO";
+      break;
+  }
+}
+
+static void draw_one_tab(RlcdCanvas& c, int x, int y, int w, const char* name,
+                         const char* tap, const char* hold) {
+  const bool two = hold != nullptr && hold[0] != '\0';
+  const int h = two ? 42 : 26;
+  c.fill_rect(x, y, w, h, false);    // white ground, so it reads over any face
+  c.draw_rect(x, y, w, h, 2, true);  // black frame
+  char line[24];
+  std::snprintf(line, sizeof(line), "%s %s", name, tap);
+  c.draw_text(x + 6, y + 5, line, 2);
+  if (two) {
+    std::snprintf(line, sizeof(line), "HOLD %s", hold);
+    c.draw_text(x + 6, y + 23, line, 2);
+  }
+}
+
+static void draw_button_tabs(RlcdCanvas& c, const RlcdPanelStatus& rs) {
+  const bool portrait = c.orientation() == RlcdCanvas::Orientation::kPortrait;
+  const char *kt, *kh, *bt, *bh;
+  tab_actions(rs, portrait, &kt, &kh, &bt, &bh);
+  if (portrait) {
+    draw_one_tab(c, 2, 2, 150, "BOOT", bt, bh);
+    draw_one_tab(c, 2, c.height() - 44, 150, "KEY", kt, kh);
+  } else {
+    draw_one_tab(c, 2, 2, 150, "KEY", kt, kh);
+    draw_one_tab(c, 200, 2, 150, "BOOT", bt, bh);  // clears the battery at 354
+  }
+}
+
 void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   if (rs.base.overlay == 4) {
     render_rlcd_splash(c);
@@ -815,6 +872,9 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   } else {
     render_landscape(c, rs);
   }
+  // Always-on soft-button legend, drawn before the theme's dark-flip so it
+  // inverts with the face.
+  draw_button_tabs(c, rs);
   if (rs.base.invert) {
     c.invert();
   }

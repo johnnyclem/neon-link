@@ -87,6 +87,13 @@ rollback. Plus, unique to this face:
     cancel).
   - Power off paints the splash, drops the panel to LPM (the image
     persists), and deep-sleeps the ESP32. KEY wakes it.
+  - **Button tabs** — an always-on soft-label legend pinned to the edge
+    the buttons are on (top in landscape: KEY left / BOOT right;
+    portrait: BOOT top / KEY bottom on the left edge). Each tab names
+    the button's tap and, where different, its hold action, and tracks
+    the mode (e.g. Live: KEY PLAY / hold MENU, BOOT +BPM / hold TEMPO;
+    Menu: KEY SELECT / hold BACK). Drawn last as a framed callout so it
+    stays legible over any theme and flips with the dark ones.
 
 - **Landscape / portrait** — the panel is a 300×400 portrait controller
   the firmware normally drives as 400×300 landscape (buttons on the top
