@@ -32,6 +32,11 @@ struct RlcdPanelStatus {
   // the face reads STOPPING (not PLAYING) so the button press registers
   // immediately instead of after up to a whole bar.
   bool stopping = false;
+  // A quantized start is counting in to the next downbeat: the metronome
+  // animates (base.playing is set for the render) and a "STARTING IN N"
+  // banner counts the beats remaining. countin is that N (1..quantum).
+  bool starting = false;
+  uint8_t countin = 0;
   // Which live face to draw (a MonoTheme value). Overlays keep the shared
   // layout; base.invert flips the whole frame for the dark themes.
   uint8_t theme = 0;

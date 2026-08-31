@@ -129,6 +129,31 @@ TEST_CASE("the stopping window renders differently from playing") {
   CHECK(std::memcmp(a.data(), b.data(), RlcdCanvas::kSize) != 0);
 }
 
+TEST_CASE("the count-in renders a STARTING banner and tracks the number") {
+  RlcdPanelStatus stopped{};
+  stopped.base.milli_bpm = 120000;
+
+  RlcdPanelStatus in3 = stopped;
+  in3.starting = true;
+  in3.countin = 3;
+  in3.beat = 2;
+  in3.base.playing = true;  // animates as the service fakes it
+
+  RlcdCanvas a;
+  neon::render_rlcd_panel(a, stopped);
+  RlcdCanvas b;
+  neon::render_rlcd_panel(b, in3);
+  // The banner (and the animating metronome) make the count-in distinct.
+  CHECK(std::memcmp(a.data(), b.data(), RlcdCanvas::kSize) != 0);
+
+  RlcdPanelStatus in1 = in3;
+  in1.countin = 1;
+  RlcdCanvas c;
+  neon::render_rlcd_panel(c, in1);
+  // "STARTING IN 3" vs "STARTING IN 1" must differ on the glass.
+  CHECK(std::memcmp(b.data(), c.data(), RlcdCanvas::kSize) != 0);
+}
+
 TEST_CASE("both orientations render a non-empty status face") {
   RlcdPanelStatus rs{};
   rs.base.milli_bpm = 128000;

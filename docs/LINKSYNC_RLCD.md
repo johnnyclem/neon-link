@@ -81,6 +81,11 @@ rollback. Plus, unique to this face:
     KEY tab flips to RESUME) until the transport actually stops at the
     bar line, then STOPPED — so the press registers at once instead of
     up to a bar later. Pressing KEY again during STOPPING resumes.
+    Start is quantized the same way, so pressing PLAY starts a **count-in**:
+    the selected metronome animation begins immediately and a
+    "STARTING IN N" banner counts the beats down to the next downbeat
+    (KEY tab = CANCEL), then the transport begins. Press KEY again to
+    cancel.
   - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable

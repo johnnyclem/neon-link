@@ -84,6 +84,8 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   uint32_t h = s.milli_bpm / 100u;
   h = h * 33u + (s.playing ? 1u : 0u);
   h = h * 33u + (rs.stopping ? 1u : 0u);
+  h = h * 33u + (rs.starting ? 1u : 0u);
+  h = h * 33u + rs.countin;
   h = h * 33u + s.peers;
   h = h * 33u + (s.provisioned ? 1u : 0u);
   h = h * 33u + (s.wifi_up ? 1u : 0u);
@@ -421,6 +423,10 @@ void rlcd_task(void*) {
   bool stop_pending = false;
   bool last_playing = false;
   int64_t stop_pending_us = 0;
+  // Quantized-start count-in: from PLAY until the next downbeat the metronome
+  // animates and a "STARTING IN N" banner counts the beats down.
+  bool start_pending = false;
+  int64_t start_pending_us = 0;
 
   auto orient_of = [](const neon::Config& c) {
     return c.display_portrait ? neon::RlcdCanvas::Orientation::kPortrait
@@ -542,7 +548,10 @@ void rlcd_task(void*) {
         stop_pending = !stop_pending;
         stop_pending_us = now;
       } else {
-        stop_pending = false;  // this press is a start
+        // Pressing PLAY while stopped arms the count-in; pressing again
+        // before the downbeat cancels it.
+        start_pending = !start_pending;
+        start_pending_us = now;
       }
       user = true;
     }
@@ -592,20 +601,40 @@ void rlcd_task(void*) {
     st.base.usb_power = charging;
     st.low_power = !hpm;
 
-    if (!st.base.playing) {
+    const bool real_playing = st.base.playing != 0;
+    const uint32_t q = (st.quantum >= 1 && st.quantum <= 8) ? st.quantum : 4;
+    const uint32_t mbpm = st.base.milli_bpm != 0 ? st.base.milli_bpm : 120000;
+    const int64_t bar_us = (60000000000LL / mbpm) * q;
+
+    // STOPPING: a stop was pressed and is playing out the bar.
+    if (!real_playing) {
       stop_pending = false;  // the stop landed (or we were already stopped)
-    } else if (stop_pending) {
-      // Never wedge on STOPPING: if the stop has not landed within two bars
-      // (start/stop sync off, a peer holding play), fall back to PLAYING.
-      const uint32_t mbpm = st.base.milli_bpm != 0 ? st.base.milli_bpm : 120000;
-      const uint32_t q = (st.quantum >= 1 && st.quantum <= 8) ? st.quantum : 4;
-      const int64_t bar_us = (60000000000LL / mbpm) * q;
-      if (now - stop_pending_us > 2 * bar_us) {
-        stop_pending = false;
-      }
+    } else if (stop_pending && now - stop_pending_us > 2 * bar_us) {
+      stop_pending = false;  // never wedge if the stop does not land
     }
-    st.stopping = stop_pending && st.base.playing;
-    last_playing = st.base.playing != 0;
+    st.stopping = stop_pending && real_playing;
+
+    // STARTING: a start was pressed and is counting in to the next downbeat.
+    if (real_playing) {
+      start_pending = false;  // the start landed
+    } else if (start_pending && now - start_pending_us > 2 * bar_us) {
+      start_pending = false;  // never wedge if the start does not land
+    }
+    if (start_pending && !real_playing) {
+      neon::TimelineSnapshot tl{};
+      timeline_bus().read(tl);
+      const uint32_t phase_mb = neon::phase_milli_beats(tl, now);
+      const uint32_t rem_mb = q * 1000u > phase_mb ? q * 1000u - phase_mb : 0;
+      uint32_t n = (rem_mb + 999u) / 1000u;  // whole beats to the downbeat
+      if (n < 1) n = 1;
+      if (n > q) n = q;
+      st.starting = true;
+      st.countin = static_cast<uint8_t>(n);
+      st.beat = neon::beat_number(phase_mb, q);
+      st.base.playing = true;  // animate the metronome during the count-in
+    }
+
+    last_playing = real_playing;
 
     const uint32_t fp = fingerprint(st);
     const bool changed = !have_fp || fp != last_fp;

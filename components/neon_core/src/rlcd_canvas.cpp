@@ -263,6 +263,9 @@ void render_rlcd_splash(RlcdCanvas& c) {
 // (a stop was pressed and is playing out the current bar) so the press
 // registers at once rather than after up to a whole bar.
 static const char* transport_label(const RlcdPanelStatus& rs) {
+  if (rs.starting) {
+    return "";  // the count-in banner carries the message; metronome animates
+  }
   if (rs.stopping) {
     return "STOPPING";
   }
@@ -805,7 +808,10 @@ static void tab_actions(const RlcdPanelStatus& rs, bool portrait,
       *b_tap = "UP"; *b_hold = "";
       break;
     default:  // live face
-      *k_tap = rs.stopping ? "RESUME" : (rs.base.playing ? "STOP" : "PLAY");
+      *k_tap = rs.starting  ? "CANCEL"
+               : rs.stopping ? "RESUME"
+               : rs.base.playing ? "STOP"
+                                 : "PLAY";
       *k_hold = "MENU";
       *b_tap = "+BPM"; *b_hold = "TEMPO";
       break;
@@ -825,6 +831,21 @@ static void draw_one_tab(RlcdCanvas& c, int x, int y, int w, const char* name,
     std::snprintf(line, sizeof(line), "HOLD %s", hold);
     c.draw_text(x + 6, y + 23, line, 2);
   }
+}
+
+// Count-in banner over the running metronome: "STARTING IN N", sized to
+// fit and boxed so it reads on any theme in either orientation.
+static void draw_countin_banner(RlcdCanvas& c, unsigned n) {
+  char t[16];
+  std::snprintf(t, sizeof(t), "STARTING IN %u", n);
+  const int w = c.width();
+  const int scale = fit_scale(static_cast<int>(std::strlen(t)), w - 24, 3);
+  const int tw = text_w(t, scale);
+  const int th = 7 * scale;
+  const int y = (c.height() * 3) / 5;
+  c.fill_rect((w - tw) / 2 - 8, y - 6, tw + 16, th + 12, false);
+  c.draw_rect((w - tw) / 2 - 8, y - 6, tw + 16, th + 12, 2, true);
+  draw_text_centered(c, y, t, scale);
 }
 
 static void draw_button_tabs(RlcdCanvas& c, const RlcdPanelStatus& rs) {
@@ -883,8 +904,12 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   } else {
     render_landscape(c, rs);
   }
-  // Always-on soft-button legend, drawn before the theme's dark-flip so it
-  // inverts with the face.
+  // Count-in banner (over the animating metronome), then the always-on
+  // soft-button legend, both before the theme's dark-flip so they invert
+  // with the face.
+  if (rs.starting) {
+    draw_countin_banner(c, rs.countin);
+  }
   draw_button_tabs(c, rs);
   if (rs.base.invert) {
     c.invert();
