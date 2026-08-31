@@ -114,6 +114,21 @@ TEST_CASE("the KEY tab reflects transport state") {
   CHECK(diff > 0);
 }
 
+TEST_CASE("the stopping window renders differently from playing") {
+  RlcdPanelStatus playing{};
+  playing.base.milli_bpm = 120000;
+  playing.base.playing = true;
+  RlcdPanelStatus stopping = playing;
+  stopping.stopping = true;
+
+  RlcdCanvas a;
+  neon::render_rlcd_panel(a, playing);
+  RlcdCanvas b;
+  neon::render_rlcd_panel(b, stopping);
+  // STOPPING replaces PLAYING and the KEY tap flips to RESUME.
+  CHECK(std::memcmp(a.data(), b.data(), RlcdCanvas::kSize) != 0);
+}
+
 TEST_CASE("both orientations render a non-empty status face") {
   RlcdPanelStatus rs{};
   rs.base.milli_bpm = 128000;

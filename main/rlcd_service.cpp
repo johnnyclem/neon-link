@@ -83,6 +83,7 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   const neon::LinkSyncPanelStatus& s = rs.base;
   uint32_t h = s.milli_bpm / 100u;
   h = h * 33u + (s.playing ? 1u : 0u);
+  h = h * 33u + (rs.stopping ? 1u : 0u);
   h = h * 33u + s.peers;
   h = h * 33u + (s.provisioned ? 1u : 0u);
   h = h * 33u + (s.wifi_up ? 1u : 0u);
@@ -415,6 +416,11 @@ void rlcd_task(void*) {
   uint32_t battery_mv = 0;
   int64_t battery_us = -kBatteryPeriodUs;
   bool charging = false;
+  // Quantized-stop feedback: from the instant STOP is pressed until the
+  // transport actually stops at the bar line, the face reads STOPPING.
+  bool stop_pending = false;
+  bool last_playing = false;
+  int64_t stop_pending_us = 0;
 
   auto orient_of = [](const neon::Config& c) {
     return c.display_portrait ? neon::RlcdCanvas::Orientation::kPortrait
@@ -530,6 +536,14 @@ void rlcd_task(void*) {
       ControlCommand cmd{};
       cmd.kind = ControlCommand::Kind::kToggle;
       control_queue_push(cmd);
+      if (last_playing) {
+        // Pressing STOP while playing arms STOPPING; pressing again before
+        // the bar line cancels it (RESUME).
+        stop_pending = !stop_pending;
+        stop_pending_us = now;
+      } else {
+        stop_pending = false;  // this press is a start
+      }
       user = true;
     }
     if (ui.take_dirty()) {
@@ -577,6 +591,21 @@ void rlcd_task(void*) {
     st.battery_pct = battery_percent(battery_mv);
     st.base.usb_power = charging;
     st.low_power = !hpm;
+
+    if (!st.base.playing) {
+      stop_pending = false;  // the stop landed (or we were already stopped)
+    } else if (stop_pending) {
+      // Never wedge on STOPPING: if the stop has not landed within two bars
+      // (start/stop sync off, a peer holding play), fall back to PLAYING.
+      const uint32_t mbpm = st.base.milli_bpm != 0 ? st.base.milli_bpm : 120000;
+      const uint32_t q = (st.quantum >= 1 && st.quantum <= 8) ? st.quantum : 4;
+      const int64_t bar_us = (60000000000LL / mbpm) * q;
+      if (now - stop_pending_us > 2 * bar_us) {
+        stop_pending = false;
+      }
+    }
+    st.stopping = stop_pending && st.base.playing;
+    last_playing = st.base.playing != 0;
 
     const uint32_t fp = fingerprint(st);
     const bool changed = !have_fp || fp != last_fp;

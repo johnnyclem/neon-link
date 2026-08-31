@@ -76,7 +76,11 @@ rollback. Plus, unique to this face:
   it there; an unplugged pack sags), with hysteresis to avoid flicker.
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
   - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
-    BOOT hold = Tempo screen.
+    BOOT hold = Tempo screen. Because the stop is quantized to the bar,
+    pressing STOP while playing shows **STOPPING** immediately (and the
+    KEY tab flips to RESUME) until the transport actually stops at the
+    bar line, then STOPPED — so the press registers at once instead of
+    up to a bar later. Pressing KEY again during STOPPING resumes.
   - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable

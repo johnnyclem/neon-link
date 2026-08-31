@@ -259,6 +259,16 @@ void render_rlcd_splash(RlcdCanvas& c) {
   c.draw_text((kW - line_w) / 2, portrait ? 280 : 208, line, line_scale);
 }
 
+// Transport word for the live face. STOPPING is the quantized-stop window
+// (a stop was pressed and is playing out the current bar) so the press
+// registers at once rather than after up to a whole bar.
+static const char* transport_label(const RlcdPanelStatus& rs) {
+  if (rs.stopping) {
+    return "STOPPING";
+  }
+  return rs.base.playing ? "PLAYING" : "STOPPED";
+}
+
 // The 400×300 landscape status face — the original layout, unchanged.
 static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   const LinkSyncPanelStatus& s = rs.base;
@@ -301,7 +311,7 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
       }
     }
 
-    c.draw_text(12, 168, s.playing ? "PLAYING" : "STOPPED", 4);
+    c.draw_text(12, 168, transport_label(rs), 4);
   }
 
   // Network column, right side under the header.
@@ -400,7 +410,7 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
         c.draw_rect(x, y, dot, dot, 2, true);
       }
     }
-    c.draw_text(14, 170, s.playing ? "PLAYING" : "STOPPED", 4);
+    c.draw_text(14, 170, transport_label(rs), 4);
 
     char peers[16];
     std::snprintf(peers, sizeof(peers), "PEERS %u",
@@ -490,7 +500,7 @@ static void render_theme_ink(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   const int dot = 30;
   beat_row_centered(c, rs, bpm_y + 7 * scale + 26, dot, 12);
 
-  draw_text_centered(c, h - 74, s.playing ? "PLAYING" : "STOPPED", 4);
+  draw_text_centered(c, h - 74, transport_label(rs), 4);
   setup_footer(c, s);
 }
 
@@ -522,7 +532,7 @@ static void render_theme_dots(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   beat_row_centered(c, rs, bpm_y + 7 * scale + 30, 34, 12);
 
-  draw_text_centered(c, h - 64, s.playing ? "PLAYING" : "STOPPED", 4);
+  draw_text_centered(c, h - 64, transport_label(rs), 4);
   setup_footer(c, s);
 }
 
@@ -563,7 +573,7 @@ static void render_theme_hero(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     }
   }
 
-  draw_text_centered(c, h - 56, s.playing ? "PLAYING" : "STOPPED", 3);
+  draw_text_centered(c, h - 56, transport_label(rs), 3);
   setup_footer(c, s);
 }
 
@@ -696,7 +706,7 @@ static void render_theme_grid(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   // State banner: black bar, knocked-out text.
   const int banner_y = cells_y + cell_h + 12;
-  draw_text_centered(c, banner_y + 7, s.playing ? "PLAYING" : "STOPPED", 3);
+  draw_text_centered(c, banner_y + 7, transport_label(rs), 3);
   c.invert_rect(m, banner_y, w - 2 * m, 34);
 
   // Peer ticks: six boxes, one slash per connected peer.
@@ -736,7 +746,7 @@ static void render_theme_pulse(RlcdCanvas& c, const RlcdPanelStatus& rs) {
     draw_battery(c, w - 50, 10, rs.battery_pct, s.usb_power);
     const int scale = fit_scale(static_cast<int>(std::strlen(bpm)), w - 28, 10);
     draw_text_centered(c, h / 2 - (7 * scale) / 2 - 20, bpm, scale);
-    draw_text_centered(c, h - 74, "STOPPED", 4);
+    draw_text_centered(c, h - 74, transport_label(rs), 4);
     setup_footer(c, s);
     return;
   }
@@ -795,7 +805,8 @@ static void tab_actions(const RlcdPanelStatus& rs, bool portrait,
       *b_tap = "UP"; *b_hold = "";
       break;
     default:  // live face
-      *k_tap = rs.base.playing ? "STOP" : "PLAY"; *k_hold = "MENU";
+      *k_tap = rs.stopping ? "RESUME" : (rs.base.playing ? "STOP" : "PLAY");
+      *k_hold = "MENU";
       *b_tap = "+BPM"; *b_hold = "TEMPO";
       break;
   }

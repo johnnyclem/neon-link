@@ -28,6 +28,10 @@ struct RlcdPanelStatus {
   int battery_pct = -1;
   // The ST7305 is sitting in low-power (≤8 Hz) refresh.
   bool low_power = false;
+  // A quantized stop has been requested and is playing out the current bar:
+  // the face reads STOPPING (not PLAYING) so the button press registers
+  // immediately instead of after up to a whole bar.
+  bool stopping = false;
   // Which live face to draw (a MonoTheme value). Overlays keep the shared
   // layout; base.invert flips the whole frame for the dark themes.
   uint8_t theme = 0;
