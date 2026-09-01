@@ -19,6 +19,9 @@ constexpr int64_t kSaveDebounceUs = 2000000;
 
 halesp::StorageNvs g_storage;
 neon::Config g_config;
+// Off the task stack: load + persist used to nest two 2 KB buffers and
+// overflow the C3 main task (6 KB) before the OLED task ever ran.
+uint8_t g_blob[kConfigBlobBuf];
 
 // Both core-1 consumers see a config change through their own seqlock:
 // the pulse engine reads engine_config_bus, the audio task reads
@@ -35,9 +38,8 @@ int64_t g_last_change_us = 0;
 uint32_t g_rev = 0;
 
 bool persist(const neon::Config& cfg) {
-  uint8_t buf[kConfigBlobBuf];
-  const size_t n = neon::config_encode(cfg, buf, sizeof(buf));
-  return n != 0 && g_storage.write_blob(kKey, buf, n);
+  const size_t n = neon::config_encode(cfg, g_blob, sizeof(g_blob));
+  return n != 0 && g_storage.write_blob(kKey, g_blob, n);
 }
 
 // True first boot only (G1 in the ship-gate review): the setup AP's
@@ -72,10 +74,9 @@ void provision_device_token(neon::Config* cfg) {
 }  // namespace
 
 void neon_config_load() {
-  uint8_t buf[kConfigBlobBuf];
   size_t len = 0;
-  const bool loaded = g_storage.read_blob(kKey, buf, sizeof(buf), &len) &&
-                      neon::config_decode(buf, len, &g_config);
+  const bool loaded = g_storage.read_blob(kKey, g_blob, sizeof(g_blob), &len) &&
+                      neon::config_decode(g_blob, len, &g_config);
   if (loaded) {
     ESP_LOGI(kTag, "config loaded (%u bytes)", static_cast<unsigned>(len));
   } else {
@@ -236,9 +237,8 @@ bool neon_preset_save(int slot) {
   if (slot < 0 || slot >= kPresetSlots) {
     return false;
   }
-  uint8_t buf[kConfigBlobBuf];
-  const size_t n = neon::config_encode(g_config, buf, sizeof(buf));
-  if (n == 0 || !g_storage.write_blob(preset_key(slot), buf, n)) {
+  const size_t n = neon::config_encode(g_config, g_blob, sizeof(g_blob));
+  if (n == 0 || !g_storage.write_blob(preset_key(slot), g_blob, n)) {
     return false;
   }
   ESP_LOGI(kTag, "preset %d saved", slot);
@@ -249,11 +249,10 @@ bool neon_preset_recall(int slot) {
   if (slot < 0 || slot >= kPresetSlots) {
     return false;
   }
-  uint8_t buf[kConfigBlobBuf];
   size_t len = 0;
   neon::Config preset;
-  if (!g_storage.read_blob(preset_key(slot), buf, sizeof(buf), &len) ||
-      !neon::config_decode(buf, len, &preset)) {
+  if (!g_storage.read_blob(preset_key(slot), g_blob, sizeof(g_blob), &len) ||
+      !neon::config_decode(g_blob, len, &preset)) {
     ESP_LOGW(kTag, "preset %d empty or invalid", slot);
     return false;
   }
