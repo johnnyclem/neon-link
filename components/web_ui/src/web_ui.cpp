@@ -25,6 +25,7 @@
 
 // Provided by main/wifi.cpp (linked into the final app image).
 extern "C" void neon_wifi_apply_credentials(void);
+extern "C" void neon_wifi_apply_credentials_later(void);
 extern "C" uint8_t neon_wifi_last_disconnect_reason(void);
 extern "C" const char* neon_wifi_current_ssid(void);
 extern "C" int neon_wifi_scan_json(char* buf, int cap);
@@ -296,12 +297,13 @@ esp_err_t handle_put_config(httpd_req_t* req) {
   }
   ESP_LOGI(kTag, "config updated from web editor (applied)%s",
            bounce_wifi ? ", will rejoin WiFi" : "");
-  // Reply before any STA bounce. apply_credentials() disconnects the
-  // station, which used to kill this response — the save landed, but the
-  // editor stayed on Saving… until the user refreshed.
+  // Reply before any STA bounce. apply_credentials() drops the setup AP
+  // so STA can join (APSTA never associates on the C3 Super Mini, and
+  // hops the beacon on every native board). Defer so this response can
+  // leave before the AP comes down.
   const esp_err_t err = handle_get_config(req);
   if (bounce_wifi) {
-    neon_wifi_apply_credentials();
+    neon_wifi_apply_credentials_later();
   }
   return err;
 }

@@ -24,6 +24,9 @@ void neon_wifi_hold_station();
 extern "C" {
 #endif
 void neon_wifi_apply_credentials(void);
+// Same as apply_credentials, but after a short delay on a worker task so
+// the HTTP response can leave the SoftAP before we tear it down.
+void neon_wifi_apply_credentials_later(void);
 uint8_t neon_wifi_last_disconnect_reason(void);
 // SSID of the network currently being attempted (never null).
 const char* neon_wifi_current_ssid(void);

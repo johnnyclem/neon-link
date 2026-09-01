@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+
+const kSetupDismissed = "neon.setupDismissed";
 import { adoptConfig, api, type Config, type Status } from "./api";
 import { strings } from "./design/strings";
 import { StatusStrip } from "./components/StatusStrip";
@@ -22,6 +24,7 @@ export interface PageProps {
   dirty: boolean;
   saving: boolean;
   message: { text: string; kind: "ok" | "err" } | null;
+  dismissSetup: () => void;
 }
 
 export function App() {
@@ -31,6 +34,9 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<PageProps["message"]>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [setupDismissed, setSetupDismissed] = useState(
+    () => sessionStorage.getItem(kSetupDismissed) === "1",
+  );
   const route = useHashRoute("live");
 
   useEffect(() => {
@@ -126,12 +132,32 @@ export function App() {
     );
   }
 
-  const props: PageProps = { cfg, status, patch, save, dirty, saving, message };
+  const dismissSetup = useCallback(() => {
+    sessionStorage.setItem(kSetupDismissed, "1");
+    setSetupDismissed(true);
+    if (window.location.hash !== "#/live") {
+      window.location.hash = "#/live";
+    }
+  }, []);
+
+  const props: PageProps = {
+    cfg,
+    status,
+    patch,
+    save,
+    dirty,
+    saving,
+    message,
+    dismissSetup,
+  };
 
   // First boot lands on the wizard rather than the full editor: there is
   // exactly one thing to do at that point, and burying it in a settings page
-  // is how people end up stuck on the access point.
-  const inSetup = route === "setup" || (status?.setup_ap === true && route === "live");
+  // is how people end up stuck on the access point. Finish dismisses it so
+  // #/live is not trapped on the wizard while the setup AP is still up.
+  const inSetup =
+    route === "setup" ||
+    (status?.setup_ap === true && route === "live" && !setupDismissed);
 
   return (
     <>

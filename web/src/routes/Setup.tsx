@@ -14,7 +14,7 @@ import { Button, Card, TextField, Toggle } from "../components/controls";
  * anyone who does not want to be walked through it.
  */
 export function Setup(props: PageProps) {
-  const { cfg, status, patch, save, saving, message } = props;
+  const { cfg, status, patch, save, saving, message, dismissSetup } = props;
 
   const joined = status !== null && !status.setup_ap && status.network !== "none";
   const hint = status ? wifiFailHint(status.wifi_fail_reason) : "";
@@ -68,12 +68,12 @@ export function Setup(props: PageProps) {
 
       <Card
         title="2 · Wait for the panel"
-        note="The module keeps this access point up while it associates, so you will not be cut off mid-setup."
+        note="Join network drops this setup access point so the radio can associate. Reconnect your phone to the studio Wi-Fi, then open the address on the glass."
       >
         <p style="margin:0 0 var(--space-3)">
           The display shows its network state on the same line as the tempo. When it
-          reads <strong class="mono">STA</strong> with an address instead of{" "}
-          <strong class="mono">AP</strong>, it has joined.
+          reads <strong class="mono">WIFI</strong> with an address instead of{" "}
+          <strong class="mono">SETUP</strong>, it has joined.
         </p>
         <div class="strip__chips">
           <span class={`chip chip--${joined ? "success" : "yellow"}`}>
@@ -101,9 +101,16 @@ export function Setup(props: PageProps) {
           <Button onClick={() => void save()} disabled={saving}>
             Save
           </Button>
-          <a class="btn btn--secondary" href="#/live" style="display:inline-flex;align-items:center">
+          <Button
+            variant="secondary"
+            disabled={saving}
+            onClick={() => {
+              const join = cfg.wifi.networks[0].ssid !== "";
+              void (join ? save() : Promise.resolve()).finally(dismissSetup);
+            }}
+          >
             Finish
-          </a>
+          </Button>
         </div>
       </Card>
     </>

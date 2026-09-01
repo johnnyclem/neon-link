@@ -288,11 +288,18 @@ void neon_wifi_start() {
   wifi_config_t cfg = {};
   fill_sta_config(&cfg);
 
-  g_sta_enabled = true;
-  const wifi_mode_t mode =
-      netman::ap_is_up() ? WIFI_MODE_APSTA : WIFI_MODE_STA;
+  // Setup AP is AP-only (APSTA hops the beacon channel, and the C3 Super
+  // Mini never associates while the AP is still up). Drop it so STA can
+  // join; the editor already got its HTTP reply.
+  if (netman::ap_is_up()) {
+    netman::ap_stop();
+  }
+  // Hold off STA_START → connect until the SSID is programmed.
+  g_sta_enabled = false;
+  const wifi_mode_t mode = WIFI_MODE_STA;
   ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
+  g_sta_enabled = true;
   (void)esp_wifi_set_ps(WIFI_PS_NONE);
   const esp_err_t start_err = esp_wifi_start();
   if (start_err != ESP_OK && start_err != ESP_ERR_WIFI_NOT_INIT &&
@@ -338,7 +345,9 @@ extern "C" void neon_wifi_apply_credentials(void) {
     return;
   }
 
-  g_sta_enabled = true;
+  if (netman::ap_is_up()) {
+    netman::ap_stop();
+  }
   if (!g_sta_started) {
     neon_wifi_start();
     return;
@@ -346,15 +355,29 @@ extern "C" void neon_wifi_apply_credentials(void) {
 
   reset_slot_cursor();
   ensure_events();
-  if (netman::ap_is_up()) {
-    esp_wifi_set_mode(WIFI_MODE_APSTA);
-  }
+  ensure_handlers();
+  g_sta_enabled = false;
+  (void)esp_wifi_set_mode(WIFI_MODE_STA);
   (void)esp_wifi_set_ps(WIFI_PS_NONE);
   g_connect_requested = false;
   (void)esp_wifi_disconnect();
+  g_sta_enabled = true;
   connect_current_slot();
   ESP_LOGI(kTag, "reconnecting to \"%s\" (pass_len=%u)", effective_ssid(),
            static_cast<unsigned>(std::strlen(effective_pass())));
+}
+
+static void apply_later_task(void*) {
+  vTaskDelay(pdMS_TO_TICKS(400));
+  neon_wifi_apply_credentials();
+  vTaskDelete(nullptr);
+}
+
+extern "C" void neon_wifi_apply_credentials_later(void) {
+  if (xTaskCreate(apply_later_task, "wifi_apply", 4096, nullptr, 5, nullptr) !=
+      pdPASS) {
+    neon_wifi_apply_credentials();
+  }
 }
 
 bool neon_wifi_sta_got_ip() {
@@ -512,6 +535,8 @@ void neon_wifi_start() {
 void neon_wifi_hold_station() {}
 
 extern "C" void neon_wifi_apply_credentials(void) {}
+
+extern "C" void neon_wifi_apply_credentials_later(void) {}
 
 bool neon_wifi_sta_got_ip() { return false; }
 

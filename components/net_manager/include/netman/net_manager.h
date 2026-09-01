@@ -55,6 +55,10 @@ struct ApParams {
 // parameters reconfigures the AP in place.
 bool ap_start(const ApParams& params);
 
+// Drop the setup AP. STA mode is left to the caller (typically
+// neon_wifi_start after the user saved studio credentials). Idempotent.
+bool ap_stop();
+
 // True after a successful ap_start().
 bool ap_is_up();
 

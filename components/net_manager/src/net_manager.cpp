@@ -637,12 +637,26 @@ bool ap_start(const ApParams& params) {
   return true;
 }
 
+bool ap_stop() {
+  if (!g_ap_up) {
+    return true;
+  }
+  // Flag only — the caller switches the radio to STA after STA config
+  // is loaded, so WIFI_EVENT_STA_START does not connect with an empty
+  // SSID. Beacons stop when set_mode(STA) runs.
+  g_ap_up = false;
+  ESP_LOGI(kTag, "setup AP stopping");
+  return true;
+}
+
 #else  // !NEON_HAVE_WIFI
 
 bool ap_start(const ApParams&) {
   ESP_LOGI(kTag, "no on-chip WiFi; setup AP skipped");
   return false;
 }
+
+bool ap_stop() { return true; }
 
 #endif  // NEON_HAVE_WIFI
 
