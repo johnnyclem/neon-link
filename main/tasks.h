@@ -44,6 +44,9 @@ void neon_start_matouch_service();
 // Core 0: Waveshare 4.2" ST7305 reflective LCD. No-op on other boards.
 void neon_start_rlcd_service();
 
+// Core 0: Guition JC3248W535 3.5" AXS15231B QSPI + touch. No-op elsewhere.
+void neon_start_jc3248_service();
+
 // Core 0: 1 Hz TEL CSV on the console UART (link-sync). No-op elsewhere.
 void neon_start_telemetry_service();
 

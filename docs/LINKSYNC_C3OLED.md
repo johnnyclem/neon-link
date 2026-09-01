@@ -29,7 +29,8 @@ boot is SoftAP and the password is on the glass.
 | OLED SCL | **6** | 400 kHz |
 | Blue LED | **8** | Inverted: HIGH = off. Boot strap — firmware PWM is fine |
 | BOOT     | **9** | Active-low. Short click = next page, long press = play/stop |
-| MIDI TX  | **10** | UART1 @ 31250. Optional TRS pigtail |
+| MIDI TX  | **21** | Header silk **TX**. UART1 @ 31250 |
+| MIDI RX  | **20** | Header silk **RX**. UART1 @ 31250 |
 | USB D−/D+ | 18/19 | Native Serial/JTAG. Do not reuse |
 
 Pulse channels are virtual. There are no Eurorack jacks on the stamp.
@@ -40,7 +41,7 @@ window 28..99, 5 pages). Visible area is 72×40.
 ## What it does
 
 - Joins an Ableton Link session over WiFi
-- MIDI clock, Start / Stop / Continue, song position out GPIO10
+- MIDI clock, Start / Stop / Continue, song position out header TX (GPIO21); MIDI IN on header RX (GPIO20)
 - Three OLED pages, cycled with BOOT:
   1. **LIVE** — tempo, beat dots, PLAY/STOP, peer count, net state
   2. **NET** — STA SSID, IP, RSSI
@@ -64,8 +65,9 @@ nothing. That is a known Super Mini flaw, not a missing connector.
 
 Firmware workaround (always on this target):
 
-- GPIO20/21 isolated (inputs, pull-down) so they do not detune the
-  chip antenna
+- GPIO20/21 are the MIDI UART (header RX/TX). The Super Mini antenna
+  workaround still caps TX at 8.5 dBm; those two pins are not pulled
+  down because MIDI owns them.
 - TX capped at **8.5 dBm**
 - 802.11b/g/n, HT20
 - Boot listen-probe: the SETUP page bottom line is `8.5dBm Nn`

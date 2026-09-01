@@ -73,6 +73,9 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
   ESP_LOGI(kTag, "link-sync firmware starting (RLCD 4.2) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_JC3248
+  ESP_LOGI(kTag, "link-sync firmware starting (JC3248 3.5 AXS15231B) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #else
   ESP_LOGI(kTag, "NEON LINK firmware starting (custom PCB)");
 #endif
@@ -84,7 +87,8 @@ extern "C" void app_main(void) {
   }
 #endif
 
-  // Shared I2C early so GP8413 / ADS1015 / OLED all attach to one bus.
+  // Shared I2C early so GP8413 / ADS1015 / OLED / AXS15231B touch all
+  // attach to one (new-API) master bus.
   if (kPinI2cSda >= 0 && kPinI2cScl >= 0) {
     if (!halesp::i2c_bus_init(kPinI2cSda, kPinI2cScl)) {
       ESP_LOGW(kTag, "I2C bus init failed; CV / OLED will be unavailable");
@@ -116,6 +120,8 @@ extern "C" void app_main(void) {
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-mat");
 #elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-rlcd");
+#elif CONFIG_NEON_BOARD_LINKSYNC_JC3248
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-jc");
 #else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-sync");
 #endif
@@ -169,8 +175,8 @@ extern "C" void app_main(void) {
   neon_start_link_service();
 #if !CONFIG_NEON_LINKSYNC
   neon_start_midi_service();
-#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
-  // UART1 Crowtail: ClockEngine owns TRS clock; this task drains MIDI IN.
+#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+  // ClockEngine owns TRS clock out; this task drains MIDI IN into the PLL.
   neon_start_midi_service();
 #endif
   // Always linked: web_ui resolves /api/audio/channels against these

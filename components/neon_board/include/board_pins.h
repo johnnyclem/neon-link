@@ -285,7 +285,8 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 //   GPIO6  OLED SCL
 //   GPIO8  blue LED, inverted (HIGH = off; also a boot strap — leave high)
 //   GPIO9  BOOT button, active low, used as the only UI click
-//   GPIO10 UART1 MIDI TX @ 31250 (optional pigtail)
+//   GPIO21 silk TX  UART1 MIDI TX @ 31250
+//   GPIO20 silk RX  UART1 MIDI RX @ 31250
 //   GPIO18/19 USB D−/D+. Do not use.
 
 inline constexpr int kPinClk1 = 0;
@@ -297,8 +298,8 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = 10;
-inline constexpr int kPinMidiRx = -1;
+inline constexpr int kPinMidiTx = 21;  // header silk TX
+inline constexpr int kPinMidiRx = 20;  // header silk RX
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -469,6 +470,76 @@ inline constexpr int kPinEncSw = -1;
 inline constexpr int kPinKeyUser = 18;
 inline constexpr int kPinKeyBoot = 0;
 inline constexpr int kPinBatteryAdc = 4;
+inline constexpr int kPinLedNet = -1;
+inline constexpr int kPinLedBeat = -1;
+inline constexpr int kPinLedRun = -1;
+inline constexpr int kPinUserLed = -1;
+inline constexpr bool kUserLedInverted = false;
+inline constexpr int kPinEpdBusy = -1;
+inline constexpr int kPinEpdPwr = -1;
+
+inline constexpr int kAmyCvTempoChannel = 0;
+inline constexpr int kAmyCvClockChannel = 1;
+inline constexpr float kAmyGateHighVolts = 5.0f;
+inline constexpr float kAmyGateLowVolts = 0.0f;
+
+#elif CONFIG_NEON_BOARD_LINKSYNC_JC3248
+
+// Guition JC3248W535 (ESP32-S3-WROOM-1-N16R8). 3.5" 320×480 AXS15231B
+// IPS driven over QSPI (SPI2 @ 40 MHz) with the same silicon providing a
+// cap-touch layer on I2C (addr 0x3B). Native USB Serial/JTAG console.
+// Pin map lifted from the vendor DEMO_LVGL BSP (esp_bsp.h) — verified
+// against the working JC3248W535EN build. Pulse channels are virtual.
+//
+//   AXS15231B QSPI:  CS 45  SCK 47  D0 21  D1 48  D2 40  D3 39  TE 38
+//                    RST none (software SWRESET)  BL 1 (LEDC, active HIGH)
+//   AXS15231B touch: I2C SDA 4  SCL 8  (0x3B, polled — no INT/RST)
+//   TRS MIDI:        TX 43  RX 44 (U0 pads, free on USB-JTAG console)
+
+inline constexpr int kPinClk1 = 0;
+inline constexpr int kPinClk2 = 1;
+inline constexpr int kPinClk3 = 2;
+inline constexpr int kPinClk4 = 3;
+inline constexpr int kPinReset = 4;
+inline constexpr int kPinRun = 5;
+inline constexpr bool kPulseVirtual = true;
+
+inline constexpr int kPinTempoCv = -1;
+inline constexpr int kPinMidiTx = 43;
+inline constexpr int kPinMidiRx = 44;
+inline constexpr int kPinClkIn = -1;
+inline constexpr int kPinRstIn = -1;
+
+inline constexpr int kPinEthSclk = -1;
+inline constexpr int kPinEthMosi = -1;
+inline constexpr int kPinEthMiso = -1;
+inline constexpr int kPinEthCs = -1;
+inline constexpr int kPinEthInt = -1;
+inline constexpr int kPinEthRst = -1;
+
+// AXS15231B cap-touch on I2C (polled; external pull-ups on the board).
+inline constexpr int kPinI2cSda = 4;
+inline constexpr int kPinI2cScl = 8;
+
+// AXS15231B panel over QSPI. The generic kPinDisp* slots carry the CS /
+// SCK / D0 the HAL bus config needs; the extra data lines and TE live in
+// the kPinQspi* / kPinDispTe constants below. No DC and no hardware RST
+// on this QSPI panel (software SWRESET).
+inline constexpr int kPinDispSck = 47;
+inline constexpr int kPinDispMosi = 21;   // QSPI D0
+inline constexpr int kPinDispCs = 45;
+inline constexpr int kPinDispDc = -1;
+inline constexpr int kPinDispRes = -1;
+inline constexpr int kPinDispBlk = 1;      // backlight, LEDC, active HIGH
+inline constexpr int kPinQspiD1 = 48;
+inline constexpr int kPinQspiD2 = 40;
+inline constexpr int kPinQspiD3 = 39;
+inline constexpr int kPinDispTe = 38;      // tear-effect (unused for now)
+
+// No rotary encoder on this board — touch is the whole input surface.
+inline constexpr int kPinEncA = -1;
+inline constexpr int kPinEncB = -1;
+inline constexpr int kPinEncSw = -1;
 inline constexpr int kPinLedNet = -1;
 inline constexpr int kPinLedBeat = -1;
 inline constexpr int kPinLedRun = -1;

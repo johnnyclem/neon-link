@@ -4,7 +4,7 @@ set(_halesp_srcs
     src/midi_uart.cpp src/i2c_bus.cpp src/gp8413.cpp src/ads1015.cpp
     src/i2s_audio.cpp src/gpio_expansion.cpp src/es8311.cpp
     src/epd_5in79.cpp src/lcd_rgb.cpp src/lcd_dsi.cpp src/lcd_gc9a01.cpp
-    src/cst816.cpp src/rlcd_st7305.cpp)
+    src/cst816.cpp src/rlcd_st7305.cpp src/lcd_axs15231b.cpp)
 set(_halesp_reqs neon_hal neon_board driver esp_timer nvs_flash esp_lcd esp_hw_support)
 idf_component_register(
   SRCS ${_halesp_srcs}

@@ -19,3 +19,7 @@ dependencies:
     version: "*"
     rules:
       - if: "target == esp32s3"
+  espressif/esp_lcd_axs15231b:
+    version: "^2"
+    rules:
+      - if: "target == esp32s3"

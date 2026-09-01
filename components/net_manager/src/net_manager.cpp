@@ -91,8 +91,20 @@ int g_nearby = -1;
 // die cooks. Community fix is isolate GPIO20/21 and cap TX at 8.5 dBm
 // (roryhay.es/blog/esp32-c3-super-mini-flaw).
 void c3_isolate_antenna_gpios() {
+  // GPIO20/21 sit next to the chip antenna. Leave them isolated unless
+  // they are the MIDI UART (silk RX/TX on this stamp).
+  uint64_t mask = (1ull << 20) | (1ull << 21);
+  if (kPinMidiTx >= 0) {
+    mask &= ~(1ull << static_cast<unsigned>(kPinMidiTx));
+  }
+  if (kPinMidiRx >= 0) {
+    mask &= ~(1ull << static_cast<unsigned>(kPinMidiRx));
+  }
+  if (mask == 0) {
+    return;
+  }
   gpio_config_t io = {};
-  io.pin_bit_mask = (1ull << 20) | (1ull << 21);
+  io.pin_bit_mask = mask;
   io.mode = GPIO_MODE_INPUT;
   io.pull_down_en = GPIO_PULLDOWN_ENABLE;
   gpio_config(&io);

@@ -20,6 +20,9 @@ choice NEON_BOARD
         link-sync-rlcd is the Waveshare ESP32-S3-RLCD-4.2 — 400×300
         ST7305 reflective LCD, live beat display, battery gauge
         (docs/LINKSYNC_RLCD.md).
+        link-sync-jc3248 is the Guition JC3248W535 (ESP32-S3-N16R8) —
+        3.5" 320×480 AXS15231B QSPI IPS + cap touch
+        (docs/LINKSYNC_JC3248.md).
 
 config NEON_BOARD_CUSTOM
     bool "Custom NEON LINK PCB (GPIO clocks + LEDC tempo CV)"
@@ -41,11 +44,13 @@ config NEON_BOARD_LINKSYNC_MATOUCH
     bool "link-sync (MaTouch ESP32-S3 1.28\" round GC9A01 + encoder)"
 config NEON_BOARD_LINKSYNC_RLCD
     bool "link-sync (Waveshare ESP32-S3-RLCD-4.2 reflective LCD)"
+config NEON_BOARD_LINKSYNC_JC3248
+    bool "link-sync (Guition JC3248W535 ESP32-S3 3.5\" AXS15231B QSPI + touch)"
 endchoice
 
 config NEON_LINKSYNC
     bool
-    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH || NEON_BOARD_LINKSYNC_RLCD
+    default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH || NEON_BOARD_LINKSYNC_RLCD || NEON_BOARD_LINKSYNC_JC3248
     help
         Shared link-sync firmware path: Link + MIDI clock. The XIAO uses
         a single LED; the e-Paper board uses the 5.79" panel; the P4 LCD
