@@ -1,7 +1,37 @@
 #include "neon/midi/sync_follower.hpp"
 
+#include <cmath>
+
 namespace neon {
 namespace midi {
+
+namespace {
+
+uint32_t integer_mbpm(uint32_t mbpm) {
+  if (mbpm < 500) {
+    return 1000;
+  }
+  return ((mbpm + 500u) / 1000u) * 1000u;
+}
+
+// Hold the last published integer until the estimate has walked 0.6 BPM
+// past it — stops 127.4 / 128.1 chatter from becoming session writes.
+uint32_t snap_integer_mbpm(uint32_t mbpm, uint32_t held) {
+  const uint32_t snapped = integer_mbpm(mbpm);
+  if (held == 0) {
+    return snapped;
+  }
+  const int64_t diff =
+      static_cast<int64_t>(mbpm) - static_cast<int64_t>(held);
+  const int64_t abs_diff = diff < 0 ? -diff : diff;
+  if (snapped != held &&
+      abs_diff >= static_cast<int64_t>(SyncFollower::kIntegerGuardMbp)) {
+    return snapped;
+  }
+  return held;
+}
+
+}  // namespace
 
 void SyncFollower::on_event(const SyncEvent& ev) {
   int64_t t_us = ev.t_us;
@@ -59,7 +89,9 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed,
       // actually died is cleared with the PLL's inactivity reset.
       following_ = false;
       published_mbpm_ = 0;
+      pending_mbpm_ = 0;
       have_playing_ = false;
+      last_phase_us_ = 0;
     }
     return a;
   }
@@ -68,27 +100,25 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed,
   a.following = true;
 
   const bool playing = pll_.playing();
-  const uint32_t mbpm = pll_.tempo_milli_bpm();
-  if (published_mbpm_ == 0) {
+  const uint32_t mbpm =
+      snap_integer_mbpm(pll_.tempo_milli_bpm(), published_mbpm_);
+  if (mbpm != pending_mbpm_) {
+    pending_mbpm_ = mbpm;
+    pending_since_us_ = now_us;
+  }
+  // Never write a unlocked/hunting estimate into the session — that is
+  // the 140→90→130 OLED flicker under UART+WiFi+peer load. Wait until
+  // the PLL has a beat of small residual, then dwell on one integer.
+  const bool dwelt = now_us - pending_since_us_ >= kIntegerDwellUs;
+  if (pll_.locked() && published_mbpm_ == 0) {
     a.set_tempo = true;
     a.tempo_mbpm = mbpm;
     published_mbpm_ = mbpm;
     last_tempo_us_ = now_us;
-  } else {
-    // Authority policy (spike §8.4, DawFollower's shape): while the MIDI
-    // transport runs the sender owns the tempo, so the comparison is
-    // against the *session's* value — a peer edit reads as divergence
-    // and is corrected. While stopped (or with no session view) the
-    // reference is our own last publish, so only a genuine MIDI tempo
-    // move writes and peer edits stand in between. Both directions ride
-    // the same hysteresis band and rate limit.
-    const uint32_t ref = (playing && session.valid) ? session.tempo_mbpm
-                                                    : published_mbpm_;
-    const int64_t diff =
-        static_cast<int64_t>(mbpm) - static_cast<int64_t>(ref);
-    const int64_t abs_diff = diff < 0 ? -diff : diff;
-    if (abs_diff * kHysteresisDen > ref &&
-        now_us - last_tempo_us_ >= kTempoGapUs) {
+  } else if (pll_.locked() && dwelt) {
+    const uint32_t ref = integer_mbpm(
+        (playing && session.valid) ? session.tempo_mbpm : published_mbpm_);
+    if (mbpm != ref && now_us - last_tempo_us_ >= kTempoGapUs) {
       a.set_tempo = true;
       a.tempo_mbpm = mbpm;
       published_mbpm_ = mbpm;
@@ -100,6 +130,40 @@ SyncFollower::Actions SyncFollower::poll(int64_t now_us, bool allowed,
   if (pll_.take_downbeat(&downbeat)) {
     a.anchor_downbeat = true;
     a.downbeat_us = downbeat;
+    last_phase_us_ = now_us;
+  } else if (pll_.locked() && playing && session.have_timeline &&
+             now_us - last_phase_us_ >= kPhaseGapUs) {
+    // Start is the only *edge* downbeat; after that the PLL tracks
+    // phase internally but Link only sees tempo writes — a standing
+    // 0.5 % tempo error walks a beat off in ~200 beats, faster at
+    // high BPM. Re-anchor on a MIDI quantum boundary when the
+    // session has actually drifted (2 ms deadband so tick jitter
+    // does not yank the grid every bar).
+    const int64_t st = pll_.song_ticks();
+    const uint32_t q =
+        session.quantum_beats != 0 ? session.quantum_beats : 4u;
+    if (st >= 0 && (st % 24) == 0 &&
+        (st / 24) % static_cast<int64_t>(q) == 0 &&
+        session.tempo_mbpm != 0) {
+      const int64_t t_us = pll_.last_anchor_us();
+      const double mpb =
+          60000000000.0 / static_cast<double>(session.tempo_mbpm);
+      const double beat_at =
+          session.beat_at_origin +
+          static_cast<double>(t_us - session.origin_us) / mpb;
+      const double qf = static_cast<double>(q);
+      double phase = beat_at - qf * std::floor(beat_at / qf);
+      if (phase > qf * 0.5) {
+        phase -= qf;
+      }
+      const double err_us = phase * mpb;
+      if (err_us > static_cast<double>(kPhaseDeadbandUs) ||
+          err_us < -static_cast<double>(kPhaseDeadbandUs)) {
+        a.anchor_downbeat = true;
+        a.downbeat_us = t_us;
+        last_phase_us_ = now_us;
+      }
+    }
   }
 
   if (!have_playing_) {

@@ -377,6 +377,21 @@ bool sh1107_flush_spi(const neon::Framebuffer& fb) {
 bool try_addr(uint8_t addr) { return halesp::i2c_probe(addr, 5); }
 
 bool try_known_panels() {
+#if CONFIG_NEON_BOARD_LINKSYNC
+  // Seeed Grove 0.96" on the XIAO expansion base is SSD1306 @ 0x3C.
+  // SH1107 init ACKs on the same address, so try 128×64 first.
+  if (try_addr(kSh1107Addr)) {
+    if (ssd1306_init_i2c()) {
+      g_kind = PanelKind::kSsd1306I2c;
+      return true;
+    }
+    if (sh1107_init_i2c()) {
+      g_kind = PanelKind::kSh1107I2c;
+      return true;
+    }
+    ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
+  }
+#endif
   if (try_addr(kSsd1327Addr)) {
     if (ssd1327_init()) {
       g_kind = PanelKind::kSsd1327I2c;
@@ -384,6 +399,7 @@ bool try_known_panels() {
     }
     ESP_LOGW(kTag, "SSD1327 @ 0x3d ACKed but init failed");
   }
+#if !CONFIG_NEON_BOARD_LINKSYNC
   if (try_addr(kSh1107Addr)) {
     if (sh1107_init_i2c()) {
       g_kind = PanelKind::kSh1107I2c;
@@ -395,6 +411,7 @@ bool try_known_panels() {
     }
     ESP_LOGW(kTag, "device @ 0x3c ACKed but OLED init failed");
   }
+#endif
   return false;
 }
 

@@ -52,24 +52,30 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
   neon::TimelineSnapshot tl{};
   timeline_bus().read(tl);
   ControlCommand cmd;
+  bool transport_dirty = false;
   while (control_queue_pop(&cmd)) {
     neon::Config next = neon_config();
     bool cfg_dirty = false;
     switch (cmd.kind) {
       case ControlCommand::Kind::kPlay:
         g_latch.request(tl, now, true);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kStop:
         g_latch.request(tl, now, false);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kToggle:
         g_latch.request(tl, now, !g_local_playing);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kPlayNow:
         g_latch.request(tl, now, true, /*quantized=*/false);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kStopNow:
         g_latch.request(tl, now, false, /*quantized=*/false);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kSetTempo:
         next.tempo_milli_bpm =
@@ -112,9 +118,11 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
       neon_config_apply(next);
     }
   }
+  if (transport_dirty && g_latch.armed()) {
+    session.set_playing(g_latch.pending_play(), g_latch.fire_at_us());
+  }
   bool want_play = false;
   if (g_latch.poll(now, &want_play)) {
-    session.set_playing(want_play);
     g_local_playing = want_play;
   }
 }

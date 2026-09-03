@@ -48,6 +48,24 @@ config NEON_BOARD_LINKSYNC_JC3248
     bool "link-sync (Guition JC3248W535 ESP32-S3 3.5\" AXS15231B QSPI + touch)"
 endchoice
 
+config NEON_C3OLED_MIDI_TX
+    int "C3 OLED MIDI TX GPIO"
+    depends on NEON_BOARD_LINKSYNC_C3OLED
+    default 20
+    range 0 21
+    help
+        UART1 MIDI TX. Default 20 (this stamp's header TX is crossed).
+        Override at flash: ./scripts/flash_linksync-c3oled.sh --tx-pin N
+
+config NEON_C3OLED_MIDI_RX
+    int "C3 OLED MIDI RX GPIO"
+    depends on NEON_BOARD_LINKSYNC_C3OLED
+    default 21
+    range 0 21
+    help
+        UART1 MIDI RX. Default 21 (this stamp's header RX is crossed).
+        Override at flash: ./scripts/flash_linksync-c3oled.sh --rx-pin N
+
 config NEON_LINKSYNC
     bool
     default y if NEON_BOARD_LINKSYNC || NEON_BOARD_LINKSYNC_EPD || NEON_BOARD_LINKSYNC_P4LCD || NEON_BOARD_LINKSYNC_TAB5 || NEON_BOARD_LINKSYNC_C3OLED || NEON_BOARD_LINKSYNC_MATOUCH || NEON_BOARD_LINKSYNC_RLCD || NEON_BOARD_LINKSYNC_JC3248

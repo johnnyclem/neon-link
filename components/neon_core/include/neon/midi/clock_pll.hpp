@@ -92,6 +92,13 @@ class MidiClockPll {
   // Link's requestBeatAtTime.
   bool take_downbeat(int64_t* t_us);
 
+  // Musical tick index at the last received 0xF8 (Start = 0), or -1
+  // when the transport is not anchored. Integer beats are song_ticks
+  // divisible by 24.
+  int64_t song_ticks() const;
+  // Filtered timestamp of that last tick (the servo's current anchor).
+  int64_t last_anchor_us() const { return anchor_us_; }
+
   // Prediction error of the most recent tick, before it was applied.
   int64_t residual_us() const { return residual_us_; }
 
@@ -112,6 +119,8 @@ class MidiClockPll {
   int64_t predict(int64_t tick) const;
   int64_t period_us() const;
   int64_t window_slope_us() const;
+  // max/min consecutive interval in the seed window; 1 if too short.
+  int64_t window_interval_ratio() const;
 
   Transport transport_ = Transport::kDin;
 
@@ -121,7 +130,8 @@ class MidiClockPll {
   static constexpr int64_t kMaxPeriodUs = 500000;   // < 10 BPM: restart
   static constexpr int64_t kMinTimeoutUs = 500000;
   static constexpr uint32_t kLockTicks = 24;        // one beat
-  static constexpr int64_t kMinTickUs = 2500;       // 999 BPM
+  static constexpr int64_t kMinTickUs = 2500;       // 999 BPM (PI clamp)
+  static constexpr int64_t kMinSeedTickUs = 8000;   // 312 BPM: reject FIFO dumps
   static constexpr int64_t kMaxTickUs = 125000;     // 20 BPM
   int64_t times_[kWindow] = {};
   uint32_t time_count_ = 0;

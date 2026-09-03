@@ -115,7 +115,11 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-tab");
 #elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+#if CONFIG_NEON_SYNC
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "near-c3");
+#else
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-c3");
+#endif
 #elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
       std::snprintf(cfg.device_name, sizeof(cfg.device_name), "link-mat");
 #elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
@@ -127,6 +131,14 @@ extern "C" void app_main(void) {
 #endif
       dirty = true;
     }
+#if CONFIG_NEON_SYNC && CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+    // Spike identity: a Link image that already wrote "link-c3" into NVS
+    // still shows as Nearby after this firmware lands, without an erase.
+    if (std::strcmp(cfg.device_name, "link-c3") == 0) {
+      std::snprintf(cfg.device_name, sizeof(cfg.device_name), "near-c3");
+      dirty = true;
+    }
+#endif
     if (cfg.ble_enabled != 0) {
       cfg.ble_enabled = 0;
       dirty = true;
@@ -164,7 +176,7 @@ extern "C" void app_main(void) {
   // of CPU0 spin and the 5 s idle-task WDT resets us. After a USB flash
   // the rail was already up so the sweep returned instantly and the
   // panel looked fine — until the next power cycle.
-#if !CONFIG_NEON_LINKSYNC
+#if !CONFIG_NEON_LINKSYNC || CONFIG_NEON_BOARD_LINKSYNC
   oledui_bringup();
 #endif
 
@@ -175,7 +187,8 @@ extern "C" void app_main(void) {
   neon_start_link_service();
 #if !CONFIG_NEON_LINKSYNC
   neon_start_midi_service();
-#elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+#elif CONFIG_NEON_BOARD_LINKSYNC || CONFIG_NEON_BOARD_LINKSYNC_P4LCD || \
+    CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   // ClockEngine owns TRS clock out; this task drains MIDI IN into the PLL.
   neon_start_midi_service();
 #endif

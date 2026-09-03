@@ -50,14 +50,22 @@ struct SessionView {
   uint32_t tempo_mbpm = 0;
   bool playing = false;
   uint32_t peers = 0;
+  // Optional timeline (filled by the ESP/Daisy capture). Lets the
+  // follower re-anchor Link when the session has walked off the MIDI
+  // grid; omitted views skip periodic phase correction.
+  bool have_timeline = false;
+  double beat_at_origin = 0;
+  int64_t origin_us = 0;
+  uint32_t quantum_beats = 4;
 };
 
 class SyncFollower {
  public:
   // What the session owner should do this poll. Tempo publishes are
-  // hysteretic (0.5 % band, min 1 s apart — the same "robust following
-  // without setTempo spam" contract the CLK IN path keeps); transport
-  // and downbeat corrections are edges.
+  // integer BPM (Schmitt 0.6 BPM, min 1 s apart) so Link peers never
+  // see tenths chatter; transport is edges; downbeats re-anchor on
+  // Start and, while locked, on a quantum boundary if the session
+  // has walked more than 2 ms off the MIDI grid.
   struct Actions {
     bool following = false;
     bool set_tempo = false;
@@ -69,7 +77,10 @@ class SyncFollower {
   };
 
   static constexpr int64_t kTempoGapUs = 1000000;
-  static constexpr int64_t kHysteresisDen = 200;  // 0.5 %
+  static constexpr int64_t kIntegerDwellUs = 250000;  // hold the integer
+  static constexpr uint32_t kIntegerGuardMbp = 600;  // 0.6 BPM Schmitt
+  static constexpr int64_t kPhaseDeadbandUs = 2000;
+  static constexpr int64_t kPhaseGapUs = 1000000;
 
   void on_event(const SyncEvent& ev);
 
@@ -107,7 +118,10 @@ class SyncFollower {
   bool following_ = false;
   bool require_peer_ = false;
   uint32_t published_mbpm_ = 0;
+  uint32_t pending_mbpm_ = 0;
+  int64_t pending_since_us_ = 0;
   int64_t last_tempo_us_ = 0;
+  int64_t last_phase_us_ = 0;
   bool have_playing_ = false;
   bool sent_playing_ = false;
   int64_t last_hold_us_ = 0;

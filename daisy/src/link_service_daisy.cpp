@@ -63,18 +63,22 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
   neon::TimelineSnapshot tl{};
   timeline_bus().read(tl);
   ControlCommand cmd;
+  bool transport_dirty = false;
   while (control_queue_pop(&cmd)) {
     neon::Config next = neon_config();
     bool cfg_dirty = false;
     switch (cmd.kind) {
       case ControlCommand::Kind::kPlay:
         g_latch.request(tl, now, true);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kStop:
         g_latch.request(tl, now, false);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kToggle:
         g_latch.request(tl, now, !g_local_playing);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kPlayNow:
       case ControlCommand::Kind::kStopNow:
@@ -88,6 +92,7 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
         g_latch.request(tl, now,
                         cmd.kind == ControlCommand::Kind::kPlayNow,
                         /*quantized=*/false);
+        transport_dirty = true;
         break;
       case ControlCommand::Kind::kSetTempo:
         next.tempo_milli_bpm =
@@ -130,9 +135,11 @@ void drain_control_queue(hal::ILinkSession& session, int64_t now) {
       neon_config_apply(next);
     }
   }
+  if (transport_dirty && g_latch.armed()) {
+    session.set_playing(g_latch.pending_play(), g_latch.fire_at_us());
+  }
   bool want_play = false;
   if (g_latch.poll(now, &want_play)) {
-    session.set_playing(want_play);
     g_local_playing = want_play;
   }
 }
@@ -228,6 +235,11 @@ void poll(int64_t now_us) {
         static_cast<uint32_t>(state.tempo_bpm * 1000.0 + 0.5);
     g_midi_session.playing = state.playing;
     g_midi_session.peers = state.num_peers;
+    g_midi_session.have_timeline = true;
+    g_midi_session.beat_at_origin = state.beat_at_origin;
+    g_midi_session.origin_us = state.origin_us;
+    g_midi_session.quantum_beats =
+        state.quantum >= 1.0 ? static_cast<uint32_t>(state.quantum) : 4u;
     // While following MIDI clock with no peers, the PLL *is* the session
     // (docs/MIDI_PLL_PHASES_HANDOFF.md Phase C): its model maps 1:1 onto
     // the snapshot, so the outputs ride the continuous estimate instead

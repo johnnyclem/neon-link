@@ -49,16 +49,12 @@ inline constexpr int kPinI2sPa = -1;
 
 #if CONFIG_NEON_BOARD_LINKSYNC
 
-// Seeed XIAO ESP32S3 (non-Sense). 11 broken-out GPIOs. Pulse channels
-// are virtual: the only physical output is UART1 MIDI TX on D0.
-// Locked before carrier layout — do not move without updating
-// docs/LINKSYNC.md.
-//
-//   D0  GPIO1   MIDI TX   (UART1 @ 31250). Not GPIO3 (JTAG strap).
-//   D1  GPIO2   reserved  jack-detect / battery divider
-//   D2  GPIO3   DO NOT USE — JTAG strap
-//   GPIO0 / 45 / 46 — boot / VDD_SPI / ROM strap. Leave them alone.
-//   USER LED GPIO21, inverted (LOW = on). Charge LED is separate.
+// Seeed XIAO (ESP32-S3 dongle; GPIO map also covers C3/C6 XIAO).
+// Pulse channels are virtual. MIDI is UART1 on the silk TX/RX pads:
+//   D6 TX / D7 RX — same pads on every XIAO MCU (GPIOs differ).
+// Not D2/GPIO3 (JTAG strap). GPIO0 / 45 / 46 — boot / VDD_SPI / ROM.
+// USER LED GPIO21, inverted (LOW = on). Charge LED is separate.
+// See docs/LINKSYNC.md.
 
 inline constexpr int kPinClk1 = 0;
 inline constexpr int kPinClk2 = 1;
@@ -69,8 +65,20 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = 1;  // D0
-inline constexpr int kPinMidiRx = -1;
+#if CONFIG_IDF_TARGET_ESP32C3
+// XIAO ESP32C3: D6=GPIO21 TX, D7=GPIO20 RX.
+inline constexpr int kPinMidiTx = 21;
+inline constexpr int kPinMidiRx = 20;
+#elif CONFIG_IDF_TARGET_ESP32C6
+// XIAO ESP32C6: D6=GPIO16 TX, D7=GPIO17 RX.
+inline constexpr int kPinMidiTx = 16;
+inline constexpr int kPinMidiRx = 17;
+#else
+// XIAO ESP32S3 / S3 Sense: D6=GPIO43 (U0TXD), D7=GPIO44 (U0RXD).
+// Console is USB Serial/JTAG, so these pads are free for MIDI.
+inline constexpr int kPinMidiTx = 43;
+inline constexpr int kPinMidiRx = 44;
+#endif
 inline constexpr int kPinJackSense = -1;  // D1 / GPIO2 if populated
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
@@ -82,8 +90,19 @@ inline constexpr int kPinEthCs = -1;
 inline constexpr int kPinEthInt = -1;
 inline constexpr int kPinEthRst = -1;
 
-inline constexpr int kPinI2cSda = -1;
-inline constexpr int kPinI2cScl = -1;
+#if CONFIG_IDF_TARGET_ESP32C3
+// XIAO ESP32C3: D4=GPIO6 SDA, D5=GPIO7 SCL (expansion Grove IIC).
+inline constexpr int kPinI2cSda = 6;
+inline constexpr int kPinI2cScl = 7;
+#elif CONFIG_IDF_TARGET_ESP32C6
+// XIAO ESP32C6: D4=GPIO22 SDA, D5=GPIO23 SCL.
+inline constexpr int kPinI2cSda = 22;
+inline constexpr int kPinI2cScl = 23;
+#else
+// XIAO ESP32S3: D4=GPIO5 SDA, D5=GPIO6 SCL (Seeed expansion Grove IIC).
+inline constexpr int kPinI2cSda = 5;
+inline constexpr int kPinI2cScl = 6;
+#endif
 
 inline constexpr int kPinDispSck = -1;
 inline constexpr int kPinDispMosi = -1;
@@ -285,8 +304,9 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 //   GPIO6  OLED SCL
 //   GPIO8  blue LED, inverted (HIGH = off; also a boot strap — leave high)
 //   GPIO9  BOOT button, active low, used as the only UI click
-//   GPIO21 silk TX  UART1 MIDI TX @ 31250
-//   GPIO20 silk RX  UART1 MIDI RX @ 31250
+//   MIDI TX/RX: Kconfig NEON_C3OLED_MIDI_TX/RX (default TX=20 RX=21,
+//   crossed vs silk). Override:
+//     ./scripts/flash_linksync-c3oled.sh --tx-pin N --rx-pin N
 //   GPIO18/19 USB D−/D+. Do not use.
 
 inline constexpr int kPinClk1 = 0;
@@ -298,8 +318,8 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = 21;  // header silk TX
-inline constexpr int kPinMidiRx = 20;  // header silk RX
+inline constexpr int kPinMidiTx = CONFIG_NEON_C3OLED_MIDI_TX;
+inline constexpr int kPinMidiRx = CONFIG_NEON_C3OLED_MIDI_RX;
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 

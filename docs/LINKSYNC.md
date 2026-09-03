@@ -43,19 +43,27 @@ adapter, not a firmware mode.
 
 Do not move these without updating this file and the carrier.
 
-| Function | XIAO pad | GPIO | Notes |
-|----------|----------|------|-------|
-| MIDI TX  | **D0**   | **1** | UART1 @ 31250. Not D2/GPIO3 (JTAG strap). |
-| Jack sense / batt divider | D1 | 2 | Reserved, unpopulated in v1 |
+| Function | XIAO pad | GPIO (S3) | Notes |
+|----------|----------|-----------|-------|
+| MIDI TX  | **D6**   | **43** | UART1 @ 31250. Silk TX / expansion UART Grove TX. |
+| MIDI RX  | **D7**   | **44** | UART1 @ 31250. Silk RX / expansion UART Grove RX. |
+| OLED SDA | **D4**   | **5** | Grove IIC on the Seeed XIAO expansion base. |
+| OLED SCL | **D5**   | **6** | Grove IIC. 0.96" SSD1306 128×64 @ 0x3C. |
+| Jack sense / batt divider | D1 | 2 | Expansion user button; reserved |
 | —        | D2       | 3 | **Do not use** — JTAG strap |
 | User LED | onboard  | 21 | Inverted: LOW = on |
 | —        | —        | 0, 45, 46 | Boot / VDD_SPI / ROM strap |
 
+Same pads on other XIAO MCUs: D6 TX / D7 RX (C3 GPIO21/20, C6 GPIO16/17); D4 SDA / D5 SCL (C3 GPIO6/7, C6 GPIO22/23).
+
+**Seeed Studio Expansion Board Base for XIAO:** Grove UART is D6/D7; Grove IIC is D4/D5. The 0.96" OLED sits on IIC and uses the compact 128×64 live face.
+
 TRS Type A (MIDI Association default):
 
-- D0 → 220 Ω → tip (DIN pin 5, data)
+- D6 (TX) → 220 Ω → tip (DIN pin 5, data)
 - 3V3 → 220 Ω → ring (DIN pin 4, source)
 - GND → sleeve
+- DIN IN: 6N138 → D7 (RX), 3V3 pull-up on the collector
 
 TRS-B and DIN-5 are passive cables in the box.
 

@@ -1,5 +1,7 @@
 #include "neon/midi/clock_pll.hpp"
 
+#include <cstdint>
+
 #include "neon/fixed_math.hpp"
 
 namespace neon {
@@ -70,6 +72,30 @@ void MidiClockPll::reset() {
 // time make the surviving positive periods multiples of the true period —
 // while the regression sees through them, and a single delayed DIN byte
 // shifts the slope by well under the loop's pull-in range.
+int64_t MidiClockPll::window_interval_ratio() const {
+  if (time_count_ < 3) {
+    return 1;
+  }
+  const uint32_t start = time_count_ == kWindow ? time_next_ : 0;
+  int64_t mx = 0;
+  int64_t mn = INT64_MAX;
+  for (uint32_t i = 1; i < time_count_; ++i) {
+    const int64_t d = times_[(start + i) % kWindow] -
+                      times_[(start + i - 1) % kWindow];
+    const int64_t ad = d < 0 ? -d : d;
+    if (ad > mx) {
+      mx = ad;
+    }
+    if (ad < mn) {
+      mn = ad;
+    }
+  }
+  if (mn <= 0) {
+    return INT64_MAX;
+  }
+  return mx / mn;
+}
+
 int64_t MidiClockPll::window_slope_us() const {
   const uint32_t n = time_count_;
   if (n < 2) {
@@ -92,8 +118,22 @@ bool MidiClockPll::seed_from_window(int64_t t_us) {
   if (time_count_ < kWindow) {
     return false;
   }
-  const int64_t slope =
-      clamp_i64(window_slope_us(), kMinTickUs, kMaxTickUs);
+  const int64_t raw = window_slope_us();
+  // A UART hitch dumps many 0xF8s ~320 µs apart. That slope is not a
+  // tempo; seeding from it is what makes the session hunt 140→90→120.
+  if (raw < kMinSeedTickUs || raw > kMaxTickUs) {
+    return false;
+  }
+  if (have_rate_) {
+    const int64_t old = period_us();
+    if (old > 0 && (raw * 5 < old * 2 || old * 5 < raw * 2)) {
+      return false;  // >2.5× period jump is a hitch, not a musical step
+    }
+    if (window_interval_ratio() > 3) {
+      return false;  // mixed burst+gap in the same window
+    }
+  }
+  const int64_t slope = raw;
   us_per_tick_q32_ = static_cast<uint64_t>(slope) << 32;
   anchor_tick_ = pll_tick_;
   anchor_us_ = t_us;
@@ -206,9 +246,11 @@ void MidiClockPll::on_tick(int64_t t_us) {
   // position — carries straight through.
   if (e_raw > tick_us / 2 || e_raw < -tick_us / 2) {
     if (++step_streak_ >= g.step_ticks) {
-      seed_from_window(t_us);
-      apply_transport_pending(t_us);
-      return;
+      if (seed_from_window(t_us)) {
+        apply_transport_pending(t_us);
+        return;
+      }
+      step_streak_ = 0;
     }
   } else {
     step_streak_ = 0;
@@ -329,6 +371,13 @@ bool MidiClockPll::take_downbeat(int64_t* t_us) {
   downbeat_pending_ = false;
   *t_us = downbeat_us_;
   return true;
+}
+
+int64_t MidiClockPll::song_ticks() const {
+  if (!beat_anchored_) {
+    return -1;
+  }
+  return pll_tick_ + song_offset_;
 }
 
 }  // namespace neon

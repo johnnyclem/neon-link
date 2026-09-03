@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Flash link-sync to an ACEIRMC / Super Mini ESP32-C3 0.42" OLED stamp.
+# Nearby spike: flash Neon Sync (no Ableton Link) to an ACEIRMC / Super Mini
+# ESP32-C3 0.42" OLED stamp. Isolated build dir + sdkconfig so this does
+# not clobber the working Link tree (build-linksync-c3oled / sdkconfig.linksync-c3oled).
 #
-# Isolated build dir + sdkconfig so this does not clobber an S3 tree.
+# THIS OVERWRITES LINK FIRMWARE on the stamp. Use --build-only to compile
+# and prove the ELF has no ableton:: / asio:: symbols without flashing.
 #
 # Port pick: Espressif USB-Serial/JTAG (VID 0x303A PID 0x1001). Never take
 # the first /dev/cu.usbmodem* — a Teensy (MicroDexed) sorts ahead of the C3
@@ -15,8 +18,8 @@
 #
 # MIDI UART pins (UART1). This stamp's spacing crosses the silk labels;
 # the default is TX=20 RX=21. Override per flash:
-#   ./scripts/flash_linksync-c3oled.sh --tx-pin 20 --rx-pin 21
-#   ./scripts/flash_linksync-c3oled.sh /dev/cu.usbmodem2101 --rx-pin 11 --tx-pin 12
+#   ./scripts/flash_linksync-c3oled-nsync.sh --tx-pin 20 --rx-pin 21
+#   ./scripts/flash_linksync-c3oled-nsync.sh --build-only
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -66,18 +69,21 @@ PORT=""
 MIDI_TX=20
 MIDI_RX=21
 BEFORE="no_reset"
+BUILD_ONLY=0
 
 usage() {
   cat <<'EOF'
-Flash link-sync to an ACEIRMC / Super Mini ESP32-C3 0.42" OLED stamp.
+Nearby spike: Neon Sync (no Ableton Link) on an ACEIRMC / Super Mini
+ESP32-C3 0.42" OLED stamp.
 
-Usage: flash_linksync-c3oled.sh [PORT] [--tx-pin N] [--rx-pin N]
+Usage: flash_linksync-c3oled-nsync.sh [PORT] [--tx-pin N] [--rx-pin N] [--build-only]
 
-  --tx-pin N   UART1 MIDI TX GPIO (default 20)
-  --rx-pin N   UART1 MIDI RX GPIO (default 21)
+  --tx-pin N     UART1 MIDI TX GPIO (default 20)
+  --rx-pin N     UART1 MIDI RX GPIO (default 21)
+  --build-only   Compile and check the ELF; do not flash
 
-This stamp's header spacing crosses the silk labels; the default is
-TX=20 RX=21. Super Mini bonded GPIOs are 0–10 and 18–21 (18/19 = USB).
+Isolated tree: build-linksync-c3oled-nsync / sdkconfig.linksync-c3oled-nsync.
+Flashing overwrites the working Link firmware on the stamp.
 EOF
 }
 
@@ -115,6 +121,10 @@ while [[ $# -gt 0 ]]; do
       MIDI_RX="${1#*=}"
       shift
       ;;
+    --build-only)
+      BUILD_ONLY=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -143,32 +153,34 @@ if [[ "$MIDI_TX" == "$MIDI_RX" ]]; then
   exit 1
 fi
 
-if [[ -z "$PORT" ]]; then
-  echo "Scanning serial ports for Espressif USB-Serial/JTAG..."
-  candidates=()
-  while IFS= read -r line; do
-    case "$line" in
-      IGN\ *)
-        echo "  skip ${line#IGN }"
-        ;;
-      OK\ *)
-        candidates+=("${line#OK }")
-        echo "  candidate ${line#OK }"
-        ;;
-    esac
-  done < <(list_c3_candidates)
-  if [[ ${#candidates[@]} -eq 0 ]]; then
-    echo "No Espressif USB-Serial/JTAG (0x303A:0x1001) found." >&2
-    echo "Plug in the C3 USB-C. Other usbmodem devices (Teensy, etc.) are ignored." >&2
-    exit 1
+candidates=()
+if [[ "$BUILD_ONLY" -eq 0 ]]; then
+  if [[ -z "$PORT" ]]; then
+    echo "Scanning serial ports for Espressif USB-Serial/JTAG..."
+    while IFS= read -r line; do
+      case "$line" in
+        IGN\ *)
+          echo "  skip ${line#IGN }"
+          ;;
+        OK\ *)
+          candidates+=("${line#OK }")
+          echo "  candidate ${line#OK }"
+          ;;
+      esac
+    done < <(list_c3_candidates)
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+      echo "No Espressif USB-Serial/JTAG (0x303A:0x1001) found." >&2
+      echo "Plug in the C3 USB-C. Other usbmodem devices (Teensy, etc.) are ignored." >&2
+      exit 1
+    fi
+  else
+    candidates=("$PORT")
   fi
-else
-  candidates=("$PORT")
 fi
 
-BUILD_DIR="build-linksync-c3oled"
-SDKCONFIG="sdkconfig.linksync-c3oled"
-DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-c3oled"
+BUILD_DIR="build-linksync-c3oled-nsync"
+SDKCONFIG="sdkconfig.linksync-c3oled-nsync"
+DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-c3oled;sdkconfig.defaults.linksync-c3oled-nsync"
 
 need_reconfigure=0
 if [[ ! -f "$SDKCONFIG" ]]; then
@@ -179,6 +191,10 @@ elif ! grep -q 'CONFIG_IDF_TARGET="esp32c3"' "$SDKCONFIG"; then
   need_reconfigure=1
 elif ! grep -q 'CONFIG_NEON_BOARD_LINKSYNC_C3OLED=y' "$SDKCONFIG"; then
   echo "sdkconfig is not the C3 OLED overlay; reconfiguring..."
+  rm -f "$SDKCONFIG" "${SDKCONFIG}.old"
+  need_reconfigure=1
+elif ! grep -q 'CONFIG_NEON_SYNC=y' "$SDKCONFIG"; then
+  echo "sdkconfig is not the Neon Sync overlay; reconfiguring..."
   rm -f "$SDKCONFIG" "${SDKCONFIG}.old"
   need_reconfigure=1
 fi
@@ -207,8 +223,35 @@ open(path, "w").write(text)
 PY
 echo "MIDI UART1 TX=GPIO${MIDI_TX} RX=GPIO${MIDI_RX}"
 
-echo "Building link-sync C3 OLED firmware..."
+echo "Building Nearby / Neon Sync C3 OLED firmware (no Ableton Link)..."
 "${idf[@]}" build
+
+if ! grep -q 'CONFIG_NEON_SYNC=y' "$SDKCONFIG"; then
+  echo "Refusing to continue: $SDKCONFIG does not have CONFIG_NEON_SYNC=y" >&2
+  exit 1
+fi
+
+echo "Checking ELF for Ableton Link / asio symbols..."
+python3 - "$BUILD_DIR/neon_link.elf" <<'PY'
+import subprocess, sys
+
+elf = sys.argv[1]
+nm = subprocess.run(
+    ["riscv32-esp-elf-nm", "-C", elf],
+    check=True, capture_output=True, text=True, errors="replace",
+)
+hits = []
+for line in nm.stdout.splitlines():
+    low = line.lower()
+    if "ableton::" in low or "asio::" in low:
+        hits.append(line)
+if hits:
+    sys.stderr.write("GPL check FAILED — Link/asio symbols in the image:\n")
+    for h in hits[:40]:
+        sys.stderr.write("  %s\n" % h)
+    sys.exit(1)
+print("GPL check OK — no ableton:: or asio:: symbols")
+PY
 
 python3 - "$BUILD_DIR/partition_table/partition-table.bin" "$BUILD_DIR/ota_offsets.env" <<'PY'
 import struct, sys
@@ -247,6 +290,15 @@ if [[ "${OTA_0_OFF}" -ne $((0x20000)) || "${OTA_1_OFF}" -ne $((0x200000)) ]]; th
   echo "Delete $SDKCONFIG and re-run this script." >&2
   exit 1
 fi
+
+if [[ "$BUILD_ONLY" -eq 1 ]]; then
+  echo "Build-only: $BUILD_DIR/neon_link.bin (Neon Sync / Nearby). Not flashing."
+  echo "This image overwrites Link firmware. Flash later with:"
+  echo "  ./scripts/flash_linksync-c3oled-nsync.sh"
+  exit 0
+fi
+
+echo "WARNING: flashing Neon Sync overwrites the working Ableton Link image on this stamp."
 
 # Confirm an ESP32-C3 answers before writing. Prefer no_reset: the stamp is
 # already in the ROM loader when the user held BOOT + RESET.

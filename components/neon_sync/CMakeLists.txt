@@ -9,14 +9,16 @@ set(NEON_SYNC_SRCS
   src/wire.cpp
   src/peer_clock.cpp
   src/node.cpp
-  src/daw_follower.cpp
 )
 
 if(ESP_PLATFORM)
+  # daw_follower is the VST3 AudioPlayHead bridge — not referenced in
+  # firmware. Keep it off the C3 flash image.
   idf_component_register(SRCS ${NEON_SYNC_SRCS} INCLUDE_DIRS include
                          REQUIRES neon_hal neon_core)
   target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
 else()
+  list(APPEND NEON_SYNC_SRCS src/daw_follower.cpp)
   add_library(neon_sync STATIC ${NEON_SYNC_SRCS})
   target_include_directories(neon_sync PUBLIC include)
   target_compile_features(neon_sync PUBLIC cxx_std_17)

@@ -5,6 +5,7 @@
 
 #include "ablink/session.hpp"
 #include "esp_timer.h"
+#include "neon/transport.hpp"
 
 namespace ablink {
 namespace {
@@ -28,7 +29,7 @@ class LinkStub final : public hal::ILinkSession {
     out.tempo_bpm = tempo_bpm_;
     out.beat_at_origin = beat_at(now);
     out.quantum = quantum_;
-    out.playing = playing_;
+    out.playing = neon::playing_at(playing_, play_at_us_, now);
     out.num_peers = 0;
     return true;
   }
@@ -44,7 +45,10 @@ class LinkStub final : public hal::ILinkSession {
     tempo_bpm_ = bpm;
   }
 
-  void set_playing(bool playing) override { playing_ = playing; }
+  void set_playing(bool playing, int64_t at_us) override {
+    playing_ = playing;
+    play_at_us_ = at_us >= 0 ? at_us : esp_timer_get_time();
+  }
 
   void request_beat_at_time(int64_t t_us) override {
     if (!started_) {
@@ -71,6 +75,7 @@ class LinkStub final : public hal::ILinkSession {
 
   bool started_ = false;
   bool playing_ = true;
+  int64_t play_at_us_ = 0;
   double tempo_bpm_ = 120.0;
   double beat0_ = 0.0;
   int64_t t0_us_ = 0;

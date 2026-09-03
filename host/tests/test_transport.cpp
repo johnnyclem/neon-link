@@ -123,6 +123,19 @@ TEST_CASE("tempo edits clamp at the ends of the range") {
   CHECK(neon::double_milli_bpm(neon::kMaxMilliBpm) == neon::kMaxMilliBpm);
 }
 
+TEST_CASE("playing_at follows the scheduled start/stop timestamp") {
+  // Stopped at t=0 (Link's default): stays stopped after that instant.
+  CHECK_FALSE(neon::playing_at(false, 0, 1));
+  // Scheduled stop at T: still playing until T, then stopped.
+  CHECK(neon::playing_at(false, 2000000, 1999999));
+  CHECK_FALSE(neon::playing_at(false, 2000000, 2000000));
+  CHECK_FALSE(neon::playing_at(false, 2000000, 2000001));
+  // Scheduled start at T: silent until T, then playing.
+  CHECK_FALSE(neon::playing_at(true, 2000000, 1999999));
+  CHECK(neon::playing_at(true, 2000000, 2000000));
+  CHECK(neon::playing_at(true, 2000000, 2000001));
+}
+
 TEST_CASE("quantized transport fires at the loop boundary, not on the press") {
   const auto tl = snapshot(120000, 0.0, 0);
   neon::TransportLatch latch;

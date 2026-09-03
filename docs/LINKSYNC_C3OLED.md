@@ -11,7 +11,7 @@ embedded flash, no PSRAM. Listings sometimes call the panel 0.25".
 ```
    [USB-C]  ──  stamp  ──  OLED 72×40
                  │
-              GPIO10 MIDI TX (optional pigtail)
+              GPIO20 TX / GPIO21 RX  (DIN + 6N138)
 ```
 
 ## Why this board
@@ -29,11 +29,14 @@ boot is SoftAP and the password is on the glass.
 | OLED SCL | **6** | 400 kHz |
 | Blue LED | **8** | Inverted: HIGH = off. Boot strap — firmware PWM is fine |
 | BOOT     | **9** | Active-low. Short click = next page, long press = play/stop |
-| MIDI TX  | **21** | Header silk **TX**. UART1 @ 31250 |
-| MIDI RX  | **20** | Header silk **RX**. UART1 @ 31250 |
+| MIDI TX  | **20** | UART1 @ 31250. Default; crossed vs silk TX. `--tx-pin` |
+| MIDI RX  | **21** | UART1 @ 31250. Default; crossed vs silk RX. `--rx-pin` |
 | USB D−/D+ | 18/19 | Native Serial/JTAG. Do not reuse |
 
 Pulse channels are virtual. There are no Eurorack jacks on the stamp.
+
+Production DIN MIDI (2× jack + 6N138, BOM and schematic):
+**[docs/LINKSYNC_C3OLED_MIDI.md](LINKSYNC_C3OLED_MIDI.md)**.
 
 OLED init is the EastRising 0.42" SSD1306 sequence (mux 0x27, column
 window 28..99, 5 pages). Visible area is 72×40.
@@ -41,7 +44,7 @@ window 28..99, 5 pages). Visible area is 72×40.
 ## What it does
 
 - Joins an Ableton Link session over WiFi
-- MIDI clock, Start / Stop / Continue, song position out header TX (GPIO21); MIDI IN on header RX (GPIO20)
+- MIDI clock, Start / Stop / Continue, song position out GPIO20; MIDI IN on GPIO21 (crossed vs the silk TX/RX labels on this stamp)
 - Three OLED pages, cycled with BOOT:
   1. **LIVE** — tempo, beat dots, PLAY/STOP, peer count, net state
   2. **NET** — STA SSID, IP, RSSI
@@ -65,9 +68,9 @@ nothing. That is a known Super Mini flaw, not a missing connector.
 
 Firmware workaround (always on this target):
 
-- GPIO20/21 are the MIDI UART (header RX/TX). The Super Mini antenna
-  workaround still caps TX at 8.5 dBm; those two pins are not pulled
-  down because MIDI owns them.
+- GPIO20/21 are the MIDI UART (TX=20, RX=21 on this stamp). The Super
+  Mini antenna workaround still caps TX at 8.5 dBm; those two pins are
+  not pulled down because MIDI owns them.
 - TX capped at **8.5 dBm**
 - 802.11b/g/n, HT20
 - Boot listen-probe: the SETUP page bottom line is `8.5dBm Nn`
@@ -97,6 +100,7 @@ git submodule update --init --recursive
 . ~/esp/esp-idf-v5.3.2/export.sh
 
 ./scripts/flash_linksync-c3oled.sh
+./scripts/flash_linksync-c3oled.sh --tx-pin 20 --rx-pin 21
 ```
 
 The script uses `build-linksync-c3oled/` and `sdkconfig.linksync-c3oled`
@@ -108,6 +112,26 @@ tap RESET, release BOOT only if auto-reset misses the ROM loader.
 
 A leftover 8 MB `sdkconfig` is rejected by the flash script — delete
 `sdkconfig.linksync-c3oled` and re-run.
+
+## Nearby spike (Neon Sync, no Ableton Link)
+
+The same stamp can run **Neon Sync** — our own leaderless session
+protocol behind the same `ILinkSession` seam ([docs/NEARBY.md](NEARBY.md),
+[docs/NEON_SYNC.md](NEON_SYNC.md)). No GPL Link, no asio. Peers discover
+each other on `239.77.83.78:20809` and do **not** interoperate with
+Ableton Link peers. MIDI clock in/out is unchanged.
+
+Isolated build dir + sdkconfig, so this does not overwrite the working
+Link tree:
+
+```bash
+./scripts/flash_linksync-c3oled-nsync.sh --build-only
+./scripts/flash_linksync-c3oled-nsync.sh            # flashes; overwrites Link firmware
+```
+
+Splash reads `NEON` / `nearby`; SoftAP default name is `near-c3-XXXX`.
+The post-build step fails if `ableton::` or `asio::` symbols landed in
+the ELF.
 
 ## RAM budget
 

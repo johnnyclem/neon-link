@@ -7,6 +7,7 @@
 
 #include <ableton/Link.hpp>
 
+#include "neon/transport.hpp"
 #include "session_daisy.h"
 
 namespace {
@@ -34,7 +35,8 @@ class LinkSessionNetlink final : public hal::ILinkSession {
     out.tempo_bpm = state.tempo();
     out.beat_at_origin = state.beatAtTime(now, quantum_);
     out.quantum = quantum_;
-    out.playing = state.isPlaying();
+    out.playing = neon::playing_at(state.isPlaying(),
+                                   state.timeForIsPlaying().count(), now.count());
     out.num_peers = static_cast<uint32_t>(link_->numPeers());
     return true;
   }
@@ -48,16 +50,17 @@ class LinkSessionNetlink final : public hal::ILinkSession {
     link_->commitAppSessionState(state);
   }
 
-  void set_playing(bool playing) override {
+  void set_playing(bool playing, int64_t at_us) override {
     if (link_ == nullptr) {
       return;
     }
+    const auto t = at_us >= 0 ? std::chrono::microseconds(at_us)
+                              : link_->clock().micros();
     auto state = link_->captureAppSessionState();
     if (playing) {
-      state.setIsPlayingAndRequestBeatAtTime(true, link_->clock().micros(),
-                                             0.0, quantum_);
+      state.setIsPlayingAndRequestBeatAtTime(true, t, 0.0, quantum_);
     } else {
-      state.setIsPlaying(false, link_->clock().micros());
+      state.setIsPlaying(false, t);
     }
     link_->commitAppSessionState(state);
   }

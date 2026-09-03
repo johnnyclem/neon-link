@@ -76,6 +76,7 @@ TEST_CASE("follower republishes after a real tempo step, rate-limited") {
     }
   }
   REQUIRE(republished);
+  CHECK(new_mbpm % 1000 == 0);
   CHECK(new_mbpm >= 139000);
   CHECK(new_mbpm <= 141000);
 }
@@ -325,13 +326,14 @@ TEST_CASE("clock loss stops the following state cleanly") {
   CHECK_FALSE(a.following);
   CHECK_FALSE(a.set_tempo);
 
-  // A returning clock at a new tempo re-follows and republishes.
-  t = feed_ticks(f, t + 3000000, 16, 25000);  // 100 BPM
+  // A returning clock at a new tempo re-follows once locked (not from
+  // the first nine hitch-like ticks).
+  t = feed_ticks(f, t + 3000000, 48, 25000);  // 100 BPM
   a = f.poll(t, true);
   CHECK(a.following);
   REQUIRE(a.set_tempo);
-  CHECK(a.tempo_mbpm >= 99900);
-  CHECK(a.tempo_mbpm <= 100100);
+  CHECK(a.tempo_mbpm >= 99000);
+  CHECK(a.tempo_mbpm <= 101000);
 }
 
 namespace {
@@ -368,6 +370,83 @@ TEST_CASE("BLE with decoded sender stamps locks like a wired source") {
   CHECK(f.pll().tempo_milli_bpm() <= 120600);
   auto a = f.poll(t + 20000, true);
   CHECK(a.following);
+}
+
+TEST_CASE("integer BPM: tenths jitter and session echo do not republish") {
+  SyncFollower f;
+  SessionView s;
+  s.valid = true;
+  s.peers = 1;
+
+  int64_t t = feed_ticks(f, 0, 48);
+  send(f, SyncEvent::Kind::kStart, t + 1000);
+  t = feed_ticks(f, t + kTick120, 24);
+  auto a = f.poll(t, true, s);
+  REQUIRE(a.set_tempo);
+  CHECK(a.tempo_mbpm % 1000 == 0);
+  CHECK(a.tempo_mbpm == 120000);
+  s.tempo_mbpm = a.tempo_mbpm;
+  s.playing = true;
+
+  // Link's capture of 120.0 often comes back as 120.4 milli-BPM of
+  // rounding dust — that must not look like a peer edit.
+  s.tempo_mbpm = 120400;
+  for (int i = 0; i < 8; ++i) {
+    t = feed_ticks(f, t + kTick120, 24);
+    a = f.poll(t, true, s);
+    CHECK_FALSE(a.set_tempo);
+  }
+
+  // Period jitter around 120 BPM (±2 %) is what a keyboard's MIDI clock
+  // looks like on DIN. The PLL's tenths move; the session must not.
+  int64_t period = kTick120;
+  for (int i = 0; i < 12; ++i) {
+    period = (i % 2 == 0) ? kTick120 + 400 : kTick120 - 400;
+    t = feed_ticks(f, t + period, 24, period);
+    a = f.poll(t, true, s);
+    CHECK_FALSE(a.set_tempo);
+  }
+}
+
+TEST_CASE("locked MIDI re-anchors Link when the session has walked off") {
+  SyncFollower f;
+  SessionView s;
+  s.valid = true;
+  s.peers = 1;
+  s.playing = true;
+  s.have_timeline = true;
+  s.quantum_beats = 4;
+  s.tempo_mbpm = 120000;
+
+  int64_t t = feed_ticks(f, 0, 48);
+  send(f, SyncEvent::Kind::kStart, t + 1000);
+  t = feed_ticks(f, t + kTick120, 1);
+  auto a = f.poll(t, true, s);
+  REQUIRE(a.anchor_downbeat);
+  s.tempo_mbpm = a.tempo_mbpm != 0 ? a.tempo_mbpm : 120000;
+  s.origin_us = a.downbeat_us;
+  s.beat_at_origin = 0;
+
+  // Walk 4 beats so we land on the next quantum boundary, past the
+  // 1 s phase gap. Shift the session 10 ms late — well outside the
+  // 2 ms deadband — and the follower must re-anchor.
+  t = feed_ticks(f, t + kTick120, 95);
+  a = f.poll(t + 100, true, s);  // not yet on a downbeat tick
+  CHECK_FALSE(a.anchor_downbeat);
+
+  t = feed_ticks(f, t + kTick120, 1);  // song tick 96 = beat 4
+  s.origin_us = f.pll().last_anchor_us() - 10000;
+  s.beat_at_origin = 4.0;
+  a = f.poll(t, true, s);
+  REQUIRE(a.anchor_downbeat);
+  CHECK(a.downbeat_us == f.pll().last_anchor_us());
+
+  // Same boundary, now aligned: quiet.
+  s.origin_us = a.downbeat_us;
+  s.beat_at_origin = 4.0;
+  t = feed_ticks(f, t + kTick120, 96);
+  a = f.poll(t, true, s);
+  CHECK_FALSE(a.anchor_downbeat);
 }
 
 TEST_CASE("degenerate BLE stamps fall back to the raw-arrival mode") {

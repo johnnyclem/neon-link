@@ -30,6 +30,7 @@ void neon_start_core0_tasks() {
 #if CONFIG_NEON_BOARD_LINKSYNC
   neon_start_status_led_service();
   neon_start_telemetry_service();
+  oledui_start();
 #elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   neon_start_status_led_service();
   neon_start_c3oled_service();

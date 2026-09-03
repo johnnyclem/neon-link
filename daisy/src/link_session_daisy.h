@@ -17,7 +17,7 @@ class TimelineSession : public hal::ILinkSession {
   void start(double initial_bpm) override;
   bool capture(hal::LinkState& out) override;
   void set_tempo(double bpm) override;
-  void set_playing(bool playing) override;
+  void set_playing(bool playing, int64_t at_us) override;
   void request_beat_at_time(int64_t t_us) override;
   void set_start_stop_sync(bool enable) override;
   void set_quantum(double beats) override;
@@ -25,6 +25,8 @@ class TimelineSession : public hal::ILinkSession {
  private:
   InternalTimeline tl_;
   bool started_ = false;
+  bool play_flag_ = false;
+  int64_t play_at_us_ = 0;
 };
 
 // The one session instance (the Daisy stand-in for ablink::session()).

@@ -258,7 +258,11 @@ Snap snapshot() {
   s.provisioned = neon_wifi_has_credentials();
   s.wifi_up = neon_wifi_sta_got_ip();
   s.setup_ap = netman::ap_is_up();
+#if CONFIG_NEON_SYNC
+  const char* name = cfg.device_name[0] ? cfg.device_name : "near-c3";
+#else
   const char* name = cfg.device_name[0] ? cfg.device_name : "link-c3";
+#endif
   std::snprintf(s.name, sizeof(s.name), "%s", name);
   std::snprintf(s.bpm, sizeof(s.bpm), "%u.%u",
                 static_cast<unsigned>(s.milli_bpm / 1000u),
@@ -353,7 +357,11 @@ void paint_setup(const Snap& s) {
 void paint_splash() {
   fb_clear();
   text_cx(kW / 2, 6, "NEON", 2);
+#if CONFIG_NEON_SYNC
+  text_cx(kW / 2, 28, "nearby", 1);
+#else
   text_cx(kW / 2, 28, "link-c3", 1);
+#endif
   flush();
 }
 

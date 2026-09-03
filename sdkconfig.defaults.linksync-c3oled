@@ -53,3 +53,8 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
 
 CONFIG_UART_ISR_IN_IRAM=y
+
+# Default MIDI on this stamp is crossed vs silk (TX=20 RX=21).
+# Override: ./scripts/flash_linksync-c3oled.sh --tx-pin N --rx-pin N
+CONFIG_NEON_C3OLED_MIDI_TX=20
+CONFIG_NEON_C3OLED_MIDI_RX=21

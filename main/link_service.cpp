@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdio>
 
+#include "sdkconfig.h"
+
 #include "ablink/session.hpp"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -123,7 +125,11 @@ void link_service_task(void*) {
   auto& session = ablink::session();
   apply_session_settings(session);
   session.start(static_cast<double>(neon_config().tempo_milli_bpm) / 1000.0);
+#if CONFIG_NEON_SYNC
+  ESP_LOGI(kTag, "Neon Sync session started (Nearby; no Ableton Link)");
+#else
   ESP_LOGI(kTag, "Link session started");
+#endif
 
   neon::TapTempo tap;
   neon::TransportLatch latch;
@@ -171,18 +177,22 @@ void link_service_task(void*) {
       timeline_bus().read(tl);
       const int64_t now = esp_timer_get_time();
       ControlCommand cmd;
+      bool transport_dirty = false;
       while (control_queue_pop(&cmd)) {
         neon::Config next = neon_config();
         bool cfg_dirty = false;
         switch (cmd.kind) {
           case ControlCommand::Kind::kPlay:
             latch.request(tl, now, true);
+            transport_dirty = true;
             break;
           case ControlCommand::Kind::kStop:
             latch.request(tl, now, false);
+            transport_dirty = true;
             break;
           case ControlCommand::Kind::kToggle:
             latch.request(tl, now, !local_playing);
+            transport_dirty = true;
             break;
           case ControlCommand::Kind::kPlayNow:
           case ControlCommand::Kind::kStopNow:
@@ -197,6 +207,7 @@ void link_service_task(void*) {
             latch.request(tl, now,
                           cmd.kind == ControlCommand::Kind::kPlayNow,
                           /*quantized=*/false);
+            transport_dirty = true;
             break;
           case ControlCommand::Kind::kSetTempo:
             next.tempo_milli_bpm =
@@ -245,9 +256,15 @@ void link_service_task(void*) {
                    static_cast<unsigned>(next.tempo_milli_bpm % 1000));
         }
       }
+      // Tell Link about the scheduled start/stop at the press, using the
+      // loop-boundary timestamp. Waiting until the bar line to call
+      // setIsPlaying(false, now) loses to start/stop sync: the session
+      // still advertises playing, and the late stop is overwritten.
+      if (transport_dirty && latch.armed()) {
+        session.set_playing(latch.pending_play(), latch.fire_at_us());
+      }
       bool want_play = false;
       if (latch.poll(now, &want_play)) {
-        session.set_playing(want_play);
         local_playing = want_play;
         ESP_LOGI(kTag, "transport -> %s", want_play ? "play" : "stop");
       }
@@ -325,13 +342,12 @@ void link_service_task(void*) {
       ext_clock.take_phase_request(&scratch_p);
     }
     if (midi_act.set_tempo) {
-      ESP_LOGI(kTag, "MIDI tempo -> %u.%03u BPM",
-               static_cast<unsigned>(midi_act.tempo_mbpm / 1000),
-               static_cast<unsigned>(midi_act.tempo_mbpm % 1000));
+      ESP_LOGI(kTag, "MIDI tempo -> %u BPM",
+               static_cast<unsigned>(midi_act.tempo_mbpm / 1000));
       session.set_tempo(static_cast<double>(midi_act.tempo_mbpm) / 1000.0);
     }
     if (midi_act.anchor_downbeat) {
-      ESP_LOGI(kTag, "MIDI start: anchoring downbeat");
+      ESP_LOGI(kTag, "MIDI: anchoring downbeat");
       session.request_beat_at_time(midi_act.downbeat_us);
     }
     if (midi_act.set_playing) {
@@ -367,6 +383,11 @@ void link_service_task(void*) {
           static_cast<uint32_t>(state.tempo_bpm * 1000.0 + 0.5);
       midi_session.playing = state.playing;
       midi_session.peers = state.num_peers;
+      midi_session.have_timeline = true;
+      midi_session.beat_at_origin = state.beat_at_origin;
+      midi_session.origin_us = state.origin_us;
+      midi_session.quantum_beats =
+          state.quantum >= 1.0 ? static_cast<uint32_t>(state.quantum) : 4u;
       neon::TimelineSnapshot snap;
       if (neon::build_snapshot(state, have_prev ? &prev : nullptr, snap)) {
         timeline_bus().publish(snap);

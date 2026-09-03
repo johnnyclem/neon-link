@@ -117,6 +117,30 @@ TEST_CASE("a 1 BPM/s ramp is tracked by the loop, not by step reseeds") {
   CHECK(pll.tempo_milli_bpm() <= 126300);
 }
 
+TEST_CASE("FIFO-dumped clocks do not yank a locked 120 BPM grid") {
+  MidiClockPll pll;
+  TickGen gen;
+  feed(pll, gen, 96);
+  CHECK(pll.locked());
+  const uint32_t before = pll.tempo_milli_bpm();
+
+  // 12 ticks 320 µs apart — what uart_read returns after a 200 ms stall
+  // if each byte is back-dated by one wire-time. Must not reseed.
+  int64_t t = gen.t;
+  for (int i = 0; i < 12; ++i) {
+    t += 320;
+    pll.on_tick(t);
+  }
+  CHECK(pll.tempo_milli_bpm() >= before - 1500);
+  CHECK(pll.tempo_milli_bpm() <= before + 1500);
+
+  gen.t = t + 20833;
+  feed(pll, gen, 48);
+  CHECK(pll.locked());
+  CHECK(pll.tempo_milli_bpm() >= 119000);
+  CHECK(pll.tempo_milli_bpm() <= 121000);
+}
+
 TEST_CASE("Start makes the next tick beat zero and fires one downbeat") {
   MidiClockPll pll;
   TickGen gen;
@@ -141,9 +165,11 @@ TEST_CASE("Start makes the next tick beat zero and fires one downbeat") {
   CHECK(downbeat <= t0_true + 200);
   CHECK_FALSE(pll.take_downbeat(&downbeat));
 
+  CHECK(pll.song_ticks() == 0);
   feed(pll, gen, 24);
   REQUIRE(pll.model(&m));
   CHECK(m.beat_at_origin_q32 == (1ll << 32));  // exactly beat 1
+  CHECK(pll.song_ticks() == 24);
 }
 
 TEST_CASE("Stop freezes the position; Continue resumes at the next tick") {

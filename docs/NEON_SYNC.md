@@ -202,26 +202,31 @@ better.
 
 ## 7. Remaining work
 
-1. **S3 bring-up + studio-mode A/B vs the Link build** on the real bench
+1. **C3 OLED Nearby spike** (`sdkconfig.defaults.linksync-c3oled-nsync`,
+   `./scripts/flash_linksync-c3oled-nsync.sh`): first hardware bring-up
+   of Neon Sync on unicore RISC-V. Isolated from the working Link image.
+   SoftAP TSF + static Node are in `neon_sync_esp`. Studio-mode soak
+   still outstanding.
+2. **S3 bring-up + studio-mode A/B vs the Link build** on the real bench
    (docs/BENCH_NO_SCOPE.md methodology) — the numbers in §6 are simulator
    numbers until then.
-2. **TSF through ESP-Hosted:** does the C6 give the P4 host usable TSF? If
+3. **TSF through ESP-Hosted:** does the C6 give the P4 host usable TSF? If
    not, P4 targets ride the measured path (they already work there).
-3. **Multicast reliability on the shipping rig:** loss rate of 1 Hz
+4. **Multicast reliability on the shipping rig:** loss rate of 1 Hz
    ANNOUNCE on SoftAP + house router decides whether a unicast fan-out
    fallback is needed (docs/STEM_SYNC.md chose unicast-with-repeats for
    launches for this reason). Related: with both SoftAP and STA up, lwIP
    routes the multicast out one netif; per-interface announce fan-out is a
    known v0 limitation to revisit at bring-up.
-4. **Live bridges:** the VST3 `AudioPlayHead` → mesh direction ships in
+5. **Live bridges:** the VST3 `AudioPlayHead` → mesh direction ships in
    the plugin (§4.5: `nsync::DawFollower` behind
    `neon::client::SyncService`) — the plugin is a full Neon Sync peer and
    drives the mesh from any VST3 host's transport, host-validated like the
    rest of the protocol. Remaining: the Max for Live device for mesh →
    Live tempo, and bench time with a real device (the plugin side of the
-   studio-mode A/B rides item 1). MIDI clock in/out works today with no
+   studio-mode A/B rides item 2). MIDI clock in/out works today with no
    new code.
-5. **Licensing hygiene** regardless of protocol: the repo still has no
+6. **Licensing hygiene** regardless of protocol: the repo still has no
    LICENSE file, which blocks release with or without Link; and a GPL
    build variant (Link inside, source published, no locked secure boot)
    remains an option for users who need mixed Link sessions.

@@ -145,6 +145,8 @@ Sink g_sink;
 neon::MidiRouter g_router({}, &g_sink);
 neon::BleMidiParser g_parser(&g_router);
 neon::SerialMidiParser g_serial(&g_router);
+int64_t g_last_f8_us_ = 0;
+int64_t g_last_f8_period_ = 20833;
 
 // --- Link-derived MIDI clock on TRS -------------------------------------
 // link-sync boards emit clock from ClockEngine on the GPTimer ring instead.
@@ -235,22 +237,54 @@ void midi_task(void*) {
     g_router.set_config(neon_config().midi);
 
     Packet p;
-    while (xQueueReceive(g_packets, &p, pdMS_TO_TICKS(20)) == pdTRUE) {
+    while (xQueueReceive(g_packets, &p, pdMS_TO_TICKS(2)) == pdTRUE) {
       g_sink.set_clock_source_tag(neon::MidiClockPll::Transport::kBle);
       g_parser.feed_packet(p.data, p.len, p.rx_us);
     }
 
-    uint8_t wire[32];
-    const int n = halesp::midi_uart_read(wire, sizeof(wire));
-    if (n > 0) {
-      // Per-byte arrival estimate: drain time minus the 320 µs each
-      // still-queued byte spent behind this one on the 31250-baud wire
-      // (docs/SPIKE_MIDI_PLL.md §6.1).
+    uint8_t wire[64];
+    int n;
+    while ((n = halesp::midi_uart_read(wire, sizeof(wire))) > 0) {
+      // Per-byte arrival. Consecutive bytes on the *wire* are 320 µs
+      // apart. A scheduling hitch dumps many 0xF8s from the FIFO with
+      // that same 320 µs spacing — that is not a tempo, and feeding it
+      // to the PLL is the 140→90→130 hunt. Space hitch clocks on the
+      // last known grid instead.
       const int64_t t_drain = esp_timer_get_time();
+      int n_f8 = 0;
+      for (int i = 0; i < n; ++i) {
+        if (wire[i] == 0xf8) {
+          ++n_f8;
+        }
+      }
+      int64_t f8_step = 320;
+      if (n_f8 >= 2) {
+        int64_t expected = 20833;
+        if (g_last_f8_period_ >= 8000 && g_last_f8_period_ <= 125000) {
+          expected = g_last_f8_period_;
+        }
+        if (static_cast<int64_t>(n_f8 - 1) * 320 * 4 < expected) {
+          f8_step = expected;
+        }
+      }
+      int f8_left = n_f8;
       g_sink.set_clock_source_tag(neon::MidiClockPll::Transport::kDin);
       for (int i = 0; i < n; ++i) {
-        g_serial.feed(wire[i],
-                      t_drain - static_cast<int64_t>(n - 1 - i) * 320);
+        int64_t t;
+        if (wire[i] == 0xf8) {
+          t = t_drain - static_cast<int64_t>(f8_left - 1) * f8_step;
+          --f8_left;
+          if (g_last_f8_us_ != 0 && t > g_last_f8_us_) {
+            const int64_t per = t - g_last_f8_us_;
+            if (per >= 8000 && per <= 125000) {
+              g_last_f8_period_ = per;
+            }
+          }
+          g_last_f8_us_ = t;
+        } else {
+          t = t_drain - static_cast<int64_t>(n - 1 - i) * 320;
+        }
+        g_serial.feed(wire[i], t);
       }
     }
 
@@ -274,6 +308,6 @@ void midi_task(void*) {
 
 void neon_start_midi_service() {
   g_packets = xQueueCreate(16, sizeof(Packet));
-  xTaskCreatePinnedToCore(midi_task, "midi_svc", 6144, nullptr, 8, nullptr,
+  xTaskCreatePinnedToCore(midi_task, "midi_svc", 6144, nullptr, 12, nullptr,
                           0);
 }

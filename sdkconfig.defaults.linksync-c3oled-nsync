@@ -1,0 +1,18 @@
+# Nearby spike: link-sync on the C3 OLED stamp, Neon Sync instead of
+# Ableton Link. Isolated tree — does not clobber the working Link image:
+#   idf.py -B build-linksync-c3oled-nsync \
+#     -DSDKCONFIG=sdkconfig.linksync-c3oled-nsync \
+#     -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-c3oled;sdkconfig.defaults.linksync-c3oled-nsync" \
+#     set-target esp32c3
+#   ./scripts/flash_linksync-c3oled-nsync.sh --build-only
+#
+# No GPL Link, no asio. Peers speak 239.77.83.78:20809 (docs/NEARBY.md,
+# docs/NEON_SYNC.md). Does not interoperate with Ableton Link peers;
+# MIDI clock in/out still works.
+
+CONFIG_NEON_SYNC=y
+# CONFIG_NEON_LINK_AUDIO is not set
+
+# pthread stacks were sized for Link's asio service task. Neon Sync has
+# none; reclaim the RAM on this 384 KB die.
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=4096

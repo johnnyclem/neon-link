@@ -87,6 +87,14 @@ class TransportLatch {
   int64_t fire_at_us_ = 0;
 };
 
+// Link (and Nearby) start/stop is a (isPlaying, time) pair: the flag
+// takes effect at `at_us`. Until then the transport is the opposite —
+// a scheduled stop still plays out the bar; a scheduled start is silent
+// through the count-in.
+inline bool playing_at(bool is_playing, int64_t at_us, int64_t now_us) {
+  return now_us >= at_us ? is_playing : !is_playing;
+}
+
 // --- Resync ----------------------------------------------------------
 //
 // The legacy "Tap + Play" shift action, with both of its assignable

@@ -29,7 +29,11 @@ class ILinkSession {
   virtual bool capture(LinkState& out) = 0;
 
   virtual void set_tempo(double bpm) = 0;
-  virtual void set_playing(bool playing) = 0;
+  // `at_us` is when the change takes effect (esp_timer / session clock).
+  // Negative means "now". Quantized play/stop must pass the loop boundary
+  // so start/stop sync advertises the scheduled transition instead of
+  // waiting until the bar line and losing the race against the session.
+  virtual void set_playing(bool playing, int64_t at_us = -1) = 0;
 
   // Ask the session to place a quantum boundary (beat 0 mod quantum) at
   // the given time — used when RST IN provides an external downbeat.

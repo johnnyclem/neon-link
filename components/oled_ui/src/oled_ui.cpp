@@ -362,7 +362,10 @@ void ui_task(void*) {
     halesp::status_led_beat((led_phase % 1000) < 150);
 
     if (have_display && want_brightness != 0) {
-      neon::render_ui(menu, status, fb);
+      const neon::ui::Layout& lay =
+          kind == oledui::PanelKind::kSsd1306I2c ? neon::ui::kLayout64
+                                                 : neon::ui::kLayout128;
+      neon::render_ui(menu, status, fb, lay);
       if (!oledui::panel_flush(fb)) {
         ESP_LOGW(kTag, "panel flush failed");
       }
