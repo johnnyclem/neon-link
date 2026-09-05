@@ -77,15 +77,14 @@ rollback. Plus, unique to this face:
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
   - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
     BOOT hold = Tempo screen. Because the stop is quantized to the bar,
-    pressing STOP while playing shows **STOPPING** immediately (and the
-    KEY tab flips to RESUME) until the transport actually stops at the
-    bar line, then STOPPED — so the press registers at once instead of
-    up to a bar later. Pressing KEY again during STOPPING resumes.
-    Start is quantized the same way, so pressing PLAY starts a **count-in**:
-    the selected metronome animation begins immediately and a
-    "STARTING IN N" banner counts the beats down to the next downbeat
-    (KEY tab = CANCEL), then the transport begins. Press KEY again to
-    cancel.
+    pressing STOP while playing shows **STOPPING** immediately until
+    the transport actually stops at the bar line, then STOPPED — so the
+    press registers at once instead of up to a bar later. Pressing KEY
+    again during STOPPING resumes. Start is quantized the same way, so
+    pressing PLAY starts a **count-in**: the selected metronome
+    animation begins immediately and a "STARTING IN N" banner counts
+    the beats down to the next downbeat, then the transport begins.
+    Press KEY again to cancel.
   - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable
@@ -96,13 +95,15 @@ rollback. Plus, unique to this face:
     cancel).
   - Power off paints the splash, drops the panel to LPM (the image
     persists), and deep-sleeps the ESP32. KEY wakes it.
-  - **Button tabs** — an always-on soft-label legend pinned to the edge
-    the buttons are on (top in landscape: KEY left / BOOT right;
-    portrait: BOOT top / KEY bottom on the left edge). Each tab names
-    the button's tap and, where different, its hold action, and tracks
-    the mode (e.g. Live: KEY PLAY / hold MENU, BOOT +BPM / hold TEMPO;
-    Menu: KEY SELECT / hold BACK). Drawn last as a framed callout so it
-    stays legible over any theme and flips with the dark ones.
+  - **Button legend on splash only** — the three physical buttons sit in
+    a tight cluster around the middle of the button edge (top in
+    landscape: KEY, PWR, BOOT left to right; portrait: BOOT, PWR, KEY
+    top to bottom on the left). The startup/shutdown splash pins a
+    single-line label to each (`BPM+  HOLD TEMPO`, `PWR`,
+    `START/STOP  HOLD MENU`) so the cluster reads as the control, not a
+    pair of floating corner boxes. Once the live face is running the
+    labels come off — they will be silkscreened on the enclosure — so
+    Pulse / Dots / Console / Hero keep the glass for tempo and beat.
 
 - **Landscape / portrait** — the panel is a 300×400 portrait controller
   the firmware normally drives as 400×300 landscape (buttons on the top
@@ -134,7 +135,7 @@ rollback. Plus, unique to this face:
     footer. The default.
   - `INK` — light and chrome-free: peers + battery, a big centered BPM,
     beat dots, transport state.
-  - `DOTS` — dark, dot-matrix hero digits under a small button legend.
+  - `DOTS` — dark, dot-matrix hero digits, peers + battery in the header.
   - `HERO` — dark, one giant integer BPM readable across a room.
   - `CONSOLE` — dark instrument panel: LINK session box, a TAP / PEERS /
     BATT data column, RUN / STOP with the active word underlined.

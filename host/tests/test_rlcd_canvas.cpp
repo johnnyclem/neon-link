@@ -82,19 +82,36 @@ int ink_in(const RlcdCanvas& c, int x0, int y0, int x1, int y1) {
 }
 }  // namespace
 
-TEST_CASE("button tabs are drawn at the edge on every mode") {
-  for (uint8_t overlay : {0, 1, 2, 3, 5}) {
-    RlcdPanelStatus rs{};
-    rs.base.milli_bpm = 120000;
-    rs.base.overlay = overlay;
-    RlcdCanvas c;
-    neon::render_rlcd_panel(c, rs);
-    // The top-left tab frame guarantees ink there in every mode.
-    CHECK(ink_in(c, 2, 2, 152, 44) > 0);
+TEST_CASE("button legend lives on the splash, not the live face") {
+  // The three-button cheat-sheet is a startup/shutdown screen. Silkscreen
+  // carries the same info on the live face, so running themes must not
+  // pin BOOT/KEY boxes to the corners.
+  RlcdPanelStatus splash{};
+  splash.base.overlay = 4;
+  RlcdPanelStatus live{};
+  live.base.milli_bpm = 120000;
+  live.theme = static_cast<uint8_t>(MonoTheme::kInk);
+
+  for (Orientation o : {Orientation::kLandscape, Orientation::kPortrait}) {
+    RlcdCanvas s;
+    s.set_orientation(o);
+    neon::render_rlcd_panel(s, splash);
+    RlcdCanvas l;
+    l.set_orientation(o);
+    neon::render_rlcd_panel(l, live);
+    CHECK(s.black_pixels() > 500);
+    CHECK(std::memcmp(s.data(), l.data(), RlcdCanvas::kSize) != 0);
   }
+
+  // Portrait: edge ticks sit on the mid-left cluster, not the corners.
+  RlcdCanvas port;
+  port.set_orientation(Orientation::kPortrait);
+  neon::render_rlcd_panel(port, splash);
+  CHECK(ink_in(port, 0, 198, 8, 203) > 0);  // PWR tick at mid-left
+  CHECK(ink_in(port, 0, 2, 8, 12) == 0);    // no tick in the old BOOT corner
 }
 
-TEST_CASE("the KEY tab reflects transport state") {
+TEST_CASE("live PLAY vs STOP still changes the face without a KEY tab") {
   RlcdPanelStatus stopped{};
   stopped.base.milli_bpm = 120000;
   stopped.base.playing = false;
@@ -106,12 +123,7 @@ TEST_CASE("the KEY tab reflects transport state") {
   RlcdCanvas b;
   neon::render_rlcd_panel(b, playing);
 
-  // PLAY vs STOP must change the KEY tab (top-left), not just the body.
-  int diff = 0;
-  for (int y = 2; y < 44; ++y)
-    for (int x = 2; x < 152; ++x)
-      if (a.pixel(x, y) != b.pixel(x, y)) ++diff;
-  CHECK(diff > 0);
+  CHECK(std::memcmp(a.data(), b.data(), RlcdCanvas::kSize) != 0);
 }
 
 TEST_CASE("the stopping window renders differently from playing") {

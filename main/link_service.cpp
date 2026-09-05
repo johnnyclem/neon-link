@@ -61,6 +61,51 @@ bool start_ap_from_config() {
   return netman::ap_start(ap_params_from_config(ssid, sizeof(ssid)));
 }
 
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+// Hosted UART blocks in esp_wifi_init until the C5 sends ESPInit — up
+// to ~20 s, or forever if the coprocessor never talks. RUN/STOP live on
+// this task's control-queue loop, so SoftAP must not run here.
+// XIAO EN is not on the header, so a missed ESPInit is recovered by
+// retrying after the user taps RST on the C5.
+bool g_hosted_ap_kicked = false;
+int64_t g_hosted_retry_us = 0;
+
+void hosted_ap_task(void*) {
+  if (start_ap_from_config()) {
+    ESP_LOGI(kTag, "C5 up; setup AP is on the air");
+  } else {
+    ESP_LOGW(kTag, "P4 LCD: SoftAP failed; retry after C5 RST");
+    g_hosted_retry_us = esp_timer_get_time() + 3000000;
+    g_hosted_ap_kicked = false;
+  }
+  vTaskDelete(nullptr);
+}
+
+void kick_hosted_ap() {
+  if (netman::wifi_driver_ready() || g_hosted_ap_kicked) {
+    return;
+  }
+  if (esp_timer_get_time() < g_hosted_retry_us) {
+    return;
+  }
+  g_hosted_ap_kicked = true;
+  ESP_LOGI(kTag, "C5 Hosted AP starting in background");
+  if (xTaskCreate(hosted_ap_task, "hosted_ap", 8192, nullptr, 5, nullptr) !=
+      pdPASS) {
+    g_hosted_ap_kicked = false;
+    ESP_LOGW(kTag, "hosted_ap task create failed; SoftAP skipped");
+  }
+}
+#endif
+
+void bring_up_setup_ap() {
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  kick_hosted_ap();
+#else
+  start_ap_from_config();
+#endif
+}
+
 // Apply the config fields the Link session itself owns. Cheap enough to
 // call every tick; the session implementations ignore no-op changes.
 void apply_session_settings(hal::ILinkSession& session) {
@@ -84,7 +129,12 @@ void link_service_task(void*) {
 
   neon_provision_start();
 
-#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD || CONFIG_NEON_BOARD_LINKSYNC_TAB5
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  // Hosted UART to the XIAO C5 (DIP=WM). Onboard C6 is not used.
+  // Kick SoftAP off-thread so the local Link session starts even if
+  // the C5 never INIT's — otherwise RUN queues a toggle nobody pops.
+  kick_hosted_ap();
+#elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
   // Hosted only talks to the C6 inside esp_wifi_init (ap_start).
   if (start_ap_from_config()) {
     ESP_LOGI(kTag, "C6 up; setup AP is on the air");
@@ -107,7 +157,7 @@ void link_service_task(void*) {
       if (neon_config().ap_policy == neon::ApPolicy::kFallback) {
         ESP_LOGW(kTag, "STA never got an address; holding STA and starting setup AP");
         neon_wifi_hold_station();
-        start_ap_from_config();
+        bring_up_setup_ap();
       }
     }
   } else if (neon_config().ap_policy == neon::ApPolicy::kFallback) {
@@ -117,7 +167,7 @@ void link_service_task(void*) {
       ESP_LOGI(kTag, "no STA credentials; BLE provision running (SoftAP in 90 s)");
     } else {
       ESP_LOGI(kTag, "no STA credentials; starting setup AP");
-      start_ap_from_config();
+      bring_up_setup_ap();
     }
   }
 #endif
@@ -372,7 +422,7 @@ void link_service_task(void*) {
         !ap_recommended_logged) {
       ESP_LOGW(kTag, "no connectivity: holding STA and starting setup AP");
       neon_wifi_hold_station();
-      start_ap_from_config();
+      bring_up_setup_ap();
       ap_recommended_logged = true;
     }
     hal::LinkState state;
@@ -420,8 +470,13 @@ void link_service_task(void*) {
       if (neon_provision_poll(now) &&
           neon_config().ap_policy == neon::ApPolicy::kFallback &&
           !netman::ap_is_up()) {
-        start_ap_from_config();
+        bring_up_setup_ap();
       }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+      if (!netman::wifi_driver_ready()) {
+        kick_hosted_ap();
+      }
+#endif
       neon_config_flush(now);
     }
     vTaskDelay(kCapturePeriod);

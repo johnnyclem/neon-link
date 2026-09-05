@@ -1,5 +1,6 @@
 #include "netman/net_manager.h"
 
+#include <atomic>
 #include <cstring>
 
 #include <cstdio>
@@ -82,6 +83,7 @@ void init_common() {
 
 #if NEON_HAVE_WIFI
 bool g_wifi_driver = false;
+std::atomic<bool> g_wifi_driver_busy{false};
 int8_t g_tx_qdBm = 0;
 int g_nearby = -1;
 
@@ -186,6 +188,10 @@ bool wifi_driver_init() {
   if (g_wifi_driver) {
     return true;
   }
+  bool expected = false;
+  if (!g_wifi_driver_busy.compare_exchange_strong(expected, true)) {
+    return false;
+  }
 #if CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   c3_isolate_antenna_gpios();
 #endif
@@ -194,6 +200,7 @@ bool wifi_driver_init() {
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "esp_wifi_init: %s (C6/Hosted transport down?)",
              esp_err_to_name(err));
+    g_wifi_driver_busy.store(false);
     return false;
   }
   g_wifi_driver = true;
@@ -208,8 +215,11 @@ bool wifi_driver_init() {
 #endif
   return true;
 }
+
+bool wifi_driver_ready() { return g_wifi_driver; }
 #else
 bool wifi_driver_init() { return false; }
+bool wifi_driver_ready() { return false; }
 void wifi_after_start() {}
 #endif
 

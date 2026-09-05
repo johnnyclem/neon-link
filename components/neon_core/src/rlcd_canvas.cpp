@@ -137,17 +137,65 @@ void draw_battery(RlcdCanvas& c, int x, int y, int pct, bool charging) {
   }
 }
 
-void draw_left_arrow(RlcdCanvas& c, int cy) {
-  const int tip_x = 8;
-  const int half = 12;
-  for (int i = 0; i <= half; ++i) {
-    c.fill_rect(tip_x + i, cy - i, 3, 2 * i + 1, true);
-  }
-  c.fill_rect(tip_x + half - 2, cy - 4, 26, 8, true);
-}
-
 int text_w(const char* s, int scale) {
   return static_cast<int>(std::strlen(s)) * 6 * scale;
+}
+
+// The three physical buttons sit in a tight cluster around the middle
+// of the button edge — top in landscape (KEY, PWR, BOOT left to right),
+// left in portrait (BOOT, PWR, KEY top to bottom, the CCW turn). They
+// are not at the corners, which is why a corner-pinned tab reads as a
+// random floating box. ~10 mm spacing on the 84 mm long edge → 112 px
+// of the 400 px axis.
+static constexpr int kButtonClusterPx = 112;
+
+static void draw_edge_tick(RlcdCanvas& c, bool portrait, int pos) {
+  if (portrait) {
+    c.fill_rect(0, pos - 2, 8, 5, true);
+  } else {
+    c.fill_rect(pos - 2, 0, 5, 8, true);
+  }
+}
+
+// Startup / shutdown cheat-sheet. Silkscreen carries these on the live
+// face, so the labels only appear here — one line per button, pinned to
+// the actual cluster rather than the corners.
+static void draw_splash_button_legend(RlcdCanvas& c) {
+  const bool portrait = c.orientation() == RlcdCanvas::Orientation::kPortrait;
+  const int w = c.width();
+  const int h = c.height();
+  const int mid = portrait ? h / 2 : w / 2;
+  const int boot_or_key = mid - kButtonClusterPx / 2;
+  const int pwr = mid;
+  const int key_or_boot = mid + kButtonClusterPx / 2;
+
+  if (portrait) {
+    // Top to bottom along the left edge: BOOT, PWR, KEY.
+    const int pos[3] = {boot_or_key, pwr, key_or_boot};
+    const char* lab[3] = {"BPM+  HOLD TEMPO", "PWR",
+                          "START/STOP  HOLD MENU"};
+    for (int i = 0; i < 3; ++i) {
+      draw_edge_tick(c, true, pos[i]);
+      c.draw_text(12, pos[i] - 7, lab[i], 2);
+    }
+    return;
+  }
+
+  // Landscape: ticks on the top edge at KEY, PWR, BOOT. The cluster is
+  // only ~112 px across, so the three single-line labels cannot sit
+  // side-by-side; they stack just under the ticks in left-to-right order.
+  draw_edge_tick(c, false, boot_or_key);  // KEY (left)
+  draw_edge_tick(c, false, pwr);
+  draw_edge_tick(c, false, key_or_boot);  // BOOT (right)
+  const char* lab[3] = {"START/STOP  HOLD MENU", "PWR", "BPM+  HOLD TEMPO"};
+  const int scale = 2;
+  const int line_h = 7 * scale + 8;
+  int y = 14;
+  for (int i = 0; i < 3; ++i) {
+    const int tw = text_w(lab[i], scale);
+    c.draw_text((w - tw) / 2, y, lab[i], scale);
+    y += line_h;
+  }
 }
 
 // Draws `s` horizontally centered; returns the x it started at.
@@ -240,23 +288,24 @@ void render_rlcd_splash(RlcdCanvas& c) {
   c.clear();
   const bool portrait = c.orientation() == RlcdCanvas::Orientation::kPortrait;
   const int kW = c.width();
-  const int kH = c.height();
-  draw_left_arrow(c, kH / 5);
-  draw_left_arrow(c, (kH * 4) / 5);
+
+  // Button cheat-sheet first so the wordmark can sit around the cluster
+  // (above it in portrait, below it in landscape).
+  draw_splash_button_legend(c);
 
   const char* mark = "NEON LINK";
   const int mark_scale = portrait ? 4 : 6;  // 9 chars must fit the width
   const int mark_w = static_cast<int>(std::strlen(mark)) * 6 * mark_scale;
   const int mark_x = (kW - mark_w) / 2;
-  const int mark_y = portrait ? 150 : 108;
-  c.fill_rect(mark_x - 10, mark_y - 14, mark_w + 20, 5, true);
+  const int mark_y = portrait ? 36 : 120;
+  c.fill_rect(mark_x - 10, mark_y - 10, mark_w + 20, 4, true);
   c.draw_text(mark_x, mark_y, mark, mark_scale);
-  c.fill_rect(mark_x - 10, mark_y + 7 * mark_scale + 9, mark_w + 20, 5, true);
+  c.fill_rect(mark_x - 10, mark_y + 7 * mark_scale + 6, mark_w + 20, 4, true);
 
   const char* line = "press a button to start";
   const int line_scale = 2;
   const int line_w = static_cast<int>(std::strlen(line)) * 6 * line_scale;
-  c.draw_text((kW - line_w) / 2, portrait ? 280 : 208, line, line_scale);
+  c.draw_text((kW - line_w) / 2, portrait ? 348 : 230, line, line_scale);
 }
 
 // Transport word for the live face. STOPPING is the quantized-stop window
@@ -334,8 +383,8 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 
   if (s.overlay == 5) {
-    // Tempo screen: the big BPM above tracks each nudge; the button tabs
-    // name up/down, so here we only title the screen and note the ramp.
+    // Tempo screen: the big BPM above tracks each nudge; BOOT is up and
+    // KEY is down (the silkscreen and splash teach the live mapping).
     c.draw_text(12, 118, "TEMPO", 4);
     c.draw_text(12, 170, "HOLD TO RAMP", 2);
   }
@@ -507,8 +556,10 @@ static void render_theme_ink(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   setup_footer(c, s);
 }
 
-// DOTS (designer mockup 1): dark, dot-matrix hero digits under a small
-// legend for the three top-edge buttons; PEERS carries the live count.
+// DOTS (designer mockup 1): dark, dot-matrix hero digits. Peers and
+// battery live in the header; button functions are silkscreened (and
+// taught on the splash), so this face does not pin a three-column
+// legend to the button edge.
 static void render_theme_dots(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   const LinkSyncPanelStatus& s = rs.base;
   c.clear();
@@ -518,14 +569,8 @@ static void render_theme_dots(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   char peers[16];
   std::snprintf(peers, sizeof(peers), "PEERS %u",
                 static_cast<unsigned>(s.peers));
-  const char* legend[3] = {"TAP", peers, "LINK"};
-  for (int i = 0; i < 3; ++i) {
-    const int cx = w * (2 * i + 1) / 6;
-    c.fill_rect(cx - 1, 4, 2, 6, true);
-    c.draw_text(cx - text_w(legend[i], 2) / 2, 14, legend[i], 2);
-  }
-  c.fill_rect(8, 8, w / 6 - 32, 2, true);
-  c.fill_rect(w - w / 6 + 24, 8, w / 6 - 32, 2, true);
+  c.draw_text(12, 12, peers, 2);
+  draw_battery(c, w - 50, 10, rs.battery_pct, s.usb_power);
 
   char bpm[24];
   bpm_text(s, bpm, sizeof(bpm));
@@ -782,57 +827,6 @@ static void render_theme_pulse(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   }
 }
 
-// Soft-button tabs pinned to the physical button edge. KEY and BOOT are the
-// two usable buttons; each shows its tap action and, where different, its
-// hold action. Landscape has them on the top edge (KEY left, BOOT right);
-// portrait turns the panel so they run down the left edge (BOOT top, KEY
-// bottom — the same reason Tempo's BOOT=up/KEY=down reads right there).
-static void tab_actions(const RlcdPanelStatus& rs, bool portrait,
-                        const char** k_tap, const char** k_hold,
-                        const char** b_tap, const char** b_hold) {
-  switch (rs.base.overlay) {
-    case 1:  // settings menu
-      *k_tap = "SELECT"; *k_hold = "BACK";
-      *b_tap = portrait ? "UP" : "DOWN"; *b_hold = portrait ? "DOWN" : "UP";
-      break;
-    case 2:  // editing a value
-      *k_tap = "SAVE"; *k_hold = "CANCEL";
-      *b_tap = "NEXT"; *b_hold = "PREV";
-      break;
-    case 3:  // power popup
-      *k_tap = "SELECT"; *k_hold = "BACK";
-      *b_tap = portrait ? "UP" : "DOWN"; *b_hold = portrait ? "DOWN" : "UP";
-      break;
-    case 5:  // tempo screen (tap and hold go the same way; hold auto-repeats)
-      *k_tap = "DOWN"; *k_hold = "";
-      *b_tap = "UP"; *b_hold = "";
-      break;
-    default:  // live face
-      *k_tap = rs.starting  ? "CANCEL"
-               : rs.stopping ? "RESUME"
-               : rs.base.playing ? "STOP"
-                                 : "PLAY";
-      *k_hold = "MENU";
-      *b_tap = "+BPM"; *b_hold = "TEMPO";
-      break;
-  }
-}
-
-static void draw_one_tab(RlcdCanvas& c, int x, int y, int w, const char* name,
-                         const char* tap, const char* hold) {
-  const bool two = hold != nullptr && hold[0] != '\0';
-  const int h = two ? 42 : 26;
-  c.fill_rect(x, y, w, h, false);    // white ground, so it reads over any face
-  c.draw_rect(x, y, w, h, 2, true);  // black frame
-  char line[24];
-  std::snprintf(line, sizeof(line), "%s %s", name, tap);
-  c.draw_text(x + 6, y + 5, line, 2);
-  if (two) {
-    std::snprintf(line, sizeof(line), "HOLD %s", hold);
-    c.draw_text(x + 6, y + 23, line, 2);
-  }
-}
-
 // Count-in banner over the running metronome: "STARTING IN N", sized to
 // fit and boxed so it reads on any theme in either orientation.
 static void draw_countin_banner(RlcdCanvas& c, unsigned n) {
@@ -846,19 +840,6 @@ static void draw_countin_banner(RlcdCanvas& c, unsigned n) {
   c.fill_rect((w - tw) / 2 - 8, y - 6, tw + 16, th + 12, false);
   c.draw_rect((w - tw) / 2 - 8, y - 6, tw + 16, th + 12, 2, true);
   draw_text_centered(c, y, t, scale);
-}
-
-static void draw_button_tabs(RlcdCanvas& c, const RlcdPanelStatus& rs) {
-  const bool portrait = c.orientation() == RlcdCanvas::Orientation::kPortrait;
-  const char *kt, *kh, *bt, *bh;
-  tab_actions(rs, portrait, &kt, &kh, &bt, &bh);
-  if (portrait) {
-    draw_one_tab(c, 2, 2, 150, "BOOT", bt, bh);
-    draw_one_tab(c, 2, c.height() - 44, 150, "KEY", kt, kh);
-  } else {
-    draw_one_tab(c, 2, 2, 150, "KEY", kt, kh);
-    draw_one_tab(c, 200, 2, 150, "BOOT", bt, bh);  // clears the battery at 354
-  }
 }
 
 void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
@@ -904,13 +885,12 @@ void render_rlcd_panel(RlcdCanvas& c, const RlcdPanelStatus& rs) {
   } else {
     render_landscape(c, rs);
   }
-  // Count-in banner (over the animating metronome), then the always-on
-  // soft-button legend, both before the theme's dark-flip so they invert
-  // with the face.
+  // Count-in banner over the animating metronome, before the theme's
+  // dark-flip so it inverts with the face. Button labels live on the
+  // splash (and the silkscreen), not the running UI.
   if (rs.starting) {
     draw_countin_banner(c, rs.countin);
   }
-  draw_button_tabs(c, rs);
   if (rs.base.invert) {
     c.invert();
   }

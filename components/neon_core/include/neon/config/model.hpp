@@ -127,7 +127,7 @@ enum class ColorTheme : uint8_t {
 enum class MonoTheme : uint8_t {
   kClassic = 0,  // the original face: header, BPM, dots, network, footer
   kInk = 1,      // light, centered, chrome-free: BPM + dots + state
-  kDots = 2,     // dark, dot-matrix hero digits, button legend up top
+  kDots = 2,     // dark, dot-matrix hero digits, peers + battery header
   kHero = 3,     // dark, one giant integer BPM
   kConsole = 4,  // dark instrument panel: LINK box, data column, RUN/STOP
   kGrid = 5,     // light, everything boxed: title bar, cells, peer ticks

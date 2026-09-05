@@ -46,18 +46,214 @@ constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return c;
 }
 
-// Tab5 neon tubes on a near-black void — both LCD flavors share this.
-constexpr uint16_t kBg = rgb(0, 2, 8);
-constexpr uint16_t kSurface = rgb(0, 28, 40);
-constexpr uint16_t kSurface2 = rgb(0, 48, 64);
-constexpr uint16_t kBorder = rgb(0, 140, 160);
-constexpr uint16_t kInk = rgb(255, 255, 255);
-constexpr uint16_t kMuted = rgb(0, 200, 210);
-constexpr uint16_t kNeon = rgb(0, 255, 255);
-constexpr uint16_t kNeonDim = rgb(0, 180, 200);
-constexpr uint16_t kHot = rgb(255, 45, 149);  // STOP tube; cyan stays the live accent
+// DESIGN_SYSTEM.md Void neutrals, with the live accent taken from
+// Config::color_theme. Neon is an accent, not a fill — the previous
+// teal-on-cyan plates were why the glass read pastel and busy.
+struct Pal {
+  uint16_t bg, surface, surface2, border, ink, muted, neon, neon_dim, hot,
+      hero, danger;
+};
+Pal g_pal{};
+
+uint16_t hex_rgb(uint32_t h) {
+  return rgb(static_cast<uint8_t>((h >> 16) & 0xff),
+             static_cast<uint8_t>((h >> 8) & 0xff),
+             static_cast<uint8_t>(h & 0xff));
+}
+
+void refresh_pal(neon::ColorTheme t) {
+  uint32_t bg = 0x0B0C0F, surface = 0x14161A, surface2 = 0x1C1F26,
+           border = 0x2A2E38, ink = 0xE8EAED, muted = 0x8B909A, neon = 0x00F0FF,
+           neon_dim = 0x00A8B3, hot = 0xFF2D95, hero = 0x00F0FF,
+           danger = 0xFF4D4D;
+  switch (t) {
+    case neon::ColorTheme::kTeal:
+      bg = 0x0A1A1E;
+      surface = 0x12262C;
+      surface2 = 0x1A343C;
+      border = 0x2E5860;
+      ink = 0xD6E6EA;
+      muted = 0x8AADB4;
+      neon = 0x5ED4DC;
+      neon_dim = 0x3AA0A8;
+      hero = 0x7EE0E6;
+      hot = 0xFF5AA8;
+      break;
+    case neon::ColorTheme::kPhosphor:
+      bg = 0x07110A;
+      surface = 0x0E1C12;
+      surface2 = 0x16281A;
+      border = 0x2A4A34;
+      ink = 0xD4E8D6;
+      muted = 0x8AAA90;
+      neon = 0x3DFF9A;
+      neon_dim = 0x22B86A;
+      hero = 0x6CFFB0;
+      hot = 0xFF4DA6;
+      break;
+    case neon::ColorTheme::kAmber:
+      bg = 0x14100A;
+      surface = 0x1E1810;
+      surface2 = 0x2A2216;
+      border = 0x4A3C24;
+      ink = 0xF2E6D0;
+      muted = 0xB09A74;
+      neon = 0xFFB020;
+      neon_dim = 0xC48418;
+      hero = 0xFFC24A;
+      hot = 0xFF4D8A;
+      break;
+    case neon::ColorTheme::kMagenta:
+      bg = 0x140A12;
+      surface = 0x1E1018;
+      surface2 = 0x2A1824;
+      border = 0x4A2A40;
+      ink = 0xF0E0EA;
+      muted = 0xB090A0;
+      neon = 0xFF5AB0;
+      neon_dim = 0xD04090;
+      hero = 0xFF7AC4;
+      hot = 0xFF2D95;
+      break;
+    case neon::ColorTheme::kPaper:
+      bg = 0xF3EEE6;
+      surface = 0xFFFBF5;
+      surface2 = 0xE6DFD4;
+      border = 0xC4BBAE;
+      ink = 0x1A1814;
+      muted = 0x5C564C;
+      neon = 0x007278;
+      neon_dim = 0x0A8A94;
+      hero = 0x00646C;
+      hot = 0xC4006A;
+      danger = 0xC42828;
+      break;
+    default:  // Void — the design-system default
+      break;
+  }
+  // Dark themes share Void neutrals so the chassis stays graphite and
+  // only the accent hue changes. Paper keeps its light plates.
+  if (t != neon::ColorTheme::kPaper) {
+    bg = 0x0B0C0F;
+    surface = 0x14161A;
+    surface2 = 0x1C1F26;
+    border = 0x2A2E38;
+    ink = 0xE8EAED;
+    muted = 0x8B909A;
+  }
+  g_pal.bg = hex_rgb(bg);
+  g_pal.surface = hex_rgb(surface);
+  g_pal.surface2 = hex_rgb(surface2);
+  g_pal.border = hex_rgb(border);
+  g_pal.ink = hex_rgb(ink);
+  g_pal.muted = hex_rgb(muted);
+  g_pal.neon = hex_rgb(neon);
+  g_pal.neon_dim = hex_rgb(neon_dim);
+  g_pal.hot = hex_rgb(hot);
+  g_pal.hero = hex_rgb(hero);
+  g_pal.danger = hex_rgb(danger);
+}
+
+// CrowPanel native scanout is 800×480. Portrait is a drawing-time
+// rotation into that buffer (logical 480×800), same idea as the RLCD
+// face. Tab5 is already a native portrait panel — no map.
+bool g_portrait = false;
+
+struct Lay {
+  int kW, kH, kPad, kHeadH;
+  int kTapX, kTapY, kTapW, kTapH;
+  int kBtnW, kBtnH, kMinusX, kMinusY, kPlusX, kPlusY;
+  int kTrX, kTrY, kTrW, kTrH;
+  int kStageX, kStageY, kStageW, kStageH;
+  int kBarY, kBarH, kFootY, kFootLine1, kFootLine2, kFootScale;
+  int kBpmCell, kTapLabelScale, kTrScale, kBtnScale;
+  int kGearS, kGearX, kGearY;
+  int kSetHeadH, kSetTabH, kSetRowH, kSetCloseW, kSetNudgeW;
+};
+Lay g_lay{};
+
+bool lcd_is_portrait() {
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  const uint8_t v = neon_config().display_portrait;
+  if (v == 2) {
+    return false;
+  }
+  if (v == 1) {
+    return true;
+  }
+  return true;  // 0 = board default (portrait)
+#else
+  return false;
+#endif
+}
+
+void to_phys(int x, int y, int* px, int* py) {
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (g_portrait) {
+    *px = y;
+    *py = halesp::kLcdH - 1 - x;
+    return;
+  }
+#endif
+  *px = x;
+  *py = y;
+}
+
+void from_phys(int px, int py, int* x, int* y) {
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (g_portrait) {
+    *x = halesp::kLcdH - 1 - py;
+    *y = px;
+    return;
+  }
+#endif
+  *x = px;
+  *y = py;
+}
+
+void rebuild_layout() {
+#if CONFIG_NEON_BOARD_LINKSYNC_TAB5
+  g_portrait = false;
+  g_lay = {720, 1280, 32, 64,
+           32, 80, 656, 232,
+           280, 150, 32, 332, 408, 332,
+           32, 502, 656, 170,
+           32, 692, 656, 440,
+           1148, 18, 1180, 1188, 1224, 3,
+           6, 3, 8, 8,
+           56, 632, 4,
+           64, 64, 80, 80, 80};
+#else
+  g_portrait = lcd_is_portrait();
+  const int W = g_portrait ? 480 : 800;
+  const int H = g_portrait ? 800 : 480;
+  const int pad = g_portrait ? 28 : 24;
+  const int tap_h = g_portrait ? 280 : 156;
+  const int btn_w = g_portrait ? 190 : 240;
+  const int btn_h = g_portrait ? 110 : 88;
+  const int tr_h = g_portrait ? 130 : 78;
+  const int head = g_portrait ? 52 : 44;
+  const int tap_y = head + 12;
+  const int minus_y = tap_y + tap_h + (g_portrait ? 24 : 16);
+  const int tr_y = minus_y + btn_h + (g_portrait ? 20 : 12);
+  const int bar_y = tr_y + tr_h + (g_portrait ? 24 : 10);
+  const int foot1 = bar_y + 18;
+  g_lay = {W, H, pad, head,
+           pad, tap_y, W - 2 * pad, tap_h,
+           btn_w, btn_h, pad, minus_y, W - pad - btn_w, minus_y,
+           pad, tr_y, W - 2 * pad, tr_h,
+           0, 0, 0, 0,
+           bar_y, g_portrait ? 14 : 10, foot1, foot1, foot1 + 22,
+           2,
+           g_portrait ? 8 : 7, 2, g_portrait ? 7 : 6, g_portrait ? 7 : 6,
+           44, W - pad - 44, 6,
+           48, 52, 56, 56, 56};
+#endif
+}
 
 void fill(uint16_t* fb, int x, int y, int w, int h, uint16_t c) {
+  const int LW = g_lay.kW != 0 ? g_lay.kW : halesp::kLcdW;
+  const int LH = g_lay.kH != 0 ? g_lay.kH : halesp::kLcdH;
   if (x < 0) {
     w += x;
     x = 0;
@@ -66,15 +262,29 @@ void fill(uint16_t* fb, int x, int y, int w, int h, uint16_t c) {
     h += y;
     y = 0;
   }
-  if (x + w > halesp::kLcdW) {
-    w = halesp::kLcdW - x;
+  if (x + w > LW) {
+    w = LW - x;
   }
-  if (y + h > halesp::kLcdH) {
-    h = halesp::kLcdH - y;
+  if (y + h > LH) {
+    h = LH - y;
   }
   if (w <= 0 || h <= 0) {
     return;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (g_portrait) {
+    for (int yy = y; yy < y + h; ++yy) {
+      for (int xx = x; xx < x + w; ++xx) {
+        int px, py;
+        to_phys(xx, yy, &px, &py);
+        if (px >= 0 && py >= 0 && px < halesp::kLcdW && py < halesp::kLcdH) {
+          fb[py * halesp::kLcdW + px] = c;
+        }
+      }
+    }
+    return;
+  }
+#endif
   for (int yy = y; yy < y + h; ++yy) {
     uint16_t* row = fb + yy * halesp::kLcdW + x;
     for (int xx = 0; xx < w; ++xx) {
@@ -272,9 +482,8 @@ Snap snapshot() {
     neon_read_unit_mac(mac);
     neon::ap_ssid_for(cfg, mac, s.ap_ssid, sizeof(s.ap_ssid));
   }
-  std::snprintf(s.bpm, sizeof(s.bpm), "%u.%u",
-                static_cast<unsigned>(s.milli_bpm / 1000u),
-                static_cast<unsigned>((s.milli_bpm / 100u) % 10u));
+  std::snprintf(s.bpm, sizeof(s.bpm), "%u",
+                static_cast<unsigned>((s.milli_bpm + 500u) / 1000u));
   netman::primary_ip(s.ip, sizeof(s.ip));
   const char* ssid = neon_wifi_current_ssid();
   std::snprintf(s.wifi_ssid, sizeof(s.wifi_ssid), "%s",
@@ -307,6 +516,14 @@ enum class Hit : uint8_t {
   kRowPlus,
   kConfirmYes,
   kConfirmNo,
+  kWifiBack,
+  kWifiAp,
+  kWifiScan,
+  kKbKey,
+  kKbShift,
+  kKbSym,
+  kKbBksp,
+  kKbJoin,
 };
 
 struct Touch {
@@ -314,96 +531,9 @@ struct Touch {
   int arg = 0;
 };
 
-#if CONFIG_NEON_BOARD_LINKSYNC_TAB5
-// 720×1280 portrait — fat hit targets, hero BPM, beat stage, phase strip.
-namespace lay {
-constexpr int kW = halesp::kLcdW;
-constexpr int kH = halesp::kLcdH;
-constexpr int kPad = 32;
-constexpr int kHeadH = 64;
-constexpr int kTapX = kPad;
-constexpr int kTapY = 80;
-constexpr int kTapW = kW - 2 * kPad;
-constexpr int kTapH = 232;
-constexpr int kBtnW = 280;
-constexpr int kBtnH = 150;
-constexpr int kMinusX = kPad;
-constexpr int kMinusY = 332;
-constexpr int kPlusX = kW - kPad - kBtnW;
-constexpr int kPlusY = kMinusY;
-constexpr int kTrX = kPad;
-constexpr int kTrY = 502;
-constexpr int kTrW = kW - 2 * kPad;
-constexpr int kTrH = 170;
-constexpr int kStageX = kPad;
-constexpr int kStageY = 692;
-constexpr int kStageW = kW - 2 * kPad;
-constexpr int kStageH = 440;
-constexpr int kBarY = 1148;
-constexpr int kBarH = 18;
-constexpr int kFootY = 1180;
-constexpr int kFootLine1 = 1188;
-constexpr int kFootLine2 = 1224;
-constexpr int kFootScale = 3;
-constexpr int kBpmCell = 6;
-constexpr int kTapLabelScale = 3;
-constexpr int kTrScale = 8;
-constexpr int kBtnScale = 8;
-constexpr int kGearS = 56;
-constexpr int kGearX = kW - kPad - kGearS;
-constexpr int kGearY = 4;
-constexpr int kSetHeadH = 64;
-constexpr int kSetTabH = 64;
-constexpr int kSetRowH = 80;
-constexpr int kSetCloseW = 80;
-constexpr int kSetNudgeW = 80;
-}  // namespace lay
-#else
-// CrowPanel 800×480 landscape. Controls in a left column, the beat stage
-// on the right, one status band at the bottom — nothing shares pixels.
-namespace lay {
-constexpr int kW = halesp::kLcdW;
-constexpr int kH = halesp::kLcdH;
-constexpr int kPad = 24;
-constexpr int kHeadH = 48;
-constexpr int kTapX = kPad;
-constexpr int kTapY = 60;
-constexpr int kTapW = 484;
-constexpr int kTapH = 126;
-constexpr int kBtnW = 190;
-constexpr int kBtnH = 90;
-constexpr int kMinusX = kPad;
-constexpr int kMinusY = 204;
-constexpr int kPlusX = kTapX + kTapW - kBtnW;
-constexpr int kPlusY = kMinusY;
-constexpr int kTrX = kPad;
-constexpr int kTrY = 312;
-constexpr int kTrW = kTapW;
-constexpr int kTrH = 90;
-constexpr int kStageX = 528;
-constexpr int kStageY = 60;
-constexpr int kStageW = kW - kPad - kStageX;
-constexpr int kStageH = 342;
-constexpr int kBarY = 412;
-constexpr int kBarH = 12;
-constexpr int kFootY = 432;
-constexpr int kFootLine1 = 436;
-constexpr int kFootLine2 = 458;
-constexpr int kFootScale = 2;
-constexpr int kBpmCell = 4;
-constexpr int kTapLabelScale = 2;
-constexpr int kTrScale = 6;
-constexpr int kBtnScale = 6;
-constexpr int kGearS = 40;
-constexpr int kGearX = kW - kPad - kGearS;
-constexpr int kGearY = 4;
-constexpr int kSetHeadH = 44;
-constexpr int kSetTabH = 48;
-constexpr int kSetRowH = 52;
-constexpr int kSetCloseW = 56;
-constexpr int kSetNudgeW = 56;
-}  // namespace lay
-#endif
+// Layout lives in g_lay (rebuild_layout): Tab5 keeps the native portrait
+// face with a beat stage; CrowPanel is full-width BPM / ± / transport
+// and software-rotates for portrait.
 
 bool in_rect(int x, int y, int rx, int ry, int rw, int rh) {
   return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
@@ -420,6 +550,21 @@ neon::ui::IdleDimmer g_dimmer;
 bool g_swallow_touch = false;
 int g_bl_applied = -1;
 int g_scroll_px = 0;
+
+enum class WifiPage : uint8_t { kOff, kScanning, kList, kKeyboard, kJoining };
+volatile WifiPage g_wifi = WifiPage::kOff;
+constexpr int kMaxAps = 12;
+NeonWifiScanEntry g_aps[kMaxAps] = {};
+int g_ap_n = 0;
+int g_wifi_scroll = 0;
+int64_t g_scan_started_us = 0;
+bool g_scan_no_radio = false;
+char g_kb_ssid[33] = {};
+char g_kb_pass[65] = {};
+bool g_kb_open = false;
+bool g_kb_shift = false;
+bool g_kb_sym = false;
+int64_t g_join_us = 0;
 
 constexpr int kTabCount = 5;
 const neon::MenuModel::Screen kTabs[kTabCount] = {
@@ -448,9 +593,9 @@ int tab_index_for(neon::MenuModel::Screen s) {
   return 4;
 }
 
-int set_list_y() { return lay::kSetHeadH + lay::kSetTabH; }
+int set_list_y() { return g_lay.kSetHeadH + g_lay.kSetTabH; }
 
-int set_list_h() { return lay::kH - set_list_y(); }
+int set_list_h() { return g_lay.kH - set_list_y(); }
 
 int set_row_count(const Snap& s) {
   using S = neon::MenuModel::Screen;
@@ -461,11 +606,16 @@ int set_row_count(const Snap& s) {
   if (scr == S::kConfirm) {
     return 0;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (scr == S::kSystem) {
+    return g_menu.item_count() + 1;  // extra SCREEN row
+  }
+#endif
   return g_menu.item_count();
 }
 
 int max_scroll(const Snap& s) {
-  const int content = set_row_count(s) * lay::kSetRowH;
+  const int content = set_row_count(s) * g_lay.kSetRowH;
   const int extra = content - set_list_h();
   return extra > 0 ? extra : 0;
 }
@@ -517,21 +667,30 @@ void commit_menu() {
   live.display_dim_s = g_cfg.display_dim_s;
   live.display_dim_level = g_cfg.display_dim_level;
   live.audio = g_cfg.audio;
+  live.color_theme = g_cfg.color_theme;
+  live.display_portrait = g_cfg.display_portrait;
+  live.ap_policy = g_cfg.ap_policy;
   neon_config_apply(live);
   g_cfg = live;
   g_bl_applied = -1;  // force a rewrite with the committed brightness
   apply_effective_backlight(esp_timer_get_time());
 }
 
+void wifi_ui_reset();  // defined with the wifi overlay
+
 void open_settings() {
   g_cfg = neon_config();
-  g_menu.go_section(neon::MenuModel::Screen::kMidi);
+  wifi_ui_reset();
+  g_menu.go_section(neon_wifi_has_credentials()
+                        ? neon::MenuModel::Screen::kMidi
+                        : neon::MenuModel::Screen::kNetwork);
   g_scroll_px = 0;
   g_settings = true;
 }
 
 void close_settings() {
   commit_menu();
+  wifi_ui_reset();
   g_menu.go_home();
   g_settings = false;
   g_scroll_px = 0;
@@ -551,10 +710,15 @@ const char* lcd_item_label(int i) {
         "LATENCY",    "RESET PULSE", "CLOCK SRC",  "CLK IN",
         "GATE CLK",   "QUANTUM",     "RST EDGE",   "MIDI NUDGE",
         "START/STOP", "BRIGHTNESS",  "BEAT DISP",  "BEAT STYLE", "COLOUR",
-        "VERSION",    "REBOOT"};
-    if (i >= 0 && i < 15) {
+        "IDLE DIM",   "DIM LEVEL",   "VERSION",    "REBOOT"};
+    if (i >= 0 && i < 17) {
       return k[i];
     }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+    if (i == 17) {
+      return "SCREEN";
+    }
+#endif
   } else if (scr == S::kAudio) {
     static const char* k[] = {"AUDIO",  "METRONOME", "CLICK",   "SOUND",
                               "OUT L",  "OUT R",     "LINE IN", "PUBLISH",
@@ -569,15 +733,58 @@ const char* lcd_item_label(int i) {
 bool row_has_nudge(int i) {
   using S = neon::MenuModel::Screen;
   const S scr = g_menu.screen();
-  if (scr == S::kOutputs || scr == S::kNetwork || scr == S::kConfirm) {
+  if (scr == S::kNetwork) {
+    return i == 0;  // MODE = ap_policy
+  }
+  if (scr == S::kOutputs || scr == S::kConfirm) {
     return false;
   }
   if (scr == S::kSystem && (i == neon::MenuModel::kSystemVersionItem ||
                             i == neon::MenuModel::kSystemRebootItem)) {
     return false;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (scr == S::kSystem && i == g_menu.item_count()) {
+    return false;
+  }
+#endif
   return true;
 }
+
+const char* ap_policy_label(neon::ApPolicy p) {
+  switch (p) {
+    case neon::ApPolicy::kAlways:
+      return "ALWAYS";
+    case neon::ApPolicy::kOff:
+      return "OFF";
+    default:
+      return "FALLBACK";
+  }
+}
+
+void apply_ap_policy(neon::ApPolicy p) {
+  g_cfg.ap_policy = p;
+  neon::Config live = neon_config();
+  live.ap_policy = p;
+  neon_config_apply(live);
+  if (p == neon::ApPolicy::kOff) {
+    netman::ap_stop();
+  }
+  ESP_LOGI(kTag, "ap policy %s", ap_policy_label(p));
+}
+
+void cycle_ap_policy(int delta) {
+  int v = static_cast<int>(g_cfg.ap_policy) + (delta > 0 ? 1 : -1);
+  if (v < 0) {
+    v = 2;
+  }
+  if (v > 2) {
+    v = 0;
+  }
+  apply_ap_policy(static_cast<neon::ApPolicy>(v));
+}
+
+int network_scan_row(const Snap& s) { return s.setup_ap ? 5 : 4; }
 
 void net_row(const Snap& s, int i, char* label, int lcap, char* value,
              int vcap) {
@@ -587,8 +794,7 @@ void net_row(const Snap& s, int i, char* label, int lcap, char* value,
   switch (i) {
     case 0:
       std::snprintf(label, lcap, "MODE");
-      std::snprintf(value, vcap, "%s",
-                    s.setup_ap ? "SETUP AP" : (s.wifi_up ? "STA" : "OFF"));
+      std::snprintf(value, vcap, "%s", ap_policy_label(g_cfg.ap_policy));
       break;
     case 1:
       std::snprintf(label, lcap, s.setup_ap ? "AP" : "WIFI");
@@ -609,13 +815,13 @@ void net_row(const Snap& s, int i, char* label, int lcap, char* value,
         std::snprintf(label, lcap, "AP PASS");
         std::snprintf(value, vcap, "%s", cfg.ap_pass[0] ? cfg.ap_pass : "-");
       } else {
-        std::snprintf(label, lcap, "WIFI EDIT");
-        std::snprintf(value, vcap, "USE WEB UI");
+        std::snprintf(label, lcap, "SCAN");
+        std::snprintf(value, vcap, "JOIN A NETWORK");
       }
       break;
     default:
-      std::snprintf(label, lcap, "WIFI EDIT");
-      std::snprintf(value, vcap, "USE WEB UI");
+      std::snprintf(label, lcap, "SCAN");
+      std::snprintf(value, vcap, "JOIN A NETWORK");
       break;
   }
 }
@@ -623,11 +829,11 @@ void net_row(const Snap& s, int i, char* label, int lcap, char* value,
 void paint_btn(uint16_t* fb, int x, int y, int w, int h, const char* label,
                int scale, bool pressed, bool accent) {
   const uint16_t fill_c =
-      pressed ? kNeon : (accent ? kSurface2 : kSurface);
-  fill_cut(fb, x, y, w, h, fill_c);
-  frame(fb, x, y, w, h, pressed ? kInk : kNeon, pressed ? 5 : 3);
+      pressed ? g_pal.neon : (accent ? g_pal.surface2 : g_pal.surface);
+  fill(fb, x, y, w, h, fill_c);
+  frame(fb, x, y, w, h, pressed ? g_pal.ink : g_pal.border, 1);
   text_cx(fb, x + w / 2, y + (h - 7 * scale) / 2, label, scale,
-          pressed ? kBg : kInk);
+          pressed ? g_pal.bg : g_pal.ink);
 }
 
 void paint_gear(uint16_t* fb, int x, int y, int scale, uint16_t c) {
@@ -644,58 +850,44 @@ void paint_gear(uint16_t* fb, int x, int y, int scale, uint16_t c) {
 }
 
 void paint_header(uint16_t* fb, const Snap& s) {
-  constexpr int kW = lay::kW;
-  constexpr int kPad = lay::kPad;
-  // Fixed 4 px rail: the beat stage carries the motion now, so the header
-  // stops pulsing (the growing rail used to push the name into the BPM
-  // plate on beat 1).
-  fill(fb, 0, 0, kW, 4, s.playing ? kNeon : kNeonDim);
-  const int ty = (lay::kHeadH - 14) / 2 + 4;
+  const int kW = g_lay.kW;
+  const int kPad = g_lay.kPad;
+  // 1 px playing tick — the stage carries the motion, the header stays still.
+  fill(fb, 0, 0, kW, 1, s.playing ? g_pal.neon : g_pal.border);
+  const int ty = (g_lay.kHeadH - 14) / 2 + 4;
   char peers[24];
   std::snprintf(peers, sizeof(peers), "%u", static_cast<unsigned>(s.peers));
   const int peers_w = text_width(peers, 3);
-  const int right = lay::kGearX - 16;
-  text(fb, right - peers_w, ty - 4, peers, 3, kNeon);
+  const int right = g_lay.kGearX - 16;
+  text(fb, right - peers_w, ty - 4, peers, 3, g_pal.neon);
   const int label_x = right - peers_w - text_width("PEERS", 2) - 10;
-  text(fb, label_x, ty, "PEERS", 2, kMuted);
-  text_clip(fb, kPad, ty, s.name, 2, kInk, label_x - kPad - 12);
+  text(fb, label_x, ty, "PEERS", 2, g_pal.muted);
+  text_clip(fb, kPad, ty, s.name, 2, g_pal.ink, label_x - kPad - 12);
 }
 
 void paint_footer(uint16_t* fb, const Snap& s) {
-  constexpr int kW = lay::kW;
-  constexpr int kPad = lay::kPad;
-  const int sc = lay::kFootScale;
-  const int y1 = lay::kFootLine1;
-  const int y2 = lay::kFootLine2;
+  const int kW = g_lay.kW;
+  const int kPad = g_lay.kPad;
+  const int sc = g_lay.kFootScale;
+  const int y1 = g_lay.kFootLine1;
+  const int y2 = g_lay.kFootLine2;
   const neon::Config& cfg = neon_config();
-  const int half = kW / 2;
   if (s.show_ap) {
-    const char* url = "192.168.4.1";
-    const int url_w = text_width(url, sc);
-    text(fb, kPad, y1, "SETUP AP", sc, kNeon);
-    text_clip(fb, kPad + text_width("SETUP AP  ", sc), y1,
-              s.ap_ssid[0] ? s.ap_ssid : "LINK-LCD", sc, kInk,
-              kW - 2 * kPad - text_width("SETUP AP  ", sc) - url_w - 16);
-    text(fb, kW - kPad - url_w, y1, url, sc, kMuted);
-    text(fb, kPad, y2, "PASS", sc, kMuted);
-    text_clip(fb, kPad + text_width("PASS  ", sc), y2, cfg.ap_pass, sc, kInk,
-              kW - 2 * kPad - text_width("PASS  ", sc));
+    text(fb, kPad, y1, s.ap_ssid[0] ? s.ap_ssid : "LINK-LCD", sc, g_pal.ink);
+    text(fb, kW - kPad - text_width("192.168.4.1", sc), y1, "192.168.4.1", sc,
+         g_pal.muted);
+    text(fb, kPad, y2, cfg.ap_pass, sc, g_pal.muted);
   } else if (!s.provisioned) {
-    text(fb, kPad, y1, "NO WIFI", sc, kNeon);
-    text(fb, kPad, y2, "SoftAP did not start", sc, kMuted);
+    text(fb, kPad, y1, "NO WIFI", sc, g_pal.muted);
+    text(fb, kPad, y2, "SETTINGS > NETWORK TO JOIN", sc, g_pal.muted);
   } else {
     const char* net = s.wifi_up ? (s.wifi_ssid[0] ? s.wifi_ssid : "-")
                                 : "CONNECTING";
-    const char* midi = "MIDI CLOCK 24 PPQN";
-    const int midi_w = text_width(midi, sc);
-    text(fb, kPad, y1, s.wifi_up ? "STA" : "NET", sc, kNeon);
-    text_clip(fb, kPad + text_width("STA  ", sc), y1, net, sc, kInk,
-              kW - kPad - midi_w - 16 - (kPad + text_width("STA  ", sc)));
-    text(fb, kW - kPad - midi_w, y1, midi, sc, kMuted);
-    text(fb, kPad, y2, "IP", sc, kMuted);
-    text(fb, kPad + text_width("IP  ", sc), y2, s.ip[0] ? s.ip : "-", sc,
-         kInk);
-    text_clip(fb, half + 24, y2, s.firmware, sc, kMuted, kW - kPad - half - 24);
+    text(fb, kPad, y1, net, sc, s.wifi_up ? g_pal.ink : g_pal.muted);
+    if (s.ip[0]) {
+      const int iw = text_width(s.ip, sc);
+      text(fb, kW - kPad - iw, y1, s.ip, sc, g_pal.muted);
+    }
   }
 }
 
@@ -715,11 +907,11 @@ void stage_dots(uint16_t* fb, int cx, int y, uint32_t q, uint32_t beat,
       static_cast<int>(q) * kSize + (static_cast<int>(q) - 1) * kGap;
   int x = cx - total / 2;
   for (uint32_t i = 1; i <= q; ++i) {
-    uint16_t c = kSurface2;
+    uint16_t c = g_pal.surface2;
     if (playing && i == beat) {
-      c = beat == 1 ? kHot : kNeon;
+      c = beat == 1 ? g_pal.hot : g_pal.neon;
     } else if (playing && i < beat) {
-      c = kNeonDim;
+      c = g_pal.neon_dim;
     }
     fill(fb, x, y, kSize, kSize, c);
     x += kSize + kGap;
@@ -780,11 +972,11 @@ void stage_number(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
   }
   const bool flash = s.in_beat < 140;
   if (flash) {
-    fill(fb, ix, iy, iw, ah, kSurface);
+    fill(fb, ix, iy, iw, ah, g_pal.surface);
   }
   const int x = ix + (iw - ink_w * cell) / 2 - ink_lo * cell;
   const int y = iy + (ah - neon::ui::kHeroHeight * cell) / 2;
-  hero_text(fb, x, y, d, cell, s.beat == 1 ? kHot : kNeon);
+  hero_text(fb, x, y, d, cell, s.beat == 1 ? g_pal.hot : g_pal.neon);
 }
 
 void stage_pie(uint16_t* fb, const Snap& s, int ix, int iy, int iw, int ah) {
@@ -814,18 +1006,18 @@ void stage_pie(uint16_t* fb, const Snap& s, int ix, int iy, int iw, int ah) {
         continue;
       }
       if (d2 >= ri2) {
-        row[px] = kNeonDim;
+        row[px] = g_pal.neon_dim;
         continue;
       }
       const int ce = px * ey - py * ex;
       const bool in = wide ? !((ex * py - ey * px) >= 0 && px <= 0)
                            : (px >= 0 && ce >= 0);
       if (in) {
-        row[px] = kNeon;
+        row[px] = g_pal.neon;
       }
     }
   }
-  fill(fb, cx - 4, cy - 4, 8, 8, kInk);
+  fill(fb, cx - 4, cy - 4, 8, 8, g_pal.ink);
 }
 
 void stage_pendulum(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
@@ -855,17 +1047,17 @@ void stage_pendulum(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
   const int tx = static_cast<int>(std::sin(0.55f) * static_cast<float>(len));
   const int ty = py0 + static_cast<int>(std::cos(0.55f) *
                                         static_cast<float>(len));
-  fill(fb, px0 - tx - 2, ty + 20, 4, 14, kBorder);
-  fill(fb, px0 + tx - 2, ty + 20, 4, 14, kBorder);
+  fill(fb, px0 - tx - 2, ty + 20, 4, 14, g_pal.border);
+  fill(fb, px0 + tx - 2, ty + 20, 4, 14, g_pal.border);
   constexpr int kSteps = 26;
   for (int i = 0; i <= kSteps; ++i) {
     const int xi = px0 + ((bx - px0) * i) / kSteps;
     const int yi = py0 + ((by - py0) * i) / kSteps;
-    fill(fb, xi - 3, yi - 3, 6, 6, kNeonDim);
+    fill(fb, xi - 3, yi - 3, 6, 6, g_pal.neon_dim);
   }
-  fill(fb, px0 - 5, py0 - 5, 10, 10, kInk);
+  fill(fb, px0 - 5, py0 - 5, 10, 10, g_pal.ink);
   constexpr int kBob = 16;
-  const uint16_t bc = (s.beat == 1 && s.in_beat < 140) ? kHot : kNeon;
+  const uint16_t bc = (s.beat == 1 && s.in_beat < 140) ? g_pal.hot : g_pal.neon;
   for (int dy = -kBob; dy <= kBob; ++dy) {
     uint16_t* row = fb + (by + dy) * halesp::kLcdW + bx;
     for (int dx = -kBob; dx <= kBob; ++dx) {
@@ -894,7 +1086,7 @@ void stage_pulse(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
   const int outer_hi = r_max * r_max;
   const int ring_lo = (r - 3) * (r - 3);
   const int ring_hi = r * r;
-  const uint16_t disc_c = s.beat == 1 ? kHot : kNeon;
+  const uint16_t disc_c = s.beat == 1 ? g_pal.hot : g_pal.neon;
   for (int py = -r_max; py <= r_max; ++py) {
     uint16_t* row = fb + (cy + py) * halesp::kLcdW + cx;
     for (int px = -r_max; px <= r_max; ++px) {
@@ -905,21 +1097,21 @@ void stage_pulse(uint16_t* fb, const Snap& s, int ix, int iy, int iw,
       if (attack && d2 <= disc2) {
         row[px] = disc_c;
       } else if (d2 >= outer_lo) {
-        row[px] = kBorder;
+        row[px] = g_pal.border;
       } else if (d2 >= ring_lo && d2 <= ring_hi) {
-        row[px] = kNeon;
+        row[px] = g_pal.neon;
       }
     }
   }
 }
 
 void paint_stage(uint16_t* fb, const Snap& s) {
-  const int x = lay::kStageX;
-  const int y = lay::kStageY;
-  const int w = lay::kStageW;
-  const int h = lay::kStageH;
+  const int x = g_lay.kStageX;
+  const int y = g_lay.kStageY;
+  const int w = g_lay.kStageW;
+  const int h = g_lay.kStageH;
   const bool flash = s.playing && s.in_beat < 140;
-  frame(fb, x, y, w, h, s.playing ? (flash ? kInk : kNeon) : kBorder, 3);
+  frame(fb, x, y, w, h, s.playing ? (flash ? g_pal.ink : g_pal.neon) : g_pal.border, 1);
   const int ix = x + 10;
   const int iy = y + 10;
   const int iw = w - 20;
@@ -942,7 +1134,7 @@ void paint_stage(uint16_t* fb, const Snap& s) {
     const int gw = hero_width("-", cell);
     hero_text(fb, ix + (iw - gw) / 2,
               iy + (ah - neon::ui::kHeroHeight * cell) / 2, "-", cell,
-              kSurface2);
+              g_pal.surface2);
     return;
   }
   if (s.big_beat == 0) {
@@ -965,66 +1157,61 @@ void paint_stage(uint16_t* fb, const Snap& s) {
 }
 
 void paint_face(uint16_t* fb, const Snap& s, Touch pressed) {
-  constexpr int kW = lay::kW;
-  constexpr int kH = lay::kH;
-  constexpr int kPad = lay::kPad;
-  fill(fb, 0, 0, kW, kH, kBg);
+  const int kW = g_lay.kW;
+  const int kH = g_lay.kH;
+  const int kPad = g_lay.kPad;
+  fill(fb, 0, 0, kW, kH, g_pal.bg);
 
   paint_header(fb, s);
 
-  const int gear_scale = lay::kGearS >= 56 ? 6 : 5;
+  const int gear_scale = g_lay.kGearS >= 56 ? 6 : 5;
   const int gear_px = 7 * gear_scale;
-  const int gx = lay::kGearX + (lay::kGearS - gear_px) / 2;
-  const int gy = lay::kGearY + (lay::kGearS - gear_px) / 2;
+  const int gx = g_lay.kGearX + (g_lay.kGearS - gear_px) / 2;
+  const int gy = g_lay.kGearY + (g_lay.kGearS - gear_px) / 2;
   if (pressed.hit == Hit::kGear) {
-    fill_cut(fb, lay::kGearX, lay::kGearY, lay::kGearS, lay::kGearS, kNeon);
-    paint_gear(fb, gx, gy, gear_scale, kBg);
+    fill(fb, g_lay.kGearX, g_lay.kGearY, g_lay.kGearS, g_lay.kGearS, g_pal.surface2);
+    paint_gear(fb, gx, gy, gear_scale, g_pal.neon);
   } else {
-    frame(fb, lay::kGearX, lay::kGearY, lay::kGearS, lay::kGearS, kNeon, 2);
-    paint_gear(fb, gx, gy, gear_scale, kInk);
+    paint_gear(fb, gx, gy, gear_scale, g_pal.muted);
   }
 
   // BPM hero (tap-tempo zone). Seven-segment numerals, not scaled 5×7.
-  const int bpm_w = hero_width(s.bpm, lay::kBpmCell);
-  const int bpm_h = neon::ui::kHeroHeight * lay::kBpmCell;
-  const int label_h = 7 * lay::kTapLabelScale;
-  const int bpm_x = lay::kTapX + (lay::kTapW - bpm_w) / 2;
-  const int bpm_y = lay::kTapY + (lay::kTapH - bpm_h - label_h - 8) / 2;
+  const int bpm_w = hero_width(s.bpm, g_lay.kBpmCell);
+  const int bpm_h = neon::ui::kHeroHeight * g_lay.kBpmCell;
+  const int bpm_x = g_lay.kTapX + (g_lay.kTapW - bpm_w) / 2;
+  const int bpm_y = g_lay.kTapY + (g_lay.kTapH - bpm_h) / 2;
   if (pressed.hit == Hit::kTap) {
-    frame(fb, lay::kTapX, lay::kTapY, lay::kTapW, lay::kTapH, kNeon, 2);
+    fill(fb, g_lay.kTapX, g_lay.kTapY, g_lay.kTapW, g_lay.kTapH, g_pal.surface);
   }
-  hero_text(fb, bpm_x, bpm_y, s.bpm, lay::kBpmCell, kInk);
-  text_cx(fb, lay::kTapX + lay::kTapW / 2, bpm_y + bpm_h + 8, "TAP TEMPO",
-          lay::kTapLabelScale, kMuted);
+  hero_text(fb, bpm_x, bpm_y, s.bpm, g_lay.kBpmCell, g_pal.hero);
 
-  paint_btn(fb, lay::kMinusX, lay::kMinusY, lay::kBtnW, lay::kBtnH, "-",
-            lay::kBtnScale, pressed.hit == Hit::kMinus, false);
-  paint_btn(fb, lay::kPlusX, lay::kPlusY, lay::kBtnW, lay::kBtnH, "+",
-            lay::kBtnScale, pressed.hit == Hit::kPlus, false);
-  text_cx(fb, lay::kTapX + lay::kTapW / 2,
-          lay::kMinusY + (lay::kBtnH - 14) / 2, "BPM", 2, kMuted);
+  paint_btn(fb, g_lay.kMinusX, g_lay.kMinusY, g_lay.kBtnW, g_lay.kBtnH, "-",
+            g_lay.kBtnScale, pressed.hit == Hit::kMinus, false);
+  paint_btn(fb, g_lay.kPlusX, g_lay.kPlusY, g_lay.kBtnW, g_lay.kBtnH, "+",
+            g_lay.kBtnScale, pressed.hit == Hit::kPlus, false);
 
   const bool tr_press = pressed.hit == Hit::kTransport;
-  const int tr_cx = lay::kTrX + lay::kTrW / 2;
-  const int tr_ty = lay::kTrY + (lay::kTrH - 7 * lay::kTrScale) / 2;
+  const int tr_cx = g_lay.kTrX + g_lay.kTrW / 2;
+  const int tr_ty = g_lay.kTrY + (g_lay.kTrH - 7 * g_lay.kTrScale) / 2;
   if (s.playing) {
-    fill_cut(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH,
-             tr_press ? kInk : kHot);
-    frame(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH, kInk, 4);
-    text_cx(fb, tr_cx, tr_ty, "STOP", lay::kTrScale, kBg);
+    fill(fb, g_lay.kTrX, g_lay.kTrY, g_lay.kTrW, g_lay.kTrH,
+         tr_press ? g_pal.ink : g_pal.hot);
+    text_cx(fb, tr_cx, tr_ty, "STOP", g_lay.kTrScale, g_pal.bg);
   } else {
-    fill_cut(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH,
-             tr_press ? kInk : kNeon);
-    frame(fb, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH, kInk, 4);
-    text_cx(fb, tr_cx, tr_ty, "RUN", lay::kTrScale, kBg);
+    fill(fb, g_lay.kTrX, g_lay.kTrY, g_lay.kTrW, g_lay.kTrH,
+         tr_press ? g_pal.ink : g_pal.surface2);
+    frame(fb, g_lay.kTrX, g_lay.kTrY, g_lay.kTrW, g_lay.kTrH, g_pal.border, 1);
+    text_cx(fb, tr_cx, tr_ty, "RUN", g_lay.kTrScale, g_pal.ink);
   }
 
+#if CONFIG_NEON_BOARD_LINKSYNC_TAB5
   paint_stage(fb, s);
+#endif
 
-  const int bar_y = lay::kBarY;
+  const int bar_y = g_lay.kBarY;
   const int bar_w = kW - 2 * kPad;
-  const int bar_h = lay::kBarH;
-  fill(fb, kPad, bar_y, bar_w, bar_h, kSurface);
+  const int bar_h = g_lay.kBarH;
+  fill(fb, kPad, bar_y, bar_w, bar_h, g_pal.surface);
   const uint32_t span = s.quantum * 1000u;
   const uint32_t pos = span != 0 ? s.phase % span : 0;
   int fill_w =
@@ -1036,64 +1223,262 @@ void paint_face(uint16_t* fb, const Snap& s, Touch pressed) {
     fill_w = bar_w;
   }
   if (s.playing) {
-    fill(fb, kPad, bar_y, fill_w, bar_h, kNeonDim);
+    fill(fb, kPad, bar_y, fill_w, bar_h, g_pal.neon_dim);
     const int head = 28;
     int hx = kPad + fill_w - head;
     if (hx < kPad) {
       hx = kPad;
     }
-    fill(fb, hx, bar_y - 4, head, bar_h + 8, kNeon);
+    fill(fb, hx, bar_y - 4, head, bar_h + 8, g_pal.neon);
   } else {
-    fill(fb, kPad, bar_y, bar_w / 10, bar_h, kBorder);
+    fill(fb, kPad, bar_y, bar_w / 10, bar_h, g_pal.border);
   }
   for (uint32_t i = 1; i < s.quantum && i < 8; ++i) {
     const int tx = kPad + static_cast<int>((i * bar_w) / s.quantum);
-    fill(fb, tx, bar_y - 4, 3, bar_h + 8, kBorder);
+    fill(fb, tx, bar_y - 4, 3, bar_h + 8, g_pal.border);
   }
 
   paint_footer(fb, s);
 }
 
+void wifi_ui_reset() {
+  g_wifi = WifiPage::kOff;
+  g_wifi_scroll = 0;
+  g_kb_shift = false;
+  g_kb_sym = false;
+  g_kb_pass[0] = '\0';
+  g_kb_ssid[0] = '\0';
+  g_kb_open = false;
+}
+
+void wifi_scan_task(void*) {
+  g_ap_n = neon_wifi_scan(g_aps, kMaxAps);
+  g_scan_no_radio = !netman::wifi_driver_ready();
+  g_wifi = WifiPage::kList;
+  g_wifi_scroll = 0;
+  vTaskDelete(nullptr);
+}
+
+void wifi_start_scan() {
+  if (g_wifi == WifiPage::kScanning) {
+    return;
+  }
+  g_wifi = WifiPage::kScanning;
+  g_ap_n = 0;
+  g_wifi_scroll = 0;
+  g_scan_no_radio = false;
+  g_scan_started_us = esp_timer_get_time();
+  if (xTaskCreate(wifi_scan_task, "wifi_scan", 6144, nullptr, 4, nullptr) !=
+      pdPASS) {
+    g_scan_no_radio = !netman::wifi_driver_ready();
+    g_wifi = WifiPage::kList;
+  }
+}
+
+void wifi_join(const char* ssid, const char* pass) {
+  neon::Config live = neon_config();
+  std::memset(live.wifi[0].ssid, 0, sizeof(live.wifi[0].ssid));
+  std::memset(live.wifi[0].pass, 0, sizeof(live.wifi[0].pass));
+  std::snprintf(live.wifi[0].ssid, sizeof(live.wifi[0].ssid), "%s",
+                ssid != nullptr ? ssid : "");
+  std::snprintf(live.wifi[0].pass, sizeof(live.wifi[0].pass), "%s",
+                pass != nullptr ? pass : "");
+  neon_config_apply(live);
+  g_cfg = live;
+  neon_wifi_apply_credentials();
+  g_wifi = WifiPage::kJoining;
+  g_join_us = esp_timer_get_time();
+}
+
+int kb_key_h() { return g_lay.kH >= 800 ? 64 : 48; }
+
+int kb_key_w() { return (g_lay.kW - 2 * g_lay.kPad) / 10; }
+
+int kb_top() { return g_lay.kH - 4 * kb_key_h() - g_lay.kPad / 2; }
+
+const char* kb_letters(int row) {
+  if (g_kb_sym) {
+    static const char* k[3] = {"1234567890", "-/:;()$&@\"", ".,?!'#+="};
+    return (row >= 0 && row < 3) ? k[row] : "";
+  }
+  if (g_kb_shift) {
+    static const char* k[3] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
+    return (row >= 0 && row < 3) ? k[row] : "";
+  }
+  static const char* k[3] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
+  return (row >= 0 && row < 3) ? k[row] : "";
+}
+
+void paint_wifi_overlay(uint16_t* fb, const Snap& s, Touch pressed) {
+  const int kW = g_lay.kW;
+  const int kH = g_lay.kH;
+  const int kPad = g_lay.kPad;
+  const int list_y = set_list_y();
+
+  paint_btn(fb, kPad, 4, g_lay.kSetCloseW, g_lay.kSetHeadH - 8, "<", 3,
+            pressed.hit == Hit::kWifiBack, false);
+
+  if (g_wifi == WifiPage::kScanning) {
+    text_cx(fb, kW / 2, list_y + 40, "SCANNING", 3, g_pal.ink);
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+    text_cx(fb, kW / 2, list_y + 80, "2.4 AND 5 GHZ", 2, g_pal.muted);
+#else
+    text_cx(fb, kW / 2, list_y + 80, "NEARBY 2.4 GHZ", 2, g_pal.muted);
+#endif
+    return;
+  }
+
+  if (g_wifi == WifiPage::kJoining) {
+    text_cx(fb, kW / 2, list_y + 36, "CONNECTING", 3, g_pal.ink);
+    text_cx(fb, kW / 2, list_y + 80, g_kb_ssid, 2, g_pal.muted);
+    if (s.wifi_up) {
+      text_cx(fb, kW / 2, list_y + 120, "JOINED", 3, g_pal.neon);
+    } else if (esp_timer_get_time() - g_join_us > 12000000) {
+      text_cx(fb, kW / 2, list_y + 120, "FAILED", 3, g_pal.danger);
+      char why[48];
+      std::snprintf(why, sizeof(why), "REASON %u",
+                    static_cast<unsigned>(neon_wifi_last_disconnect_reason()));
+      text_cx(fb, kW / 2, list_y + 156, why, 2, g_pal.muted);
+    }
+    return;
+  }
+
+  if (g_wifi == WifiPage::kList) {
+    if (g_ap_n <= 0) {
+      if (g_scan_no_radio) {
+        text_cx(fb, kW / 2, list_y + 40, "NO RADIO", 3, g_pal.ink);
+        text_cx(fb, kW / 2, list_y + 80, "TAP RST ON THE XIAO", 2, g_pal.muted);
+        text_cx(fb, kW / 2, list_y + 110, "THEN SCAN AGAIN", 2, g_pal.muted);
+      } else {
+        text_cx(fb, kW / 2, list_y + 40, "NO NETWORKS", 3, g_pal.ink);
+        text_cx(fb, kW / 2, list_y + 80, "TAP SCAN TO TRY AGAIN", 2,
+                g_pal.muted);
+      }
+    }
+    const int row_h = g_lay.kSetRowH;
+    const int vis = (kH - list_y - row_h) / row_h;
+    if (g_wifi_scroll < 0) {
+      g_wifi_scroll = 0;
+    }
+    if (g_ap_n > vis && g_wifi_scroll > g_ap_n - vis) {
+      g_wifi_scroll = g_ap_n - vis;
+    }
+    for (int i = 0; i < g_ap_n; ++i) {
+      const int y = list_y + (i - g_wifi_scroll) * row_h;
+      if (y + row_h <= list_y || y >= kH - row_h) {
+        continue;
+      }
+      const bool hit = pressed.hit == Hit::kWifiAp && pressed.arg == i;
+      fill(fb, 0, y, kW, row_h, hit ? g_pal.surface2 : g_pal.bg);
+      fill(fb, kPad, y + row_h - 1, kW - 2 * kPad, 1, g_pal.surface);
+      text(fb, kPad, y + (row_h - 14) / 2, g_aps[i].ssid, 2, g_pal.ink);
+      char meta[16];
+      std::snprintf(meta, sizeof(meta), "%s %s %d",
+                    g_aps[i].channel > 14 ? "5G" : "2G",
+                    g_aps[i].open ? "OPEN" : "LOCK",
+                    static_cast<int>(g_aps[i].rssi));
+      const int mw = text_width(meta, 2);
+      text(fb, kW - kPad - mw, y + (row_h - 14) / 2, meta, 2, g_pal.muted);
+    }
+    paint_btn(fb, kPad, kH - row_h + 4, kW - 2 * kPad, row_h - 8, "SCAN AGAIN",
+              2, pressed.hit == Hit::kWifiScan, false);
+    return;
+  }
+
+  if (g_wifi != WifiPage::kKeyboard) {
+    return;
+  }
+
+  text(fb, kPad, list_y + 8, g_kb_ssid, 2, g_pal.muted);
+  char shown[72];
+  if (g_kb_open) {
+    std::snprintf(shown, sizeof(shown), "%s",
+                  g_kb_pass[0] ? g_kb_pass : "OPEN NETWORK");
+  } else if (g_kb_pass[0] == '\0') {
+    std::snprintf(shown, sizeof(shown), "PASSWORD");
+  } else {
+    int n = static_cast<int>(std::strlen(g_kb_pass));
+    int i = 0;
+    for (; i < n && i < 60; ++i) {
+      shown[i] = '*';
+    }
+    shown[i] = '\0';
+  }
+  text(fb, kPad, list_y + 32, shown, 3,
+       g_kb_pass[0] ? g_pal.ink : g_pal.muted);
+  fill(fb, kPad, list_y + 58, kW - 2 * kPad, 1, g_pal.border);
+
+  const int kh = kb_key_h();
+  const int kw = kb_key_w();
+  const int top = kb_top();
+  for (int row = 0; row < 3; ++row) {
+    const char* letters = kb_letters(row);
+    const int n = static_cast<int>(std::strlen(letters));
+    const int x0 = (kW - n * kw) / 2;
+    for (int col = 0; col < n; ++col) {
+      char lab[2] = {letters[col], 0};
+      const bool hit =
+          pressed.hit == Hit::kKbKey && pressed.arg == row * 16 + col;
+      paint_btn(fb, x0 + col * kw + 2, top + row * kh + 2, kw - 4, kh - 4, lab,
+                2, hit, false);
+    }
+  }
+  const int y3 = top + 3 * kh;
+  const int x0 = kPad;
+  paint_btn(fb, x0, y3 + 2, kw * 2 - 4, kh - 4, g_kb_shift ? "ABC" : "SHIFT", 2,
+            pressed.hit == Hit::kKbShift, g_kb_shift);
+  paint_btn(fb, x0 + kw * 2, y3 + 2, kw * 4 - 4, kh - 4, "SPACE", 2,
+            pressed.hit == Hit::kKbKey && pressed.arg == 99, false);
+  paint_btn(fb, x0 + kw * 6, y3 + 2, kw * 2 - 4, kh - 4, g_kb_sym ? "ABC" : "123",
+            2, pressed.hit == Hit::kKbSym, g_kb_sym);
+  paint_btn(fb, x0 + kw * 8, y3 + 2, kw * 2 - 4, kh - 4, "DEL", 2,
+            pressed.hit == Hit::kKbBksp, false);
+  paint_btn(fb, kW - kPad - kw * 3, list_y + 70, kw * 3, 40, "JOIN", 2,
+            pressed.hit == Hit::kKbJoin, true);
+}
+
 void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
   using S = neon::MenuModel::Screen;
-  constexpr int kW = lay::kW;
-  constexpr int kH = lay::kH;
-  constexpr int kPad = lay::kPad;
-  fill(fb, 0, 0, kW, kH, kBg);
+  const int kW = g_lay.kW;
+  const int kH = g_lay.kH;
+  const int kPad = g_lay.kPad;
+  fill(fb, 0, 0, kW, kH, g_pal.bg);
 
   const bool confirm = g_menu.screen() == S::kConfirm;
   const bool editing_clk = g_menu.screen() == S::kOutputEdit;
 
-  fill(fb, 0, 0, kW, lay::kSetHeadH, kSurface);
-  fill(fb, 0, lay::kSetHeadH - 2, kW, 2, kNeonDim);
+  fill(fb, 0, 0, kW, g_lay.kSetHeadH, g_pal.surface);
+  fill(fb, 0, g_lay.kSetHeadH - 1, kW, 1, g_pal.border);
   if (editing_clk) {
-    paint_btn(fb, kPad, 4, lay::kSetCloseW, lay::kSetHeadH - 8, "<", 3,
+    paint_btn(fb, kPad, 4, g_lay.kSetCloseW, g_lay.kSetHeadH - 8, "<", 3,
               pressed.hit == Hit::kBack, false);
     char title[16];
     std::snprintf(title, sizeof(title), "CLK %d", g_menu.output_index() + 1);
-    text(fb, kPad + lay::kSetCloseW + 12, (lay::kSetHeadH - 21) / 2, title, 3,
-         kInk);
+    text(fb, kPad + g_lay.kSetCloseW + 12, (g_lay.kSetHeadH - 21) / 2, title, 3,
+         g_pal.ink);
   } else if (confirm) {
-    text(fb, kPad, (lay::kSetHeadH - 21) / 2, "REBOOT", 3, kInk);
+    text(fb, kPad, (g_lay.kSetHeadH - 21) / 2, "REBOOT", 3, g_pal.ink);
   } else {
-    text(fb, kPad, (lay::kSetHeadH - 21) / 2, "SETTINGS", 3, kInk);
+    text(fb, kPad + (g_wifi != WifiPage::kOff ? g_lay.kSetCloseW + 8 : 0),
+         (g_lay.kSetHeadH - 21) / 2,
+         g_wifi != WifiPage::kOff ? "WIFI" : "SETTINGS", 3, g_pal.ink);
   }
-  paint_btn(fb, kW - kPad - lay::kSetCloseW, 4, lay::kSetCloseW,
-            lay::kSetHeadH - 8, "X", 3, pressed.hit == Hit::kClose, false);
+  paint_btn(fb, kW - kPad - g_lay.kSetCloseW, 4, g_lay.kSetCloseW,
+            g_lay.kSetHeadH - 8, "X", 3, pressed.hit == Hit::kClose, false);
 
   if (confirm) {
-    text_cx(fb, kW / 2, lay::kSetHeadH + 40, "REBOOT THE MODULE?", 3, kInk);
-    text_cx(fb, kW / 2, lay::kSetHeadH + 80, "CLOCK STOPS UNTIL IT RETURNS", 2,
-            kMuted);
+    text_cx(fb, kW / 2, g_lay.kSetHeadH + 40, "REBOOT THE MODULE?", 3, g_pal.ink);
+    text_cx(fb, kW / 2, g_lay.kSetHeadH + 80, "CLOCK STOPS UNTIL IT RETURNS", 2,
+            g_pal.muted);
     const int bw = (kW - 3 * kPad) / 2;
     const int by = kH / 2 + 20;
     const int bh = 88;
     paint_btn(fb, kPad, by, bw, bh, "NO", 4, pressed.hit == Hit::kConfirmNo,
               false);
     fill_cut(fb, kPad + bw + kPad, by, bw, bh,
-             pressed.hit == Hit::kConfirmYes ? kInk : kHot);
-    frame(fb, kPad + bw + kPad, by, bw, bh, kInk, 4);
-    text_cx(fb, kPad + bw + kPad + bw / 2, by + (bh - 28) / 2, "YES", 4, kBg);
+             pressed.hit == Hit::kConfirmYes ? g_pal.ink : g_pal.hot);
+    frame(fb, kPad + bw + kPad, by, bw, bh, g_pal.ink, 4);
+    text_cx(fb, kPad + bw + kPad + bw / 2, by + (bh - 28) / 2, "YES", 4, g_pal.bg);
     return;
   }
 
@@ -1103,24 +1488,30 @@ void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
     const int x = i * tab_w;
     const bool on = i == active;
     const bool hit = pressed.hit == Hit::kTab && pressed.arg == i;
-    fill(fb, x, lay::kSetHeadH, tab_w, lay::kSetTabH,
-         hit || on ? kSurface2 : kSurface);
+    fill(fb, x, g_lay.kSetHeadH, tab_w, g_lay.kSetTabH,
+         hit ? g_pal.surface2 : g_pal.bg);
     if (on) {
-      fill(fb, x + 8, lay::kSetHeadH + lay::kSetTabH - 4, tab_w - 16, 4, kNeon);
+      fill(fb, x + 16, g_lay.kSetHeadH + g_lay.kSetTabH - 2, tab_w - 32, 2,
+           g_pal.neon);
     }
     const int tw = text_width(kTabLabel[i], 2);
     text(fb, x + (tab_w - tw) / 2,
-         lay::kSetHeadH + (lay::kSetTabH - 14) / 2, kTabLabel[i], 2,
-         on ? kInk : kMuted);
+         g_lay.kSetHeadH + (g_lay.kSetTabH - 14) / 2, kTabLabel[i], 2,
+         on ? g_pal.ink : g_pal.muted);
+  }
+
+  if (g_wifi != WifiPage::kOff) {
+    paint_wifi_overlay(fb, s, pressed);
+    return;
   }
 
   clamp_scroll(s);
   const int list_y = set_list_y();
   const int n = set_row_count(s);
-  const int nudge_w = lay::kSetNudgeW;
+  const int nudge_w = g_lay.kSetNudgeW;
   for (int i = 0; i < n; ++i) {
-    const int y = list_y + i * lay::kSetRowH - g_scroll_px;
-    if (y + lay::kSetRowH <= list_y || y >= kH) {
+    const int y = list_y + i * g_lay.kSetRowH - g_scroll_px;
+    if (y + g_lay.kSetRowH <= list_y || y >= kH) {
       continue;
     }
     char label[24] = {};
@@ -1132,65 +1523,142 @@ void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
       if (g_menu.screen() == S::kSystem &&
           i == neon::MenuModel::kSystemVersionItem) {
         std::snprintf(value, sizeof(value), "%s", s.firmware);
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+      } else if (g_menu.screen() == S::kSystem && i == g_menu.item_count()) {
+        std::snprintf(value, sizeof(value), "%s",
+                      lcd_is_portrait() ? "PORT" : "LAND");
+#endif
       } else {
         g_menu.item_value(i, value, sizeof(value));
       }
     }
     const bool row_press = pressed.hit == Hit::kRow && pressed.arg == i;
-    fill(fb, 0, y, kW, lay::kSetRowH, row_press ? kSurface2 : kBg);
-    fill(fb, kPad, y + lay::kSetRowH - 1, kW - 2 * kPad, 1, kSurface);
+    fill(fb, 0, y, kW, g_lay.kSetRowH, row_press ? g_pal.surface2 : g_pal.bg);
+    fill(fb, kPad, y + g_lay.kSetRowH - 1, kW - 2 * kPad, 1, g_pal.surface);
     const bool nudge = row_has_nudge(i);
-    text(fb, kPad, y + (lay::kSetRowH - 14) / 2, label, 2, kMuted);
+    text(fb, kPad, y + (g_lay.kSetRowH - 14) / 2, label, 2, g_pal.muted);
     if (nudge) {
       const int plus_x = kW - kPad - nudge_w;
       const int minus_x = plus_x - 12 - nudge_w;
-      paint_btn(fb, minus_x, y + 6, nudge_w, lay::kSetRowH - 12, "-", 3,
+      paint_btn(fb, minus_x, y + 6, nudge_w, g_lay.kSetRowH - 12, "-", 3,
                 pressed.hit == Hit::kRowMinus && pressed.arg == i, false);
-      paint_btn(fb, plus_x, y + 6, nudge_w, lay::kSetRowH - 12, "+", 3,
+      paint_btn(fb, plus_x, y + 6, nudge_w, g_lay.kSetRowH - 12, "+", 3,
                 pressed.hit == Hit::kRowPlus && pressed.arg == i, false);
       const int vw = text_width(value, 2);
-      text(fb, minus_x - 12 - vw, y + (lay::kSetRowH - 14) / 2, value, 2, kInk);
+      text(fb, minus_x - 12 - vw, y + (g_lay.kSetRowH - 14) / 2, value, 2, g_pal.ink);
     } else {
       const int vw = text_width(value, 2);
-      text(fb, kW - kPad - vw, y + (lay::kSetRowH - 14) / 2, value, 2, kInk);
+      text(fb, kW - kPad - vw, y + (g_lay.kSetRowH - 14) / 2, value, 2, g_pal.ink);
     }
   }
 }
 
 Touch hit_at_live(int x, int y) {
-  if (in_rect(x, y, lay::kGearX, lay::kGearY, lay::kGearS, lay::kGearS)) {
+  if (in_rect(x, y, g_lay.kGearX, g_lay.kGearY, g_lay.kGearS, g_lay.kGearS)) {
     return {Hit::kGear, 0};
   }
-  if (in_rect(x, y, lay::kMinusX, lay::kMinusY, lay::kBtnW, lay::kBtnH)) {
+  if (in_rect(x, y, g_lay.kMinusX, g_lay.kMinusY, g_lay.kBtnW, g_lay.kBtnH)) {
     return {Hit::kMinus, 0};
   }
-  if (in_rect(x, y, lay::kPlusX, lay::kPlusY, lay::kBtnW, lay::kBtnH)) {
+  if (in_rect(x, y, g_lay.kPlusX, g_lay.kPlusY, g_lay.kBtnW, g_lay.kBtnH)) {
     return {Hit::kPlus, 0};
   }
-  if (in_rect(x, y, lay::kTrX, lay::kTrY, lay::kTrW, lay::kTrH)) {
+  if (in_rect(x, y, g_lay.kTrX, g_lay.kTrY, g_lay.kTrW, g_lay.kTrH)) {
     return {Hit::kTransport, 0};
   }
-  if (in_rect(x, y, lay::kTapX, lay::kTapY, lay::kTapW, lay::kTapH)) {
+  if (in_rect(x, y, g_lay.kTapX, g_lay.kTapY, g_lay.kTapW, g_lay.kTapH)) {
     return {Hit::kTap, 0};
+  }
+  return {Hit::kNone, 0};
+}
+
+Touch hit_at_wifi(int x, int y) {
+  const int kW = g_lay.kW;
+  const int kH = g_lay.kH;
+  const int kPad = g_lay.kPad;
+  if (in_rect(x, y, kPad, 4, g_lay.kSetCloseW, g_lay.kSetHeadH - 8)) {
+    return {Hit::kWifiBack, 0};
+  }
+  if (g_wifi == WifiPage::kList) {
+    const int row_h = g_lay.kSetRowH;
+    if (in_rect(x, y, kPad, kH - row_h + 4, kW - 2 * kPad, row_h - 8)) {
+      return {Hit::kWifiScan, 0};
+    }
+    const int list_y = set_list_y();
+    if (y >= list_y && y < kH - row_h) {
+      const int i = (y - list_y) / row_h + g_wifi_scroll;
+      if (i >= 0 && i < g_ap_n) {
+        return {Hit::kWifiAp, i};
+      }
+    }
+    return {Hit::kNone, 0};
+  }
+  if (g_wifi == WifiPage::kKeyboard) {
+    const int kh = kb_key_h();
+    const int kw = kb_key_w();
+    const int top = kb_top();
+    const int list_y = set_list_y();
+    if (in_rect(x, y, kW - kPad - kw * 3, list_y + 70, kw * 3, 40)) {
+      return {Hit::kKbJoin, 0};
+    }
+    if (y >= top + 3 * kh) {
+      const int x0 = kPad;
+      if (in_rect(x, y, x0, top + 3 * kh + 2, kw * 2 - 4, kh - 4)) {
+        return {Hit::kKbShift, 0};
+      }
+      if (in_rect(x, y, x0 + kw * 2, top + 3 * kh + 2, kw * 4 - 4, kh - 4)) {
+        return {Hit::kKbKey, 99};  // space
+      }
+      if (in_rect(x, y, x0 + kw * 6, top + 3 * kh + 2, kw * 2 - 4, kh - 4)) {
+        return {Hit::kKbSym, 0};
+      }
+      if (in_rect(x, y, x0 + kw * 8, top + 3 * kh + 2, kw * 2 - 4, kh - 4)) {
+        return {Hit::kKbBksp, 0};
+      }
+      return {Hit::kNone, 0};
+    }
+    if (y >= top) {
+      const int row = (y - top) / kh;
+      if (row >= 0 && row < 3) {
+        const char* letters = kb_letters(row);
+        const int n = static_cast<int>(std::strlen(letters));
+        const int x0 = (kW - n * kw) / 2;
+        const int col = (x - x0) / kw;
+        if (col >= 0 && col < n) {
+          return {Hit::kKbKey, row * 16 + col};
+        }
+      }
+    }
+    return {Hit::kNone, 0};
   }
   return {Hit::kNone, 0};
 }
 
 Touch hit_at_settings(int x, int y, const Snap& s) {
   using S = neon::MenuModel::Screen;
-  constexpr int kW = lay::kW;
-  constexpr int kPad = lay::kPad;
-  if (in_rect(x, y, kW - kPad - lay::kSetCloseW, 4, lay::kSetCloseW,
-              lay::kSetHeadH - 8)) {
+  const int kW = g_lay.kW;
+  const int kPad = g_lay.kPad;
+  if (in_rect(x, y, kW - kPad - g_lay.kSetCloseW, 4, g_lay.kSetCloseW,
+              g_lay.kSetHeadH - 8)) {
     return {Hit::kClose, 0};
   }
+  if (g_wifi != WifiPage::kOff) {
+    if (y >= g_lay.kSetHeadH && y < set_list_y()) {
+      const int tab_w = kW / kTabCount;
+      int t = x / tab_w;
+      if (t < 0) t = 0;
+      if (t >= kTabCount) t = kTabCount - 1;
+      return {Hit::kTab, t};
+    }
+    return hit_at_wifi(x, y);
+  }
   if (g_menu.screen() == S::kOutputEdit &&
-      in_rect(x, y, kPad, 4, lay::kSetCloseW, lay::kSetHeadH - 8)) {
+      in_rect(x, y, kPad, 4, g_lay.kSetCloseW, g_lay.kSetHeadH - 8)) {
     return {Hit::kBack, 0};
   }
   if (g_menu.screen() == S::kConfirm) {
     const int bw = (kW - 3 * kPad) / 2;
-    const int by = lay::kH / 2 + 20;
+    const int by = g_lay.kH / 2 + 20;
     const int bh = 88;
     if (in_rect(x, y, kPad, by, bw, bh)) {
       return {Hit::kConfirmNo, 0};
@@ -1200,7 +1668,7 @@ Touch hit_at_settings(int x, int y, const Snap& s) {
     }
     return {Hit::kNone, 0};
   }
-  if (y >= lay::kSetHeadH && y < set_list_y()) {
+  if (y >= g_lay.kSetHeadH && y < set_list_y()) {
     const int tab_w = kW / kTabCount;
     int t = x / tab_w;
     if (t < 0) {
@@ -1215,18 +1683,18 @@ Touch hit_at_settings(int x, int y, const Snap& s) {
   if (y < list_y) {
     return {Hit::kNone, 0};
   }
-  const int i = (y - list_y + g_scroll_px) / lay::kSetRowH;
+  const int i = (y - list_y + g_scroll_px) / g_lay.kSetRowH;
   if (i < 0 || i >= set_row_count(s)) {
     return {Hit::kNone, 0};
   }
   if (row_has_nudge(i)) {
-    const int plus_x = kW - kPad - lay::kSetNudgeW;
-    const int minus_x = plus_x - 12 - lay::kSetNudgeW;
-    const int ry = list_y + i * lay::kSetRowH - g_scroll_px;
-    if (in_rect(x, y, plus_x, ry + 6, lay::kSetNudgeW, lay::kSetRowH - 12)) {
+    const int plus_x = kW - kPad - g_lay.kSetNudgeW;
+    const int minus_x = plus_x - 12 - g_lay.kSetNudgeW;
+    const int ry = list_y + i * g_lay.kSetRowH - g_scroll_px;
+    if (in_rect(x, y, plus_x, ry + 6, g_lay.kSetNudgeW, g_lay.kSetRowH - 12)) {
       return {Hit::kRowPlus, i};
     }
-    if (in_rect(x, y, minus_x, ry + 6, lay::kSetNudgeW, lay::kSetRowH - 12)) {
+    if (in_rect(x, y, minus_x, ry + 6, g_lay.kSetNudgeW, g_lay.kSetRowH - 12)) {
       return {Hit::kRowMinus, i};
     }
   }
@@ -1247,6 +1715,15 @@ void handle_row_tap(int i) {
     return;
   }
   if (scr == S::kNetwork) {
+    if (i == 0) {
+      cycle_ap_policy(1);
+      return;
+    }
+    Snap s{};
+    s.setup_ap = netman::ap_is_up();
+    if (i == network_scan_row(s)) {
+      wifi_start_scan();
+    }
     return;
   }
   if (scr == S::kSystem && i == neon::MenuModel::kSystemRebootItem) {
@@ -1256,6 +1733,16 @@ void handle_row_tap(int i) {
   if (scr == S::kSystem && i == neon::MenuModel::kSystemVersionItem) {
     return;
   }
+#if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
+  if (scr == S::kSystem && i == g_menu.item_count()) {
+    g_cfg.display_portrait = lcd_is_portrait() ? 2 : 1;
+    neon::Config live = neon_config();
+    live.display_portrait = g_cfg.display_portrait;
+    neon_config_apply(live);
+    rebuild_layout();
+    return;
+  }
+#endif
   g_menu.set_cursor(i);
   char val[24] = {};
   g_menu.item_value(i, val, sizeof(val));
@@ -1302,12 +1789,96 @@ void fire_live(Touch t) {
                                       : "tap tempo");
 }
 
+void kb_push(char ch) {
+  const int n = static_cast<int>(std::strlen(g_kb_pass));
+  if (n + 1 >= static_cast<int>(sizeof(g_kb_pass))) {
+    return;
+  }
+  g_kb_pass[n] = ch;
+  g_kb_pass[n + 1] = '\0';
+}
+
+void fire_wifi(Touch t) {
+  switch (t.hit) {
+    case Hit::kWifiBack:
+      if (g_wifi == WifiPage::kKeyboard) {
+        g_wifi = WifiPage::kList;
+        g_kb_pass[0] = '\0';
+      } else {
+        wifi_ui_reset();
+      }
+      return;
+    case Hit::kWifiScan:
+      wifi_start_scan();
+      return;
+    case Hit::kWifiAp:
+      if (t.arg >= 0 && t.arg < g_ap_n) {
+        std::snprintf(g_kb_ssid, sizeof(g_kb_ssid), "%s", g_aps[t.arg].ssid);
+        g_kb_open = g_aps[t.arg].open != 0;
+        g_kb_pass[0] = '\0';
+        g_kb_shift = false;
+        g_kb_sym = false;
+        if (g_kb_open) {
+          wifi_join(g_kb_ssid, "");
+        } else {
+          g_wifi = WifiPage::kKeyboard;
+        }
+      }
+      return;
+    case Hit::kKbShift:
+      g_kb_shift = !g_kb_shift;
+      g_kb_sym = false;
+      return;
+    case Hit::kKbSym:
+      g_kb_sym = !g_kb_sym;
+      g_kb_shift = false;
+      return;
+    case Hit::kKbBksp: {
+      const int n = static_cast<int>(std::strlen(g_kb_pass));
+      if (n > 0) {
+        g_kb_pass[n - 1] = '\0';
+      }
+      return;
+    }
+    case Hit::kKbJoin:
+      wifi_join(g_kb_ssid, g_kb_pass);
+      return;
+    case Hit::kKbKey:
+      if (t.arg == 99) {
+        kb_push(' ');
+        return;
+      }
+      {
+        const int row = t.arg / 16;
+        const int col = t.arg % 16;
+        const char* letters = kb_letters(row);
+        const int n = static_cast<int>(std::strlen(letters));
+        if (row >= 0 && row < 3 && col >= 0 && col < n) {
+          kb_push(letters[col]);
+        }
+      }
+      return;
+    default:
+      return;
+  }
+}
+
 void fire_settings(Touch t) {
   using S = neon::MenuModel::Screen;
   switch (t.hit) {
     case Hit::kClose:
       close_settings();
       ESP_LOGI(kTag, "settings close");
+      return;
+    case Hit::kWifiBack:
+    case Hit::kWifiScan:
+    case Hit::kWifiAp:
+    case Hit::kKbKey:
+    case Hit::kKbShift:
+    case Hit::kKbSym:
+    case Hit::kKbBksp:
+    case Hit::kKbJoin:
+      fire_wifi(t);
       return;
     case Hit::kBack:
       if (g_menu.screen() == S::kOutputEdit) {
@@ -1319,6 +1890,7 @@ void fire_settings(Touch t) {
       break;
     case Hit::kTab:
       if (t.arg >= 0 && t.arg < kTabCount) {
+        wifi_ui_reset();
         g_menu.go_section(kTabs[t.arg]);
         g_scroll_px = 0;
       }
@@ -1327,10 +1899,18 @@ void fire_settings(Touch t) {
       handle_row_tap(t.arg);
       break;
     case Hit::kRowMinus:
+      if (g_menu.screen() == S::kNetwork && t.arg == 0) {
+        cycle_ap_policy(-1);
+        break;
+      }
       g_menu.set_cursor(t.arg);
       g_menu.nudge_value(-1);
       break;
     case Hit::kRowPlus:
+      if (g_menu.screen() == S::kNetwork && t.arg == 0) {
+        cycle_ap_policy(1);
+        break;
+      }
       g_menu.set_cursor(t.arg);
       g_menu.nudge_value(1);
       break;
@@ -1368,6 +1948,13 @@ Touch poll_touch(const Snap& s) {
   int x = 0;
   int y = 0;
   const bool down = halesp::lcd_touch_poll(&x, &y);
+  if (down) {
+    int lx = x;
+    int ly = y;
+    from_phys(x, y, &lx, &ly);
+    x = lx;
+    y = ly;
+  }
   const int64_t now = esp_timer_get_time();
   if (down) {
     g_dimmer.note_activity(now);
@@ -1398,7 +1985,10 @@ Touch poll_touch(const Snap& s) {
     // made the panel a momentary button.
     if (was_down && press_in_settings && !dragging) {
       const bool already =
-          held.hit == Hit::kRowMinus || held.hit == Hit::kRowPlus;
+          held.hit == Hit::kRowMinus || held.hit == Hit::kRowPlus ||
+          held.hit == Hit::kKbKey || held.hit == Hit::kKbBksp ||
+          held.hit == Hit::kKbShift || held.hit == Hit::kKbSym ||
+          held.hit == Hit::kKbJoin;
       if (!already) {
         released = hit_at(down_x, down_y, s);
         fire(released);
@@ -1427,8 +2017,11 @@ Touch poll_touch(const Snap& s) {
     dragging = false;
     down_us = now;
     last_fire_us = now;
-    const bool press_now = !g_settings || hit.hit == Hit::kRowMinus ||
-                           hit.hit == Hit::kRowPlus;
+    const bool press_now =
+        !g_settings || hit.hit == Hit::kRowMinus || hit.hit == Hit::kRowPlus ||
+        hit.hit == Hit::kKbKey || hit.hit == Hit::kKbBksp ||
+        hit.hit == Hit::kKbShift || hit.hit == Hit::kKbSym ||
+        hit.hit == Hit::kKbJoin;
     if (press_now) {
       fire(hit);
     }
@@ -1445,16 +2038,27 @@ Touch poll_touch(const Snap& s) {
       dragging = true;
     }
     if (dragging) {
-      g_scroll_px += last_y - y;
-      last_y = y;
-      clamp_scroll(s);
+      if (g_wifi == WifiPage::kList) {
+        if (std::abs(y - last_y) >= g_lay.kSetRowH / 2) {
+          g_wifi_scroll += (last_y > y) ? 1 : -1;
+          if (g_wifi_scroll < 0) {
+            g_wifi_scroll = 0;
+          }
+          last_y = y;
+        }
+      } else if (g_wifi == WifiPage::kOff) {
+        g_scroll_px += last_y - y;
+        last_y = y;
+        clamp_scroll(s);
+      }
       return {};
     }
   }
 
   const bool hold =
       (hit.hit == Hit::kMinus || hit.hit == Hit::kPlus ||
-       hit.hit == Hit::kRowMinus || hit.hit == Hit::kRowPlus) &&
+       hit.hit == Hit::kRowMinus || hit.hit == Hit::kRowPlus ||
+       hit.hit == Hit::kKbBksp) &&
       hit.hit == held.hit && hit.arg == held.arg;
   if (hold && now - down_us > 400000 && now - last_fire_us > 120000) {
     last_fire_us = now;
@@ -1464,6 +2068,22 @@ Touch poll_touch(const Snap& s) {
 }
 
 void paint(uint16_t* fb, const Snap& s, Touch pressed) {
+  rebuild_layout();
+  refresh_pal(g_settings ? g_cfg.color_theme : neon_config().color_theme);
+  if (g_wifi == WifiPage::kScanning) {
+    const int64_t dt = esp_timer_get_time() - g_scan_started_us;
+    if (!netman::wifi_driver_ready() && dt > 1500000) {
+      g_scan_no_radio = true;
+      g_wifi = WifiPage::kList;
+    } else if (dt > 20000000) {
+      g_scan_no_radio = !netman::wifi_driver_ready();
+      g_wifi = WifiPage::kList;
+    }
+  }
+  if (g_wifi == WifiPage::kJoining && s.wifi_up &&
+      esp_timer_get_time() - g_join_us > 1200000) {
+    wifi_ui_reset();
+  }
   if (g_settings) {
     paint_settings(fb, s, pressed);
   } else {
@@ -1472,6 +2092,7 @@ void paint(uint16_t* fb, const Snap& s, Touch pressed) {
 }
 
 void lcd_task(void*) {
+  rebuild_layout();
   if (!halesp::lcd_rgb_init()) {
     ESP_LOGE(kTag, "LCD init failed");
     vTaskDelete(nullptr);

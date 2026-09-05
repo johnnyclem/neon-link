@@ -15,8 +15,12 @@ void init_common();
 // the slave and waits for SDIO. Do not probe with esp_wifi_get_mode()
 // first — wifi_remote turns that into an RPC while transport is still
 // down, and Hosted then double-frees. Returns false if the driver
-// (or the C6) does not come up.
+// (or the C6) does not come up. Concurrent callers return false
+// immediately rather than stacking a second blocking init.
 bool wifi_driver_init();
+
+// True after a successful wifi_driver_init(). Does not block.
+bool wifi_driver_ready();
 
 // Bring up the W5500 SPI Ethernet interface (SPI2, pins in
 // main/board_pins.h) with route priority above WiFi STA, so lwIP —
