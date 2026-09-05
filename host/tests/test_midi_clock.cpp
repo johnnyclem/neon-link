@@ -178,6 +178,30 @@ TEST_CASE("tempo change retimes the next clock onto the new grid") {
   CHECK(next - 10000 <= (250000 / 24) + 2);
 }
 
+TEST_CASE("retime after a multi-second gap does not dump missed clocks") {
+  // Firmware pulse_task must retime rather than generate(stale, now) after
+  // a unicore stall: 3 s at 120 BPM is 144 0xF8s, enough to overflow the
+  // C3 UART TX FIFO from the GPTimer ISR and hang MIDI until a reset.
+  const auto tl = snapshot(120000, 0.0, 0);
+  neon::midi::ClockEngine eng;
+  eng.retime(tl, 0);
+  (void)drain(eng, 0, 50000);
+
+  const int64_t later = 3000000;
+  eng.retime(tl, later);
+  const auto evs = drain(eng, later, later + 50000);
+  int clocks = 0;
+  for (const auto& e : evs) {
+    if (e.kind == neon::midi::EventKind::Clock) {
+      ++clocks;
+      CHECK(e.t_us > later);
+    }
+    CHECK(e.kind != neon::midi::EventKind::Start);
+    CHECK(e.kind != neon::midi::EventKind::Stop);
+  }
+  CHECK(clocks <= 3);  // ~50 ms of 24 PPQN at 120 BPM is 2.4 clocks
+}
+
 TEST_CASE("nudge shifts every emitted event by the same offset") {
   const auto tl = snapshot(120000, 0.0, 0);
   neon::midi::ClockEngine eng;

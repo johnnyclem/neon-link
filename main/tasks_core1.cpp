@@ -123,8 +123,16 @@ void pulse_task(void*) {
       }
     }
 
-    const int64_t until = g_pulse_hw.now_us() + kLeadUs + kHorizonUs;
+    const int64_t now = g_pulse_hw.now_us();
+    const int64_t until = now + kLeadUs + kHorizonUs;
     if (have_timeline && until > cursor && neon_config().midi_clock_out != 0) {
+      // Unicore (C3) WiFi/USB stalls can leave cursor seconds behind.
+      // generate() would then dump every missed 0xF8 into the UART FIFO
+      // from the GPTimer ISR and hang the C3 UART FSM until a chip reset.
+      if (cursor + kHorizonUs < now) {
+        midi.retime(last_snap, now);
+        cursor = now;
+      }
       neon::midi::Event evs[32];
       size_t n;
       do {
@@ -133,6 +141,8 @@ void pulse_task(void*) {
           submit_midi(evs[i]);
         }
       } while (n == 32);
+      cursor = until;
+    } else if (until > cursor) {
       cursor = until;
     }
     vTaskDelayUntil(&wake, kRefillTicks);

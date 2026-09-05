@@ -55,6 +55,11 @@ class PulseHwGptimer final : public hal::IPulseHw {
   // from the same crystal, so the offset is constant (no drift).
   int64_t offset_us_ = 0;
   bool virtual_ = false;
+  // ISR re-arm target. Must live in the object (internal RAM), not on the
+  // ISR stack: gptimer_set_alarm_action rejects a non-internal pointer
+  // when CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM, and a failed re-arm is a
+  // permanent MIDI silence until reset.
+  gptimer_alarm_config_t alarm_{};
 
   hal::PulseEdge ring_[kRingSize] = {};
   std::atomic<uint32_t> head_{0};  // producer writes

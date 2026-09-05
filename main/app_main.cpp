@@ -151,10 +151,15 @@ extern "C" void app_main(void) {
       dirty = true;
     }
 #endif
+#if !CONFIG_NEON_BOARD_LINKSYNC_C3OLED
+    // Studio-mode default on fat boards. On the C3 the console is USB
+    // Serial/JTAG: a per-tick PLL CSV (forced on here) busy-waits the
+    // unicore when the host stops draining, and MIDI clock dies with it.
     if (cfg.telemetry_uart_csv == 0) {
       cfg.telemetry_uart_csv = 1;
       dirty = true;
     }
+#endif
     if (dirty) {
       neon_config_apply(cfg);
     }

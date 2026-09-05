@@ -12,6 +12,10 @@ namespace halesp {
 namespace {
 constexpr const char* kTag = "pulse_hw";
 constexpr uint64_t kParkIntervalUs = 1000;
+// Re-arm at least this far ahead of the live count. now+1 can already be
+// in the past by the time gptimer_set_alarm_action writes the registers;
+// an alarm in the past never fires on C3 (auto_reload is off).
+constexpr uint64_t kMinRetriggerUs = 8;
 
 std::atomic<uint32_t> g_edges{0};
 std::atomic<uint32_t> g_late_max_us{0};
@@ -165,18 +169,17 @@ bool IRAM_ATTR PulseHwGptimer::on_alarm(gptimer_handle_t timer,
   if (tail != head) {
     next = static_cast<uint64_t>(self->ring_[tail % kRingSize].t_us -
                                  self->offset_us_);
-    if (next <= now) {
-      next = now + 1;
+    if (next <= now + kMinRetriggerUs) {
+      next = now + kMinRetriggerUs;
     }
   } else {
     next = now + kParkIntervalUs;
   }
 
-  gptimer_alarm_config_t alarm = {};
-  alarm.alarm_count = next;
-  alarm.reload_count = 0;
-  alarm.flags.auto_reload_on_alarm = false;
-  gptimer_set_alarm_action(timer, &alarm);
+  self->alarm_.alarm_count = next;
+  self->alarm_.reload_count = 0;
+  self->alarm_.flags.auto_reload_on_alarm = false;
+  gptimer_set_alarm_action(timer, &self->alarm_);
   return false;
 }
 

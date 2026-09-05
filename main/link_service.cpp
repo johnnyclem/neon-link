@@ -203,12 +203,15 @@ void link_service_task(void*) {
   // follow must work with zero peers.
   neon::midi::SessionView midi_session;
   bool ext_active = false;
-  // Per-tick PLL telemetry (docs/MIDI_PLL_PHASES_HANDOFF.md Phase E),
-  // behind the same debug.telemetry_uart_csv flag as the 1 Hz TEL stream
-  // but tagged "PLL," so both can share the console UART. ticks_per_line
-  // 1: the whole point is one row per 0xF8 (~48 rows/s at 120 BPM —
-  // a few KB/s, well inside the console baud).
+  // PLL CSV behind debug.telemetry_uart_csv, tagged "PLL,". Dual-core
+  // boards can afford one row per 0xF8 (~48/s at 120 BPM) on a real UART.
+  // Unicore (C3) shares the core with USB Serial/JTAG: a 50 ms/char spin
+  // when the host stops draining wedges MIDI for the rest of the session.
+#if CONFIG_FREERTOS_UNICORE
+  neon::TelemetryTicker pll_ticker(/*ticks_per_line=*/48);  // ~1 Hz at 120 BPM
+#else
   neon::TelemetryTicker pll_ticker(/*ticks_per_line=*/1);
+#endif
 
   neon::TimelineSnapshot prev{};
   bool have_prev = false;
