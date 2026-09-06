@@ -16,6 +16,7 @@ class AudioTempoFollower {
   static constexpr uint32_t kMinIoIs = 4;
   static constexpr uint32_t kVoteRun = 3;
   static constexpr int64_t kTempoGapUs = 1000000;
+  static constexpr int64_t kMinTimeoutUs = 2000000;
   static constexpr uint32_t kIntegerGuardMbp = 600;
   static constexpr uint32_t kSlewMbp = 2000;
 
@@ -24,7 +25,8 @@ class AudioTempoFollower {
 
   void on_onset(int64_t t_us, float strength);
 
-  // ExtClock-style timeout; going inactive drops to kIdle.
+  // True while onsets are arriving (no gap beyond 4× the last classified
+  // IOI, min 2 s). Going inactive drops to kIdle.
   bool active(int64_t now_us);
 
   Lock lock_state() const { return lock_; }
@@ -53,6 +55,7 @@ class AudioTempoFollower {
   void apply_class(IoiClass c);
   void feed(IoiClass c, int64_t t_us, int64_t dt);
   void feed_pulse(int64_t t_us);
+  void reset_estimator();
   void enter_idle();
   bool in_window(uint32_t mbpm) const;
   uint32_t prior_mbpm() const;
@@ -73,6 +76,7 @@ class AudioTempoFollower {
   bool have_fed_ = false;
 
   uint32_t classified_iois_ = 0;
+  int64_t last_classified_ioi_us_ = 0;
   uint32_t onset_count_ = 0;
   uint32_t rejected_count_ = 0;
 

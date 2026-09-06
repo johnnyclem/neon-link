@@ -9,10 +9,14 @@ void AudioTempoFollower::set_session_tempo(uint32_t milli_bpm) {
   session_mbpm_ = milli_bpm;
 }
 
-void AudioTempoFollower::reset() {
+void AudioTempoFollower::reset_estimator() {
   const uint32_t p = est_.input_ppqn();
   est_.set_input_ppqn(p == 1u ? 2u : 1u);
   est_.set_input_ppqn(p);
+}
+
+void AudioTempoFollower::reset() {
+  reset_estimator();
   session_mbpm_ = 0;
   lock_ = Lock::kIdle;
   class_ = IoiClass::kNone;
@@ -25,6 +29,7 @@ void AudioTempoFollower::reset() {
   last_fed_us_ = INT64_MIN;
   have_fed_ = false;
   classified_iois_ = 0;
+  last_classified_ioi_us_ = 0;
   onset_count_ = 0;
   rejected_count_ = 0;
   published_mbpm_ = 0;
@@ -142,6 +147,7 @@ void AudioTempoFollower::enter_idle() {
   subdiv_ = 0;
   have_class_ = false;
   classified_iois_ = 0;
+  last_classified_ioi_us_ = 0;
   last_onset_us_ = INT64_MIN;
   have_onset_ = false;
   last_fed_us_ = INT64_MIN;
@@ -170,6 +176,7 @@ void AudioTempoFollower::on_onset(int64_t t_us, float strength) {
     vote_class_ = IoiClass::kNone;
     return;
   }
+  last_classified_ioi_us_ = dt;
 
   bool accept = false;
   if (!have_class_) {
@@ -207,13 +214,25 @@ void AudioTempoFollower::on_onset(int64_t t_us, float strength) {
 }
 
 bool AudioTempoFollower::active(int64_t now_us) {
-  if (!est_.active(now_us)) {
-    if (lock_ != Lock::kIdle) {
-      enter_idle();
-    }
+  if (lock_ == Lock::kIdle || !have_onset_) {
     return false;
   }
-  return lock_ != Lock::kIdle;
+  // 4T/2T insert midpoints, so ExtClock's period is IOI/N; 4× that
+  // equals the gap and would idle between hits. Time out from the
+  // classified IOI instead.
+  int64_t timeout = kMinTimeoutUs;
+  if (last_classified_ioi_us_ > 0) {
+    const int64_t four = last_classified_ioi_us_ * 4;
+    if (four > timeout) {
+      timeout = four;
+    }
+  }
+  if (now_us - last_onset_us_ > timeout) {
+    reset_estimator();
+    enter_idle();
+    return false;
+  }
+  return true;
 }
 
 uint32_t AudioTempoFollower::integer_mbpm(uint32_t mbpm) {

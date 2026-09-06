@@ -236,7 +236,8 @@ TEST_CASE("AudioTempoFollower: kick on 1 at 108, session 120 → ~108") {
   neon::AudioTempoFollower f;
   f.set_session_tempo(120000);
   // 108 BPM wholes: 4 * (60e6/108) ≈ 2222222 us. Midpoints from dt, not T.
-  const auto pubs = feed_iois(f, 0, 2222222, 12);
+  const int64_t dt = 2222222;
+  const auto pubs = feed_iois(f, 0, dt, 12);
   REQUIRE_FALSE(pubs.empty());
   const uint32_t mbpm = f.tempo_milli_bpm();
   CHECK(mbpm >= 106000);
@@ -245,4 +246,10 @@ TEST_CASE("AudioTempoFollower: kick on 1 at 108, session 120 → ~108") {
   CHECK(mbpm != 98000);
   CHECK(mbpm != 120000);
   CHECK(f.subdivision() == 1);
+
+  const int64_t last = 11 * dt;
+  CHECK(f.active(last + 1500000));
+  CHECK(f.lock_state() == neon::AudioTempoFollower::Lock::kLocked);
+  CHECK_FALSE(f.active(last + 9000000));
+  CHECK(f.lock_state() == neon::AudioTempoFollower::Lock::kIdle);
 }
