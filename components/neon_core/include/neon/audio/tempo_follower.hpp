@@ -1,9 +1,7 @@
 #pragma once
 
-// Audio-in tempo follow: session-tempo IOI classifier + contained
-// ExtClockEstimator + SyncFollower-style publish policy (integer BPM,
-// 0.6 BPM Schmitt, 1 s gap, ±2 BPM slew, acquiring/locked windows).
-// Tempo only — no phase getter, no take_phase_request.
+// Audio-in tempo follow: session-tempo IOI classifier over a contained
+// ExtClockEstimator. take_tempo_update is the one-shot tempo proposal.
 
 #include <cstdint>
 

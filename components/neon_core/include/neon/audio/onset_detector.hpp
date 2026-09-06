@@ -1,9 +1,8 @@
 #pragma once
 
-// Time-domain onset detector: stereo peak collapse, envelope / flux,
-// inverted sensitivity, 40 ms refractory, and a 4-deep click-guard ring.
-// float32 + integer only on the per-sample path. Timestamps are SampleClock
-// µs (t0 + (i * us_per_frame_q32) >> 32), never 1e6/rate.
+// Time-domain onset detector. `t0_us` is the ADC-domain time of input
+// frame 0; `us_per_frame_q32` comes from SampleClock
+// (`t0_us + ((i * us_per_frame_q32) >> 32)`).
 
 #include <cstdint>
 

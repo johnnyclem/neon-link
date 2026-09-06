@@ -163,6 +163,7 @@ TEST_CASE("AudioTempoFollower: 1.5 s dropout stays locked; 2 s relocks") {
 
   CHECK_FALSE(f.active(last + 3000000));
   CHECK(f.lock_state() == neon::AudioTempoFollower::Lock::kIdle);
+  CHECK(f.subdivision() == 0);
 
   pubs = feed_iois(f, last + 4000000, 500000, 12);
   REQUIRE_FALSE(pubs.empty());
@@ -231,13 +232,17 @@ TEST_CASE("AudioTempoFollower: first classified IOI sets class, not ppqn=2") {
   CHECK(f.lock_state() == neon::AudioTempoFollower::Lock::kAcquiring);
 }
 
-TEST_CASE("AudioTempoFollower: no phase API") {
-  // v1 is tempo-only: take_tempo_update is the one-shot, and there is no
-  // sticky last_onset / take_phase_request to re-anchor from.
+TEST_CASE("AudioTempoFollower: kick on 1 at 108, session 120 → ~108") {
   neon::AudioTempoFollower f;
   f.set_session_tempo(120000);
-  (void)feed_iois(f, 0, 500000, 8);
-  uint32_t mbpm = 0;
-  (void)f.take_tempo_update(&mbpm);
-  CHECK(f.tempo_milli_bpm() == 120000);
+  // 108 BPM wholes: 4 * (60e6/108) ≈ 2222222 us. Midpoints from dt, not T.
+  const auto pubs = feed_iois(f, 0, 2222222, 12);
+  REQUIRE_FALSE(pubs.empty());
+  const uint32_t mbpm = f.tempo_milli_bpm();
+  CHECK(mbpm >= 106000);
+  CHECK(mbpm <= 110000);
+  CHECK(mbpm != 60000);
+  CHECK(mbpm != 98000);
+  CHECK(mbpm != 120000);
+  CHECK(f.subdivision() == 1);
 }

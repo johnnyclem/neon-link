@@ -136,15 +136,16 @@ void AudioTempoFollower::feed(IoiClass c, int64_t t_us, int64_t dt) {
 
 void AudioTempoFollower::enter_idle() {
   lock_ = Lock::kIdle;
+  class_ = IoiClass::kNone;
+  vote_class_ = IoiClass::kNone;
+  vote_streak_ = 0;
+  subdiv_ = 0;
+  have_class_ = false;
   classified_iois_ = 0;
   last_onset_us_ = INT64_MIN;
   have_onset_ = false;
   last_fed_us_ = INT64_MIN;
   have_fed_ = false;
-  vote_streak_ = 0;
-  vote_class_ = IoiClass::kNone;
-  // Drop the held publish so a later relock republishes from scratch
-  // (ExtClock already cleared its estimate on timeout).
   published_mbpm_ = 0;
   last_publish_us_ = INT64_MIN;
 }
@@ -153,10 +154,6 @@ void AudioTempoFollower::on_onset(int64_t t_us, float strength) {
   (void)strength;
   ++onset_count_;
   last_event_us_ = t_us;
-
-  if (lock_ != Lock::kIdle && !est_.active(t_us)) {
-    enter_idle();
-  }
 
   if (!have_onset_) {
     last_onset_us_ = t_us;
@@ -169,6 +166,8 @@ void AudioTempoFollower::on_onset(int64_t t_us, float strength) {
   const IoiClass c = classify(dt);
   if (c == IoiClass::kNone) {
     ++rejected_count_;
+    vote_streak_ = 0;
+    vote_class_ = IoiClass::kNone;
     return;
   }
 

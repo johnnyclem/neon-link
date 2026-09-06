@@ -4,8 +4,7 @@
 // §5.4), shared by every link service so the precedence contract lives —
 // and is host-tested — in exactly one place: under kAuto, CLK IN outranks
 // MIDI clock, which outranks audio-follow. Each master mode pins its own
-// source; kLinkMaster ignores all three. audio_allowed is permission
-// only — liveness is midi_act.following at the service.
+// source; kLinkMaster ignores all three.
 
 #include "neon/config/model.hpp"
 
@@ -14,7 +13,7 @@ namespace neon {
 struct ClockArbitration {
   bool follow_clk_in = false;  // the jack owns tempo + phase this poll
   bool midi_allowed = false;   // the MIDI follower may publish this poll
-  bool audio_allowed = false;  // permission only; liveness is midi_act.following
+  bool audio_allowed = false;  // kAuto permission when CLK IN is silent
 };
 
 constexpr ClockArbitration arbitrate_clock_source(

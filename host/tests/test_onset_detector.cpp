@@ -175,8 +175,7 @@ TEST_CASE("OnsetDetector: click-guard drops ±8 ms, keeps 20 ms") {
 }
 
 TEST_CASE("OnsetDetector: without note_click, in-block kick is kept") {
-  // Stale ClickSynth::last_onset_frame must not plant a guard. The
-  // detector only guards stamps that were note_click()'d.
+  // Guards only stamps passed to note_click.
   neon::OnsetDetector d;
   d.reset(kRate);
   const uint64_t q32 = us_q32(kRate);
@@ -210,8 +209,9 @@ TEST_CASE("OnsetDetector: click on last sample of N guards 2 ms into N+1") {
 
 TEST_CASE("OnsetDetector: sensitivity polarity (higher = easier)") {
   // slow/floor held at 0.02, attack flux ≈ 0.03 (peak 0.05 − floor 0.02).
-  // sensitivity 255: scale = 0.35, thresh*1.8 = 0.02*0.35*1.8 = 0.0126 → detect
-  // sensitivity 0:   scale = 2.00, thresh*1.8 = 0.02*2.00*1.8 = 0.072  → reject
+  // thresh = max(slow*scale, kThreshFloor=0.008), then * kFluxArm=1.8.
+  // sensitivity 255: scale=0.35, slow*scale=0.007 < 0.008 → 0.008*1.8=0.0144 detect
+  // sensitivity 0:   scale=2.00, slow*scale=0.040 → 0.040*1.8=0.072 reject
   const uint64_t q32 = us_q32(kRate);
   const uint32_t settle = kRate;  // ~5 slow taus
   std::vector<float> L(settle + kBlock, 0.02f), R(settle + kBlock, 0.02f);
