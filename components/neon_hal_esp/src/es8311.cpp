@@ -2,7 +2,7 @@
 
 #include "sdkconfig.h"
 
-#if CONFIG_NEON_BOARD_P4DEVKIT
+#if CONFIG_NEON_BOARD_P4DEVKIT || CONFIG_NEON_BOARD_LINKSYNC_RLCD
 
 #include "board_pins.h"
 #include "driver/gpio.h"
@@ -132,7 +132,7 @@ void es8311_set_adc_input(bool mic) {
 
 }  // namespace halesp
 
-#else  // !CONFIG_NEON_BOARD_P4DEVKIT
+#else  // !(P4DEVKIT || LINKSYNC_RLCD)
 
 namespace halesp {
 

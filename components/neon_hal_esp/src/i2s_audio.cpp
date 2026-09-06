@@ -187,9 +187,9 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
       (static_cast<int64_t>(cfg.block_frames) * cfg.dma_desc * 1000000) /
       cfg.sample_rate);
   running_ = true;
-#if CONFIG_NEON_BOARD_P4DEVKIT
+#if CONFIG_NEON_BOARD_P4DEVKIT || CONFIG_NEON_BOARD_LINKSYNC_RLCD
   if (!es8311_start()) {
-    ESP_LOGW(kTag, "ES8311 init failed; I2S is up but the 3.5 mm jack may be silent");
+    ESP_LOGW(kTag, "ES8311 init failed; I2S is up but the codec/PA may be silent");
   }
 #endif
   ESP_LOGI(kTag, "I2S up: %lu Hz, %u frames x %u desc, in=%d, latency=%ld us",
@@ -201,7 +201,7 @@ bool I2sAudio::start(const hal::AudioIoConfig& cfg) {
 }
 
 void I2sAudio::stop() {
-#if CONFIG_NEON_BOARD_P4DEVKIT
+#if CONFIG_NEON_BOARD_P4DEVKIT || CONFIG_NEON_BOARD_LINKSYNC_RLCD
   es8311_stop();
 #endif
   if (g_tx != nullptr) {

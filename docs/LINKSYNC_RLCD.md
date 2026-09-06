@@ -174,10 +174,25 @@ classic U0TXD/U0RXD pads (GPIO 43/44) on the 2×8 expansion header are
 free and carry TRS MIDI, exactly like the MaTouch target. Type A TRS:
 tip = current source through 220 Ω, ring = GND; opto (6N138) on RX.
 
-The ES8311/ES7210 audio path is wired into the Kconfig I2S defaults
-but `CONFIG_NEON_AUDIO` ships **off** — enable it manually if you want
-the metronome click through the onboard speaker, and measure the heap
-first (see the Kconfig help on `NEON_AUDIO_INPUT`).
+The ES8311 DAC and speaker amp (PA GPIO46) share that I2S map. The
+build carries the audio engine; click and follow stay off until you
+turn them on (see Speakers below). Codecs sit on the same I2C 13/14
+bus as the RTC and SHTC3, already brought up at boot.
+
+## Speakers — metronome click
+
+The onboard speaker hangs off the ES8311 DAC plus the amp enable on
+GPIO46 (MCLK 16, BCLK 9, WS 45, DOUT 8, DIN 10). The build carries the
+audio engine; the click is opt-in from the web editor:
+**AUDIO > AUDIO ON**, then **METRONOME ON**. CLICK sets the level, SOUND
+picks the voice, and the click follows the transport — the speaker ticks
+only while the unit shows a running clock. I2S stays down (G6) until the
+engine is enabled, so a silent unit costs nothing.
+
+FOLLOW is off by default. DIN 10 is the vendor ADC pin so the codec can
+pull session tempo when you enable FOLLOW under AUDIO; CLK IN and MIDI
+clock still outrank it. Speaker click + close mic cannot time-separate
+an on-grid kit — mute AUDIO or turn METRO off.
 
 ## Driver notes (halesp::rlcd_st7305)
 

@@ -149,6 +149,7 @@ config NEON_I2S_DIN
     int "DIN (ADC → ESP; RX starts when a consumer is on)"
     default 9 if NEON_BOARD_AMYBOARD
     default 11 if NEON_BOARD_P4DEVKIT
+    default 10 if NEON_BOARD_LINKSYNC_RLCD
     default -1
 
 endmenu
