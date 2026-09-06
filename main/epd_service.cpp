@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 #include "tasks.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "board_mac.h"
@@ -47,6 +48,7 @@ uint32_t fingerprint(const neon::LinkSyncPanelStatus& s) {
   h = h * 33u + (s.wifi_up ? 1u : 0u);
   h = h * 33u + (s.setup_ap ? 1u : 0u);
   h = h * 33u + (s.usb_power ? 1u : 0u);
+  h = h * 33u + s.follow_lock;
   h = h * 33u + (s.invert ? 1u : 0u);
   h = h * 33u + s.overlay;
   h = h * 33u + static_cast<uint32_t>(s.cursor);
@@ -97,6 +99,15 @@ void fill_status(neon::LinkSyncPanelStatus* s, neon::EpdFrontPanel& ui,
                             : 500000ull);
   s->playing = tl.playing != 0;
   s->peers = tl.num_peers;
+  if (app_status_follow_source() == FollowSource::kAudio) {
+    neon::FollowStatus fst;
+    follow_status_bus().read(fst);
+    s->follow_lock = fst.lock;
+    s->follow_mbpm = fst.published_mbpm != 0 ? fst.published_mbpm : fst.mbpm;
+  } else {
+    s->follow_lock = 0;
+    s->follow_mbpm = 0;
+  }
   s->provisioned = neon_wifi_has_credentials();
   s->wifi_up = neon_wifi_sta_got_ip();
   s->setup_ap = netman::ap_is_up();

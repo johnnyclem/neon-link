@@ -309,11 +309,30 @@ void handle_status() {
   usbnet::primary_ip(ip, sizeof(ip));
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
+  neon::FollowStatus follow;
+  follow_status_bus().read(follow);
+  const char* fsrc = "none";
+  switch (app_status_follow_source()) {
+    case FollowSource::kClk:
+      fsrc = "clk";
+      break;
+    case FollowSource::kMidi:
+      fsrc = "midi";
+      break;
+    case FollowSource::kAudio:
+      fsrc = "audio";
+      break;
+    default:
+      break;
+  }
+  const char* flock = follow.lock == 2   ? "locked"
+                      : follow.lock == 1 ? "acquiring"
+                                         : "idle";
 
   const int n = std::snprintf(
       g_json, kJsonCap,
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
-      "\"ext_clock\":%s,\"uptime_s\":%lld,"
+      "\"ext_clock\":%s,\"follow_source\":\"%s\",\"uptime_s\":%lld,"
       "\"phase_milli\":%u,\"quantum\":%u,\"tempo_valid\":%s,"
       "\"hostname\":\"%s.local\",\"device_name\":\"%s\",\"ip\":\"%s\","
       "\"setup_ap\":false,\"ap_ssid\":\"\","
@@ -325,12 +344,15 @@ void handle_status() {
       "\"sub_state\":\"idle\",\"sub_rate\":0,\"sub_dropped\":0,"
       "\"fill_ms\":0,\"clock_ppm\":0,\"rx_dropped\":0,"
       "\"jit_underruns\":0,\"tx_dropped\":0,\"trim_ppm\":0,"
-      "\"concealed\":0}}",
+      "\"concealed\":0,"
+      "\"follow\":{\"enabled\":%s,\"lock\":\"%s\",\"subdiv\":%u,"
+      "\"bpm\":%u.%03u,\"onset_hz\":%u.%u,\"published_mbpm\":%u,"
+      "\"no_adc\":%s},\"follow_inputs\":[\"line\"]}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
       usbnet::has_ip() ? "ethernet" : "none",
-      app_status_ext_clock() ? "true" : "false",
+      app_status_ext_clock() ? "true" : "false", fsrc,
       static_cast<long long>(now / 1000000),
       static_cast<unsigned>(phase), static_cast<unsigned>(quantum),
       tl.tempo_mpb_q32 != 0 ? "true" : "false", cfg.device_name,
@@ -343,7 +365,15 @@ void handle_status() {
       static_cast<unsigned>(PulseHwDaisy::late_avg_us()),
       audio.running != 0 ? "true" : "false",
       static_cast<unsigned>(audio.peak_l),
-      static_cast<unsigned>(audio.peak_r));
+      static_cast<unsigned>(audio.peak_r),
+      follow.enabled != 0 ? "true" : "false", flock,
+      static_cast<unsigned>(follow.subdiv),
+      static_cast<unsigned>(follow.mbpm / 1000),
+      static_cast<unsigned>(follow.mbpm % 1000),
+      static_cast<unsigned>(follow.onset_hz_x10 / 10),
+      static_cast<unsigned>(follow.onset_hz_x10 % 10),
+      static_cast<unsigned>(follow.published_mbpm),
+      follow.no_adc != 0 ? "true" : "false");
   if (n < 0) {
     respond_err("500 Internal Server Error", "status encode");
     return;

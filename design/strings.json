@@ -22,6 +22,7 @@
 
     "source_link":  { "device": "LINK", "web": "Link",        "long": "Following the Link session",        "icon": "link",    "tone": "neon" },
     "source_ext":   { "device": "EXT",  "web": "External",    "long": "Following the external clock input", "icon": "link",    "tone": "yellow" },
+    "source_audio": { "device": "AUDIO", "web": "Audio",      "long": "Following incoming audio tempo",     "icon": "link",    "tone": "yellow" },
 
     "transport_run":  { "device": "RUN",  "web": "Running", "long": "Transport running", "icon": "run", "tone": "success" },
     "transport_stop": { "device": "STOP", "web": "Stopped", "long": "Transport stopped", "icon": "stop", "tone": "text-muted" },

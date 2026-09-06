@@ -59,6 +59,7 @@ IrqRing<neon::OnsetEvent, 16> g_onsets;
 
 std::atomic<uint32_t> g_peers{0};
 std::atomic<bool> g_ext_clock{false};
+std::atomic<uint8_t> g_follow_source{0};
 std::atomic<bool> g_transport{false};
 std::atomic<bool> g_follow_no_adc{false};
 
@@ -80,6 +81,12 @@ void app_status_set_peers(uint32_t peers) { g_peers = peers; }
 uint32_t app_status_peers() { return g_peers; }
 void app_status_set_ext_clock(bool active) { g_ext_clock = active; }
 bool app_status_ext_clock() { return g_ext_clock; }
+void app_status_set_follow_source(FollowSource source) {
+  g_follow_source = static_cast<uint8_t>(source);
+}
+FollowSource app_status_follow_source() {
+  return static_cast<FollowSource>(g_follow_source.load());
+}
 void app_status_set_transport(bool playing) { g_transport = playing; }
 bool app_status_transport() { return g_transport; }
 

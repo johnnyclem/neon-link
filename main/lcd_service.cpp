@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 #include "tasks.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "board_mac.h"
@@ -443,6 +444,9 @@ struct Snap {
   char ip[16] = {};
   char firmware[32] = {};
   char wifi_ssid[33] = {};
+  uint8_t follow_source = 0;
+  uint8_t follow_lock = 0;
+  uint32_t follow_mbpm = 0;
 };
 
 Snap snapshot() {
@@ -491,6 +495,11 @@ Snap snapshot() {
   const esp_app_desc_t* desc = esp_app_get_description();
   std::snprintf(s.firmware, sizeof(s.firmware), "%s",
                 desc != nullptr ? desc->version : "unknown");
+  s.follow_source = static_cast<uint8_t>(app_status_follow_source());
+  neon::FollowStatus fst;
+  follow_status_bus().read(fst);
+  s.follow_lock = fst.lock;
+  s.follow_mbpm = fst.published_mbpm != 0 ? fst.published_mbpm : fst.mbpm;
   static uint32_t last_mbpm = 0;
   if (s.milli_bpm != last_mbpm) {
     ESP_LOGI(kTag, "bpm %s (tl_q32=%llu cfg=%u)", s.bpm,
@@ -923,6 +932,16 @@ void paint_footer(uint16_t* fb, const Snap& s) {
     if (s.ip[0]) {
       const int iw = text_width(s.ip, sc);
       text(fb, kW - kPad - iw, y1, s.ip, sc, g_pal.muted);
+    }
+    if (s.follow_source == 3 && s.follow_lock != 0) {
+      char follow[28] = {};
+      if (s.follow_lock == 2) {
+        std::snprintf(follow, sizeof(follow), "FOLLOW AUDIO  %u",
+                      static_cast<unsigned>(s.follow_mbpm / 1000u));
+      } else {
+        std::snprintf(follow, sizeof(follow), "FOLLOW ...");
+      }
+      text(fb, kPad, y2, follow, sc, g_pal.neon);
     }
   }
 }

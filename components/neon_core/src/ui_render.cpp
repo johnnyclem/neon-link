@@ -19,6 +19,9 @@ using namespace neon::ui;  // NOLINT(build/namespaces) — this file is the
 // surfaces drifting into synonyms for one state.
 
 const char* source_word(const UiStatus& s) {
+  if (s.follow_source == 3) {
+    return kWordSourceAudio;
+  }
   return s.ext_clock ? kWordSourceExt : kWordSourceLink;
 }
 
@@ -110,10 +113,21 @@ void render_home(const UiStatus& s, Framebuffer& fb, const Layout& lay) {
   // below four readout rows and people miss it; joining this AP is
   // how a friend gets on the box at all.
   if (lay.ident_y >= 0) {
-    draw_label(fb, kAlignPanel, lay.ident_y, editor_address(s),
-               Align::kCenter);
-    if (s.setup_ap && s.ap_pass[0] != '\0') {
-      draw_label(fb, kAlignPanel, lay.ident_y + 10, s.ap_pass, Align::kCenter);
+    if (s.follow_source == 3 && s.follow_lock != 0) {
+      char follow[24] = {};
+      if (s.follow_lock == 2) {
+        std::snprintf(follow, sizeof(follow), "FOLLOW AUDIO  %u",
+                      static_cast<unsigned>(s.follow_mbpm / 1000u));
+      } else {
+        std::snprintf(follow, sizeof(follow), "FOLLOW ...");
+      }
+      draw_label(fb, kAlignPanel, lay.ident_y, follow, Align::kCenter);
+    } else {
+      draw_label(fb, kAlignPanel, lay.ident_y, editor_address(s),
+                 Align::kCenter);
+      if (s.setup_ap && s.ap_pass[0] != '\0') {
+        draw_label(fb, kAlignPanel, lay.ident_y + 10, s.ap_pass, Align::kCenter);
+      }
     }
   }
 

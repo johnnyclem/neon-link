@@ -8,6 +8,7 @@
 namespace {
 std::atomic<uint32_t> g_peers{0};
 std::atomic<bool> g_ext_clock{false};
+std::atomic<uint8_t> g_follow_source{0};
 std::atomic<bool> g_playing{false};
 
 QueueHandle_t gate_queue() {
@@ -46,6 +47,15 @@ void app_status_set_ext_clock(bool active) {
 }
 bool app_status_ext_clock() {
   return g_ext_clock.load(std::memory_order_relaxed);
+}
+
+void app_status_set_follow_source(FollowSource source) {
+  g_follow_source.store(static_cast<uint8_t>(source),
+                        std::memory_order_relaxed);
+}
+FollowSource app_status_follow_source() {
+  return static_cast<FollowSource>(
+      g_follow_source.load(std::memory_order_relaxed));
 }
 
 bool gate_queue_push(const GateEvent& ev) {

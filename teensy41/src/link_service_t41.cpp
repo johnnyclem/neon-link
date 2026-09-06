@@ -3,8 +3,10 @@
 #include <Arduino.h>
 
 #include "ablink/session.hpp"
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "neon/audio/tempo_follower.hpp"
 #include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
@@ -27,6 +29,10 @@ constexpr int64_t kCapturePeriodUs = 10000;  // 10 ms, like the ESP task
 neon::TapTempo g_tap;
 neon::TransportLatch g_latch;
 neon::ExtClockEstimator g_ext_clock;
+neon::AudioTempoFollower g_audio_follow;
+uint32_t g_onset_window_count = 0;
+int64_t g_onset_window_us = 0;
+uint16_t g_onset_hz_x10 = 0;
 bool g_local_playing = false;
 bool g_ext_active = false;
 int64_t g_next_capture_us = 0;
@@ -142,10 +148,6 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
       neon_config().clock_source, g_ext_clock.active(now),
       neon_config().audio_follow_enabled != 0);
   const bool follow = arb.follow_clk_in;
-  if (follow != g_ext_active) {
-    g_ext_active = follow;
-    app_status_set_ext_clock(follow);
-  }
   if (follow) {
     uint32_t mbpm = 0;
     if (g_ext_clock.take_tempo_update(&mbpm)) {
@@ -161,6 +163,77 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
     g_ext_clock.take_tempo_update(&scratch_t);
     g_ext_clock.take_phase_request(&scratch_p);
   }
+
+  const auto& cfg_now = neon_config();
+  uint32_t session_mbpm = cfg_now.tempo_milli_bpm;
+  if (g_have_prev && g_prev.tempo_mpb_q32 != 0) {
+    const uint64_t mpb_us = (g_prev.tempo_mpb_q32 + (1ull << 31)) >> 32;
+    if (mpb_us != 0) {
+      session_mbpm = neon::milli_bpm_from_mpb_us(mpb_us);
+    }
+  }
+  g_audio_follow.set_session_tempo(session_mbpm);
+  neon::OnsetEvent oe;
+  uint32_t popped = 0;
+  while (onset_queue_pop(&oe)) {
+    ++popped;
+    g_audio_follow.on_onset(oe.t_us, oe.strength);
+    if (cfg_now.audio_follow_phase) {
+      /* v1: tempo only */
+    }
+  }
+  g_audio_follow.active(now);
+  // No MIDI clock follower on this port, so midi_act.following is false.
+  const bool audio_ok = arb.audio_allowed;
+  uint32_t audio_mbpm = 0;
+  if (audio_ok && g_audio_follow.take_tempo_update(&audio_mbpm)) {
+    session.set_tempo(static_cast<double>(audio_mbpm) / 1000.0);
+  }
+  if (!audio_ok) {
+    uint32_t scratch = 0;
+    g_audio_follow.take_tempo_update(&scratch);
+  }
+
+  g_onset_window_count += popped;
+  if (g_onset_window_us == 0) {
+    g_onset_window_us = now;
+  }
+  if (now - g_onset_window_us >= 1000000) {
+    const int64_t dt = now - g_onset_window_us;
+    g_onset_hz_x10 = static_cast<uint16_t>(
+        (static_cast<uint64_t>(g_onset_window_count) * 10ull * 1000000ull) /
+        static_cast<uint64_t>(dt));
+    g_onset_window_count = 0;
+    g_onset_window_us = now;
+  }
+
+  neon::FollowStatus fst;
+  fst.enabled = cfg_now.audio_follow_enabled;
+  fst.lock = static_cast<uint8_t>(g_audio_follow.lock_state());
+  fst.subdiv = g_audio_follow.subdivision();
+  fst.no_adc = follow_no_adc() ? 1 : 0;
+  fst.onset_hz_x10 = g_onset_hz_x10;
+  fst.mbpm = g_audio_follow.estimate_milli_bpm();
+  fst.published_mbpm = g_audio_follow.tempo_milli_bpm();
+  fst.onsets = g_audio_follow.onset_count();
+  fst.rejects = g_audio_follow.rejected_count();
+  follow_status_bus().publish(fst);
+
+  const bool audio_live =
+      audio_ok &&
+      g_audio_follow.lock_state() != neon::AudioTempoFollower::Lock::kIdle;
+  FollowSource src = FollowSource::kNone;
+  if (follow) {
+    src = FollowSource::kClk;
+  } else if (audio_live) {
+    src = FollowSource::kAudio;
+  }
+  const bool any_external = src != FollowSource::kNone;
+  if (any_external != g_ext_active) {
+    g_ext_active = any_external;
+    app_status_set_ext_clock(any_external);
+  }
+  app_status_set_follow_source(src);
 }
 
 }  // namespace

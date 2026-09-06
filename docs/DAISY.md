@@ -87,7 +87,10 @@ knows about means bumping the submodule, nothing here.
   codec runs 48 kHz, exactly the rate the portable audio services are
   written for. Metronome click, pulse-as-audio taps (clock / reset / run
   roles), and the mixer render inside libDaisy's audio callback against
-  the session grid via the portable `SampleClock`.
+  the session grid via the portable `SampleClock`. Line-in tempo follow
+  (`AUDIO > FOLLOW`) is off by default; the detector runs in the audio
+  callback (before the `enabled == 0` early-out) and proposes `set_tempo`
+  only.
 - **Device UI on the 128×64 panel**: the design system's native compact
   layout (`ui::kLayout64`), drawn pixel-perfect by the same pure
   `render_ui()` as every other target (§4). ENC1 = menu

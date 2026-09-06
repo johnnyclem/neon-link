@@ -34,6 +34,9 @@ struct LinkSyncPanelStatus {
   char item_label[10][20] = {};
   char item_value[10][16] = {};
   int power_cursor = 0;
+  // Audio-in tempo follow. 0 idle, 1 acquiring, 2 locked. Footer only.
+  uint8_t follow_lock = 0;
+  uint32_t follow_mbpm = 0;
 };
 
 class EpdCanvas {

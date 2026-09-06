@@ -22,6 +22,17 @@ uint32_t app_status_peers();
 void app_status_set_ext_clock(bool active);
 bool app_status_ext_clock();
 
+// Which live source is driving tempo. Distinct from ext_clock so the
+// panel/web can say FOLLOW AUDIO instead of EXT.
+enum class FollowSource : uint8_t {
+  kNone = 0,
+  kClk = 1,
+  kMidi = 2,
+  kAudio = 3,
+};
+void app_status_set_follow_source(FollowSource source);
+FollowSource app_status_follow_source();
+
 // MIDI note gates: core-0 router -> core-1 pulse task, which emits the
 // edge on the target channel's GPIO with the usual scheduling lead.
 struct GateEvent {

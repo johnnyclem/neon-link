@@ -167,6 +167,14 @@ void render_linksync_panel(EpdCanvas& c, const LinkSyncPanelStatus& s) {
 
   if (s.overlay == 0) {
     c.draw_text(24, 176, s.playing ? "PLAYING" : "STOPPED", 4);
+    if (s.follow_lock == 2) {
+      char follow[28];
+      std::snprintf(follow, sizeof(follow), "FOLLOW AUDIO  %u",
+                    static_cast<unsigned>(s.follow_mbpm / 1000u));
+      c.draw_text(24, 232, follow, 3);
+    } else if (s.follow_lock == 1) {
+      c.draw_text(24, 232, "FOLLOW ...", 3);
+    }
   }
 
   char peers[24];

@@ -272,14 +272,25 @@ void beat_row_centered(RlcdCanvas& c, const RlcdPanelStatus& rs, int y,
 // still print the way in — physical access is the credential.
 void setup_footer(RlcdCanvas& c, const LinkSyncPanelStatus& s) {
   const bool show_ap = (s.setup_ap || !s.provisioned) && s.ap_pass[0] != '\0';
-  if (!show_ap) {
+  if (show_ap) {
+    char line[sizeof(s.ap_ssid) + sizeof(s.ap_pass) + 2];
+    std::snprintf(line, sizeof(line), "%s  %s",
+                  s.ap_ssid[0] != '\0' ? s.ap_ssid : "SETUP AP", s.ap_pass);
+    const int scale = text_w(line, 2) <= c.width() - 8 ? 2 : 1;
+    draw_text_centered(c, c.height() - (scale == 2 ? 22 : 14), line, scale);
     return;
   }
-  char line[sizeof(s.ap_ssid) + sizeof(s.ap_pass) + 2];
-  std::snprintf(line, sizeof(line), "%s  %s",
-                s.ap_ssid[0] != '\0' ? s.ap_ssid : "SETUP AP", s.ap_pass);
-  const int scale = text_w(line, 2) <= c.width() - 8 ? 2 : 1;
-  draw_text_centered(c, c.height() - (scale == 2 ? 22 : 14), line, scale);
+  if (s.follow_lock == 0) {
+    return;
+  }
+  char line[28];
+  if (s.follow_lock == 2) {
+    std::snprintf(line, sizeof(line), "FOLLOW AUDIO  %u",
+                  static_cast<unsigned>(s.follow_mbpm / 1000u));
+  } else {
+    std::snprintf(line, sizeof(line), "FOLLOW ...");
+  }
+  draw_text_centered(c, c.height() - 22, line, 2);
 }
 
 }  // namespace
@@ -418,7 +429,14 @@ static void render_landscape(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   // Footer detail line (live face only; overlays own the lower rows).
   if (s.overlay == 0) {
-    if (s.detail[0] != '\0') {
+    if (s.follow_lock == 2) {
+      char follow[28];
+      std::snprintf(follow, sizeof(follow), "FOLLOW AUDIO  %u",
+                    static_cast<unsigned>(s.follow_mbpm / 1000u));
+      c.draw_text(12, 276, follow, 2);
+    } else if (s.follow_lock == 1) {
+      c.draw_text(12, 276, "FOLLOW ...", 2);
+    } else if (s.detail[0] != '\0') {
       c.draw_text(12, 276, s.detail, 2);
     } else {
       c.draw_text(12, 276, "MIDI CLOCK  24 PPQN  TRS-A", 2);
@@ -518,8 +536,17 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   // Footer detail line (live face only).
   if (s.overlay == 0) {
-    c.draw_text(14, 372, s.detail[0] != '\0' ? s.detail
-                                             : "MIDI CLOCK  24 PPQN", 2);
+    if (s.follow_lock == 2) {
+      char follow[28];
+      std::snprintf(follow, sizeof(follow), "FOLLOW AUDIO  %u",
+                    static_cast<unsigned>(s.follow_mbpm / 1000u));
+      c.draw_text(14, 372, follow, 2);
+    } else if (s.follow_lock == 1) {
+      c.draw_text(14, 372, "FOLLOW ...", 2);
+    } else {
+      c.draw_text(14, 372, s.detail[0] != '\0' ? s.detail
+                                               : "MIDI CLOCK  24 PPQN", 2);
+    }
   }
 }
 

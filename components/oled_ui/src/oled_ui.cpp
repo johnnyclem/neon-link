@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "board_pins.h"
@@ -151,6 +152,11 @@ void assemble_status(neon::UiStatus* s, int64_t now_us, int64_t phase_us) {
                                                     : 0;
   s->peers = app_status_peers();
   s->ext_clock = app_status_ext_clock();
+  s->follow_source = static_cast<uint8_t>(app_status_follow_source());
+  neon::FollowStatus fst;
+  follow_status_bus().read(fst);
+  s->follow_lock = fst.lock;
+  s->follow_mbpm = fst.published_mbpm != 0 ? fst.published_mbpm : fst.mbpm;
   s->setup_ap = netman::ap_is_up();
   s->big_beat_display = neon_config().big_beat_display != 0;
   s->beat_style = static_cast<uint8_t>(neon_config().beat_style);

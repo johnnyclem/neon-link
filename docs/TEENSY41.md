@@ -44,7 +44,9 @@ cannot drift between platforms.
 - **Audio engine** (with an SGTL5000 shield or any I2S DAC on the standard
   pins): the portable metronome click, pulse-as-audio taps (clock / reset /
   run roles), and mixer, rendered in the Teensy Audio Library's update ISR
-  against the session grid via the portable `SampleClock`.
+  against the session grid via the portable `SampleClock`. Line-in tempo
+  follow (`AUDIO > FOLLOW`) is off by default; the detector runs in the
+  audio ISR and proposes `set_tempo` only.
 - **Full device UI on the colour panel**: `render_ui()`'s 128×128 frame
   upscaled ×1.875 into a 240×240 zone (design-token colours), an 80 px
   touch strip (`+` / `−` / `OK` / `BACK`, auto-repeat), two encoders

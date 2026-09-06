@@ -10,6 +10,7 @@
 #include "neon/audio/beat_window.hpp"
 #include "neon/audio/click.hpp"
 #include "neon/audio/mixer.hpp"
+#include "neon/audio/onset_detector.hpp"
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
 
@@ -26,6 +27,9 @@ constexpr uint32_t kRate = 48000;
 // Provisional at two block periods — measure on the bench against a
 // pulse output and refine (docs/DAISY.md §5).
 constexpr int64_t kDacLatencyUs = 2000;
+// One block at 48 kHz / 48. Period measurement is delay-invariant.
+constexpr int64_t kAdcLatencyUs =
+    (static_cast<int64_t>(kBlockFrames) * 1000000) / kRate;
 
 // --- main-loop -> ISR staging (written IRQ-masked, read at block start)
 struct Staged {
@@ -40,7 +44,9 @@ Staged g_staged;
 // --- ISR-side state ---------------------------------------------------
 neon::SampleClock g_clock;
 neon::ClickSynth g_click;
+neon::OnsetDetector g_detector;
 neon::PulseRender g_pulse;
+uint8_t g_follow_was = 0;
 uint64_t g_frames = 0;
 int64_t g_prev_t1 = 0;
 uint32_t g_seen_tl_gen = 0;
@@ -84,9 +90,49 @@ bool role_selected(const neon::AudioEngineConfig& cfg, neon::AudioRole role) {
   return cfg.role_l == role || cfg.role_r == role;
 }
 
+bool source_needed(const neon::AudioEngineConfig& cfg, neon::AudioRole role,
+                   bool in_mix) {
+  if (cfg.role_l == role || cfg.role_r == role) {
+    return true;
+  }
+  return in_mix && (cfg.role_l == neon::AudioRole::kMix ||
+                    cfg.role_r == neon::AudioRole::kMix);
+}
+
+void run_follow(const neon::AudioEngineConfig& cfg, uint64_t first_frame,
+                uint32_t n, const float* L, const float* R) {
+  if (cfg.follow_enabled != 0 && g_follow_was == 0) {
+    g_detector.reset(kRate);
+  }
+  g_follow_was = cfg.follow_enabled;
+  g_detector.set_sensitivity(cfg.follow_sensitivity);
+  if (cfg.follow_enabled == 0 || L == nullptr || R == nullptr) {
+    return;
+  }
+  const int64_t t0_adc = g_clock.us_at_frame(first_frame) - kAdcLatencyUs;
+  const uint64_t us_per_frame_q32 = g_clock.us_per_frame_q32();
+  const bool click_can_leak =
+      cfg.enabled != 0 && cfg.metro_enabled != 0 &&
+      cfg.follow_enabled != 0 &&
+      source_needed(cfg, neon::AudioRole::kMetronome, /*in_mix=*/true);
+  if (click_can_leak && g_click.last_onsets() > 0) {
+    const int64_t click_us =
+        t0_adc + static_cast<int64_t>(
+                     (static_cast<uint64_t>(g_click.last_onset_frame()) *
+                      us_per_frame_q32) >>
+                     32);
+    g_detector.note_click(click_us);
+  }
+  neon::OnsetEvent hits[8];
+  const uint32_t nh =
+      g_detector.process(L, R, n, t0_adc, us_per_frame_q32, hits, 8);
+  for (uint32_t i = 0; i < nh; ++i) {
+    onset_queue_push(hits[i]);
+  }
+}
+
 void audio_callback(daisy::AudioHandle::InputBuffer in,
                     daisy::AudioHandle::OutputBuffer out, size_t size) {
-  (void)in;
   const uint32_t n =
       size < kBlockFrames ? static_cast<uint32_t>(size) : kBlockFrames;
 
@@ -122,6 +168,21 @@ void audio_callback(daisy::AudioHandle::InputBuffer in,
     g_prev_t1 = t0;
   }
 
+  const neon::BeatWindow window = neon::beat_window(g_staged.tl, t0, t1, n);
+
+  // Click before the detector so last_onsets() is this block (ESP order).
+  neon::MixSources src;
+  std::memset(g_metro, 0, sizeof(g_metro));
+  const bool click_sounding = g_click.voice_active();
+  if (cfg.enabled != 0 && (cfg.metro_enabled != 0 || click_sounding)) {
+    g_click.render(window, g_metro, n);
+    src.metro = g_metro;
+  }
+
+  const float* in_l = (in != nullptr && in[0] != nullptr) ? in[0] : nullptr;
+  const float* in_r = (in != nullptr && in[1] != nullptr) ? in[1] : nullptr;
+  run_follow(cfg, first_frame, n, in_l, in_r);
+
   if (cfg.enabled == 0) {
     g_running = false;
     g_peak_l = 0;
@@ -133,16 +194,6 @@ void audio_callback(daisy::AudioHandle::InputBuffer in,
     return;
   }
   g_running = true;
-
-  const neon::BeatWindow window = neon::beat_window(g_staged.tl, t0, t1, n);
-
-  neon::MixSources src;
-  std::memset(g_metro, 0, sizeof(g_metro));
-  const bool click_sounding = g_click.voice_active();
-  if (cfg.metro_enabled != 0 || click_sounding) {
-    g_click.render(window, g_metro, n);
-    src.metro = g_metro;
-  }
 
   // The pulse window stays contiguous whether or not a jack listens
   // (same contract as the ESP audio task).
@@ -183,6 +234,7 @@ void init() {
   g_clock.reset(kRate);
   g_click.reset(kRate);
   g_pulse.reset(kRate);
+  g_detector.reset(kRate);
   board_audio_start(audio_callback, kBlockFrames);
   // Below the pulse emitter and MIDI tick — see pulse_hw_daisy.cpp for
   // the ranking. libDaisy parks the SAI1 DMA streams (used by every

@@ -295,6 +295,29 @@ TEST_CASE("home screen renders deterministically (golden)") {
   CHECK(render_home(later) != a);
 }
 
+TEST_CASE("audio follow source is AUDIO, not EXT, with FOLLOW AUDIO ident") {
+  neon::UiStatus st = playing_status();
+  st.ext_clock = true;
+  st.follow_source = 3;
+  st.follow_lock = 2;
+  st.follow_mbpm = 118000;
+  const std::string audio = render_home(st);
+
+  neon::UiStatus ext = playing_status();
+  ext.ext_clock = true;
+  CHECK(audio != render_home(ext));
+
+  neon::Config cfg;
+  neon::MenuModel menu(&cfg);
+  neon::Framebuffer fb;
+  neon::render_ui(menu, st, fb);
+  CHECK(lit_in_row(fb, neon::ui::kLayout128.ident_y) > 0);
+  CHECK(lit_in_row(fb, neon::ui::kLayout128.status_y) > 0);
+
+  st.follow_lock = 1;
+  CHECK(render_home(st) != audio);
+}
+
 TEST_CASE("hero shows a placeholder until the first sync") {
   neon::UiStatus st = playing_status();
   st.tempo_valid = false;

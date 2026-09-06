@@ -64,6 +64,7 @@ inline constexpr Layout kLayout64 = {64, 15, -1, 44, -1, 54, 8, 2, 16, 12, 4, 17
 // entry, so the two surfaces never invent synonyms for one state.
 inline constexpr const char kWordSourceLink[] = "LINK";
 inline constexpr const char kWordSourceExt[] = "EXT";
+inline constexpr const char kWordSourceAudio[] = "AUDIO";
 inline constexpr const char kWordTransportRun[] = "RUN";
 inline constexpr const char kWordTransportStop[] = "STOP";
 inline constexpr const char kWordNetAp[] = "AP";

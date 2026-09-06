@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 #include "tasks.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "board_mac.h"
@@ -91,6 +92,7 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   h = h * 33u + (s.wifi_up ? 1u : 0u);
   h = h * 33u + (s.setup_ap ? 1u : 0u);
   h = h * 33u + (s.usb_power ? 1u : 0u);
+  h = h * 33u + s.follow_lock;
   h = h * 33u + s.overlay;
   h = h * 33u + static_cast<uint32_t>(s.cursor);
   h = h * 33u + static_cast<uint32_t>(s.power_cursor);
@@ -272,6 +274,15 @@ void fill_status(neon::RlcdPanelStatus* rs, neon::RlcdFrontPanel& ui,
                             : 500000ull);
   s->playing = tl.playing != 0;
   s->peers = tl.num_peers;
+  if (app_status_follow_source() == FollowSource::kAudio) {
+    neon::FollowStatus fst;
+    follow_status_bus().read(fst);
+    s->follow_lock = fst.lock;
+    s->follow_mbpm = fst.published_mbpm != 0 ? fst.published_mbpm : fst.mbpm;
+  } else {
+    s->follow_lock = 0;
+    s->follow_mbpm = 0;
+  }
   rs->quantum = tl.quantum_beats != 0 ? tl.quantum_beats : 4;
   rs->beat = s->playing
                  ? neon::beat_number(neon::phase_milli_beats(tl, now),

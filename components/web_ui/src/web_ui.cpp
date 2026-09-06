@@ -574,6 +574,19 @@ const char* follow_lock_str(uint8_t lock) {
   }
 }
 
+const char* follow_source_str() {
+  switch (app_status_follow_source()) {
+    case FollowSource::kClk:
+      return "clk";
+    case FollowSource::kMidi:
+      return "midi";
+    case FollowSource::kAudio:
+      return "audio";
+    default:
+      return "none";
+  }
+}
+
 const char* follow_inputs_json() {
   if (kPinI2sDin < 0) {
     return "[]";
@@ -642,7 +655,7 @@ esp_err_t handle_status(httpd_req_t* req) {
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
-      "\"ext_clock\":%s,\"uptime_s\":%lld,"
+      "\"ext_clock\":%s,\"follow_source\":\"%s\",\"uptime_s\":%lld,"
       "\"phase_milli\":%u,\"quantum\":%u,\"tempo_valid\":%s,"
       "\"hostname\":\"%s.local\",\"device_name\":\"%s\",\"ip\":\"%s\","
       "\"setup_ap\":%s,\"ap_ssid\":\"%s\","
@@ -669,7 +682,7 @@ esp_err_t handle_status(httpd_req_t* req) {
       net == neon::ActiveNet::kEthernet ? "ethernet"
       : net == neon::ActiveNet::kWifi   ? "wifi"
                                         : "none",
-      app_status_ext_clock() ? "true" : "false",
+      app_status_ext_clock() ? "true" : "false", follow_source_str(),
       static_cast<long long>(esp_timer_get_time() / 1000000),
       static_cast<unsigned>(phase), static_cast<unsigned>(quantum),
       tl.tempo_mpb_q32 != 0 ? "true" : "false", cfg.device_name,

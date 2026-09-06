@@ -7,7 +7,7 @@ hardware, and the two submodules that are not in this tree.
 A proposal to supersede Link Audio streaming as the multi-player audio
 strategy — pre-distributed stems, events on the wire — is
 [`STEM_SYNC.md`](STEM_SYNC.md).
-**Related**: [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`AMYBOARD.md`](AMYBOARD.md) · [`FEATURES.md`](FEATURES.md) · [`../SOFTWARE.md`](../SOFTWARE.md)
+**Related**: [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`AMYBOARD.md`](AMYBOARD.md) · [`FEATURES.md`](FEATURES.md) · [`../SOFTWARE.md`](../SOFTWARE.md) · [`AUDIO_FOLLOW.md`](AUDIO_FOLLOW.md)
 
 ---
 
@@ -442,6 +442,14 @@ screen cases in `test_ui`.
   then the same seam is served by `neon::SynthVoiceBank`, which is a real
   voice — the Synth role, the MIDI routing and the gain control are all
   exercised by it, so adding AMY changes the timbre and nothing else.
+
+### Audio-in tempo follow
+
+Line-in / codec ADC can drive session tempo (tempo only, no phase
+re-anchor). **Off by default.** Enable AUDIO > FOLLOW. CLK IN and MIDI
+clock outrank it. Spec: [`AUDIO_FOLLOW.md`](AUDIO_FOLLOW.md). Teensy
+and Daisy run the same detector in the audio callback (before the
+`enabled == 0` early-out) and apply `set_tempo` from the 10 ms poll.
 
 ### Hardware gates still outstanding
 

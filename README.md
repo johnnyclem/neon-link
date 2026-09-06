@@ -133,6 +133,7 @@ Teenage Engineering Pocket Operator form factor — already supported in Eurorac
 | **[FEATURES.md](FEATURES.md)** | Everyone | **Authoritative feature priority list** (Must / Should / Nice / Deferred) after AMYboard pivot |
 | **[EXECUTIVE_BRIEFING.md](EXECUTIVE_BRIEFING.md)** | Hardware Engineer (onboarding) | Concise strategic overview, competitive positioning, high-level targets, and what we need first |
 | **[docs/AUDIOLINK.md](docs/AUDIOLINK.md)** | Software / Firmware | **AudioLink design spec** — Link 4.0 upgrade, sample-accurate audio engine on the AMYboard codec (metronome, pulses-as-audio, AMY synth), and Link Audio streaming to/from Live 12.4 |
+| **[docs/AUDIO_FOLLOW.md](docs/AUDIO_FOLLOW.md)** | Software / Firmware | Audio-in tempo follow — line-in/mic transients drive Link tempo (tempo only, off by default) |
 | **[docs/COMPETITIVE_PARITY.md](docs/COMPETITIVE_PARITY.md)** | Everyone | Row-by-row audit against the Circuit Happy ML:2m and Missing Link Junior manuals |
 | **[docs/P4DEVKIT.md](docs/P4DEVKIT.md)** | Hardware / Firmware | Waveshare ESP32-P4-Module-DEV-KIT + 1.5" I2C OLED — v2 R&D bring-up |
 | **[docs/FRIENDS_FAMILY_HANDOFF.md](docs/FRIENDS_FAMILY_HANDOFF.md)** | Hardware / Firmware | Friends & family batch ship gates (G1–G7), should-fix list, and D2 SPDIF decision |
@@ -321,7 +322,8 @@ with a 2.8" SPI colour touchscreen and two rotary encoders — a full
 peer of the ESP32 build: **Ableton Link over the Teensy's native
 Ethernet** (custom asio-free platform layer), the same web editor at
 `http://<device-name>.local/`, TRS MIDI clock, CLK/RST IN external
-clock following, and the audio engine on an SGTL5000 shield. WiFi and
+clock following, and the audio engine on an SGTL5000 shield (line-in
+tempo follow is off by default). WiFi and
 BLE stay ESP32-only (no radio on the Teensy). See
 **[docs/TEENSY41.md](docs/TEENSY41.md)** for wiring and details.
 
@@ -338,7 +340,8 @@ The portable core also builds for an Electrosmith **Daisy Seed**
 SSD1306/SSD1309 OLED and two rotary encoders. No network interface on
 the stock hardware, so the three standard configs run an internal
 timeline (tap/nudge tempo, quantized transport) and follow CLK/RST IN;
-TRS MIDI clock, the audio engine on the built-in codec, Tempo CV on the
+TRS MIDI clock, the audio engine on the built-in codec (line-in tempo
+follow is off by default), Tempo CV on the
 true DAC, and config + presets in QSPI flash all work. A fourth config,
 **netlink**, turns the Seed's USB port into a USB Ethernet gadget
 (CDC-ECM + lwIP) and carries real Ableton Link, the web editor, and the

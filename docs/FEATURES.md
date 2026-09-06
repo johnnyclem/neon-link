@@ -119,6 +119,10 @@ Delivered in that pass:
 These are **shipped**, not planned. Anything added below this line is new
 scope on top of parity.
 
+- **Audio-in tempo follow** — opt-in, off by default. Line-in transients
+  propose session tempo the way tap-tempo does (no phase re-anchor).
+  CLK IN and MIDI clock outrank it. See [`AUDIO_FOLLOW.md`](AUDIO_FOLLOW.md).
+
 ---
 
 ## Success Criteria for v1

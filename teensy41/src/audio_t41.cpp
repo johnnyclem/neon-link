@@ -11,6 +11,7 @@
 #include "neon/audio/beat_window.hpp"
 #include "neon/audio/click.hpp"
 #include "neon/audio/mixer.hpp"
+#include "neon/audio/onset_detector.hpp"
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
 
@@ -24,6 +25,9 @@ constexpr uint32_t kBlockFrames = AUDIO_BLOCK_SAMPLES;  // 128
 constexpr uint32_t kRate = 44100;
 // I2S FIFO + the library's queueing between update() and the wire.
 constexpr int64_t kDacLatencyUs = 6000;
+// One block at 44.1 kHz / 128. Period measurement is delay-invariant.
+constexpr int64_t kAdcLatencyUs =
+    (static_cast<int64_t>(kBlockFrames) * 1000000) / kRate;
 
 // --- main-loop -> ISR staging (written IRQ-masked, read at block start)
 struct Staged {
@@ -38,7 +42,9 @@ Staged g_staged;
 // --- ISR-side state ---------------------------------------------------
 neon::SampleClock g_clock;
 neon::ClickSynth g_click;
+neon::OnsetDetector g_detector;
 neon::PulseRender g_pulse;
+uint8_t g_follow_was = 0;
 uint64_t g_frames = 0;
 int64_t g_prev_t1 = 0;
 uint32_t g_seen_tl_gen = 0;
@@ -50,6 +56,8 @@ float g_metro[kBlockFrames];
 float g_tap[kBlockFrames];
 float g_out_l[kBlockFrames];
 float g_out_r[kBlockFrames];
+float g_in_l[kBlockFrames];
+float g_in_r[kBlockFrames];
 
 // Meters back to the main loop (plain volatiles; races are benign).
 volatile uint16_t g_peak_l = 0;
@@ -84,9 +92,50 @@ bool role_selected(const neon::AudioEngineConfig& cfg, neon::AudioRole role) {
   return cfg.role_l == role || cfg.role_r == role;
 }
 
+bool source_needed(const neon::AudioEngineConfig& cfg, neon::AudioRole role,
+                   bool in_mix) {
+  if (cfg.role_l == role || cfg.role_r == role) {
+    return true;
+  }
+  return in_mix && (cfg.role_l == neon::AudioRole::kMix ||
+                    cfg.role_r == neon::AudioRole::kMix);
+}
+
+void run_follow(const neon::AudioEngineConfig& cfg, uint64_t first_frame,
+                uint32_t n, const float* L, const float* R) {
+  if (cfg.follow_enabled != 0 && g_follow_was == 0) {
+    g_detector.reset(kRate);
+  }
+  g_follow_was = cfg.follow_enabled;
+  g_detector.set_sensitivity(cfg.follow_sensitivity);
+  if (cfg.follow_enabled == 0 || L == nullptr || R == nullptr) {
+    return;
+  }
+  const int64_t t0_adc = g_clock.us_at_frame(first_frame) - kAdcLatencyUs;
+  const uint64_t us_per_frame_q32 = g_clock.us_per_frame_q32();
+  const bool click_can_leak =
+      cfg.enabled != 0 && cfg.metro_enabled != 0 &&
+      cfg.follow_enabled != 0 &&
+      source_needed(cfg, neon::AudioRole::kMetronome, /*in_mix=*/true);
+  if (click_can_leak && g_click.last_onsets() > 0) {
+    const int64_t click_us =
+        t0_adc + static_cast<int64_t>(
+                     (static_cast<uint64_t>(g_click.last_onset_frame()) *
+                      us_per_frame_q32) >>
+                     32);
+    g_detector.note_click(click_us);
+  }
+  neon::OnsetEvent hits[8];
+  const uint32_t nh =
+      g_detector.process(L, R, n, t0_adc, us_per_frame_q32, hits, 8);
+  for (uint32_t i = 0; i < nh; ++i) {
+    onset_queue_push(hits[i]);
+  }
+}
+
 class NeonAudioSource : public AudioStream {
  public:
-  NeonAudioSource() : AudioStream(0, nullptr) {}
+  NeonAudioSource() : AudioStream(2, inputQueueArray) {}
 
   void update() override {
     const uint64_t first_frame = g_frames;
@@ -122,25 +171,56 @@ class NeonAudioSource : public AudioStream {
       g_prev_t1 = t0;
     }
 
+    const neon::BeatWindow window =
+        neon::beat_window(g_staged.tl, t0, t1, kBlockFrames);
+
+    // Click before the detector so last_onsets() is this block (ESP order).
+    neon::MixSources src;
+    std::memset(g_metro, 0, sizeof(g_metro));
+    const bool click_sounding = g_click.voice_active();
+    if (cfg.enabled != 0 && (cfg.metro_enabled != 0 || click_sounding)) {
+      g_click.render(window, g_metro, kBlockFrames);
+      src.metro = g_metro;
+    }
+
+    audio_block_t* inl = receiveReadOnly(0);
+    audio_block_t* inr = receiveReadOnly(1);
+    constexpr float kScale = 1.0f / 32768.0f;
+    for (uint32_t i = 0; i < kBlockFrames; ++i) {
+      g_in_l[i] = inl != nullptr ? static_cast<float>(inl->data[i]) * kScale
+                                 : 0.0f;
+      g_in_r[i] = inr != nullptr ? static_cast<float>(inr->data[i]) * kScale
+                                 : 0.0f;
+    }
+    run_follow(cfg, first_frame, kBlockFrames, g_in_l, g_in_r);
+    if (inl != nullptr) {
+      release(inl);
+    }
+    if (inr != nullptr) {
+      release(inr);
+    }
+
     if (cfg.enabled == 0) {
       g_running = false;
       g_peak_l = 0;
       g_peak_r = 0;
-      // Transmit nothing: the output amps get silence.
+      audio_block_t* left = allocate();
+      audio_block_t* right = allocate();
+      if (left != nullptr && right != nullptr) {
+        std::memset(left->data, 0, sizeof(left->data));
+        std::memset(right->data, 0, sizeof(right->data));
+        transmit(left, 0);
+        transmit(right, 1);
+      }
+      if (left != nullptr) {
+        release(left);
+      }
+      if (right != nullptr) {
+        release(right);
+      }
       return;
     }
     g_running = true;
-
-    const neon::BeatWindow window =
-        neon::beat_window(g_staged.tl, t0, t1, kBlockFrames);
-
-    neon::MixSources src;
-    std::memset(g_metro, 0, sizeof(g_metro));
-    const bool click_sounding = g_click.voice_active();
-    if (cfg.metro_enabled != 0 || click_sounding) {
-      g_click.render(window, g_metro, kBlockFrames);
-      src.metro = g_metro;
-    }
 
     // The pulse window stays contiguous whether or not a jack listens
     // (same contract as the ESP audio task).
@@ -188,12 +268,19 @@ class NeonAudioSource : public AudioStream {
     g_peak_r = neon::peak_meter(g_out_r, kBlockFrames, g_peak_r);
     g_blocks = g_blocks + 1;
   }
+
+ private:
+  audio_block_t* inputQueueArray[2] = {};
 };
 
 // Audio graph. Constructed at static init, silent until init() enables
-// the codec and the config enables the engine.
+// the codec and the config enables the engine. Input is attached so
+// follow can run with AUDIO off (silence still goes out).
+AudioInputI2S g_i2s_in;
 NeonAudioSource g_source;
 AudioOutputI2S g_i2s;
+AudioConnection g_in_l(g_i2s_in, 0, g_source, 0);
+AudioConnection g_in_r(g_i2s_in, 1, g_source, 1);
 AudioConnection g_conn_l(g_source, 0, g_i2s, 0);
 AudioConnection g_conn_r(g_source, 1, g_i2s, 1);
 AudioControlSGTL5000 g_codec;
@@ -205,10 +292,12 @@ void init() {
   g_clock.reset(kRate);
   g_click.reset(kRate);
   g_pulse.reset(kRate);
+  g_detector.reset(kRate);
   // No shield present is fine: enable() just fails and the I2S pins
   // wiggle for any external DAC instead.
   g_codec.enable();
   g_codec.volume(0.6f);
+  g_codec.inputSelect(AUDIO_INPUT_LINEIN);
 }
 
 void poll(int64_t now_us) {

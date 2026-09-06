@@ -1,7 +1,9 @@
 #include "link_service_daisy.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "neon/audio/tempo_follower.hpp"
 #include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
@@ -37,6 +39,10 @@ bool g_midi_following = false;
 // own steering landed; on netlink it makes peer edits under a running
 // MIDI transport get level-corrected instead of standing.
 neon::midi::SessionView g_midi_session;
+neon::AudioTempoFollower g_audio_follow;
+uint32_t g_onset_window_count = 0;
+int64_t g_onset_window_us = 0;
+uint16_t g_onset_hz_x10 = 0;
 bool g_local_playing = false;
 bool g_ext_active = false;
 int64_t g_next_capture_us = 0;
@@ -163,11 +169,6 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
       g_midi_follow.poll(now, arb.midi_allowed, g_midi_session);
   g_midi_following = midi_act.following;
 
-  const bool follow = jack || midi_act.following;
-  if (follow != g_ext_active) {
-    g_ext_active = follow;
-    app_status_set_ext_clock(follow);
-  }
   if (jack) {
     uint32_t mbpm = 0;
     if (g_ext_clock.take_tempo_update(&mbpm)) {
@@ -194,6 +195,79 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
     session.set_playing(midi_act.playing);
     g_local_playing = midi_act.playing;
   }
+
+  const auto& cfg_now = neon_config();
+  uint32_t session_mbpm = cfg_now.tempo_milli_bpm;
+  if (g_have_prev && g_prev.tempo_mpb_q32 != 0) {
+    const uint64_t mpb_us = (g_prev.tempo_mpb_q32 + (1ull << 31)) >> 32;
+    if (mpb_us != 0) {
+      session_mbpm = neon::milli_bpm_from_mpb_us(mpb_us);
+    }
+  }
+  g_audio_follow.set_session_tempo(session_mbpm);
+  neon::OnsetEvent oe;
+  uint32_t popped = 0;
+  while (onset_queue_pop(&oe)) {
+    ++popped;
+    g_audio_follow.on_onset(oe.t_us, oe.strength);
+    if (cfg_now.audio_follow_phase) {
+      /* v1: tempo only */
+    }
+  }
+  g_audio_follow.active(now);
+  // audio_ok: permission (arb.audio_allowed) and MIDI is not live.
+  const bool audio_ok = arb.audio_allowed && !midi_act.following;
+  uint32_t audio_mbpm = 0;
+  if (audio_ok && g_audio_follow.take_tempo_update(&audio_mbpm)) {
+    session.set_tempo(static_cast<double>(audio_mbpm) / 1000.0);
+  }
+  if (!audio_ok) {
+    uint32_t scratch = 0;
+    g_audio_follow.take_tempo_update(&scratch);
+  }
+
+  g_onset_window_count += popped;
+  if (g_onset_window_us == 0) {
+    g_onset_window_us = now;
+  }
+  if (now - g_onset_window_us >= 1000000) {
+    const int64_t dt = now - g_onset_window_us;
+    g_onset_hz_x10 = static_cast<uint16_t>(
+        (static_cast<uint64_t>(g_onset_window_count) * 10ull * 1000000ull) /
+        static_cast<uint64_t>(dt));
+    g_onset_window_count = 0;
+    g_onset_window_us = now;
+  }
+
+  neon::FollowStatus fst;
+  fst.enabled = cfg_now.audio_follow_enabled;
+  fst.lock = static_cast<uint8_t>(g_audio_follow.lock_state());
+  fst.subdiv = g_audio_follow.subdivision();
+  fst.no_adc = follow_no_adc() ? 1 : 0;
+  fst.onset_hz_x10 = g_onset_hz_x10;
+  fst.mbpm = g_audio_follow.estimate_milli_bpm();
+  fst.published_mbpm = g_audio_follow.tempo_milli_bpm();
+  fst.onsets = g_audio_follow.onset_count();
+  fst.rejects = g_audio_follow.rejected_count();
+  follow_status_bus().publish(fst);
+
+  const bool audio_live =
+      audio_ok &&
+      g_audio_follow.lock_state() != neon::AudioTempoFollower::Lock::kIdle;
+  FollowSource src = FollowSource::kNone;
+  if (jack) {
+    src = FollowSource::kClk;
+  } else if (midi_act.following) {
+    src = FollowSource::kMidi;
+  } else if (audio_live) {
+    src = FollowSource::kAudio;
+  }
+  const bool any_external = src != FollowSource::kNone;
+  if (any_external != g_ext_active) {
+    g_ext_active = any_external;
+    app_status_set_ext_clock(any_external);
+  }
+  app_status_set_follow_source(src);
 }
 
 }  // namespace

@@ -22,6 +22,7 @@
 
 #include "daisy_seed.h"
 
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
 #include "neon/gfx/framebuffer.hpp"
@@ -213,6 +214,11 @@ void assemble_status(neon::UiStatus* s, int64_t now_us) {
   s->active_net = neon_daisy_net_active();
   s->peers = app_status_peers();
   s->ext_clock = app_status_ext_clock();
+  s->follow_source = static_cast<uint8_t>(app_status_follow_source());
+  neon::FollowStatus fst;
+  follow_status_bus().read(fst);
+  s->follow_lock = fst.lock;
+  s->follow_mbpm = fst.published_mbpm != 0 ? fst.published_mbpm : fst.mbpm;
   s->setup_ap = false;
   s->ble_on = false;
   s->big_beat_display = neon_config().big_beat_display != 0;

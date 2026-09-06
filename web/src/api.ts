@@ -241,6 +241,8 @@ export interface Status {
   playing: boolean;
   network: NetworkKind;
   ext_clock: boolean;
+  /** none | clk | midi | audio. Distinct from ext_clock so AUDIO is not EXT. */
+  follow_source?: "none" | "clk" | "midi" | "audio";
   uptime_s: number;
   /** Position within the bar, milli-beats 0..quantum*1000. */
   phase_milli: number;

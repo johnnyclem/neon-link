@@ -31,6 +31,13 @@ export const strings = {
       "icon": "link",
       "tone": "yellow"
     },
+    "source_audio": {
+      "device": "AUDIO",
+      "web": "Audio",
+      "long": "Following incoming audio tempo",
+      "icon": "link",
+      "tone": "yellow"
+    },
     "transport_run": {
       "device": "RUN",
       "web": "Running",

@@ -46,7 +46,13 @@ export function StatusStrip({ status, offline }: { status: Status | null; offlin
           ) : (
             <>
               <StatusChip
-                state={status.ext_clock ? "source_ext" : "source_link"}
+                state={
+                  status.follow_source === "audio"
+                    ? "source_audio"
+                    : status.ext_clock
+                      ? "source_ext"
+                      : "source_link"
+                }
                 bpm={status.bpm}
               />
               <StatusChip

@@ -14,6 +14,11 @@ struct UiStatus {
   bool playing = false;
   uint8_t active_net = 0;  // 0 none, 1 ethernet, 2 wifi
   bool ext_clock = false;
+  // FollowSource: 0 none, 1 clk, 2 midi, 3 audio. Distinct from ext_clock
+  // so FOLLOW AUDIO is not spelled EXT.
+  uint8_t follow_source = 0;
+  uint8_t follow_lock = 0;  // 0 idle, 1 acquiring, 2 locked
+  uint32_t follow_mbpm = 0;
   // Phase within the bar, milli-beats 0..quantum*1000 (for the phase bar
   // and beat LED).
   uint32_t phase_milli_beats = 0;

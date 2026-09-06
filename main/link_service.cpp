@@ -460,11 +460,18 @@ void link_service_task(void*) {
       }
     }
 
-    const bool audio_following =
+    const bool audio_live =
         audio_ok &&
-        audio_follow.lock_state() == neon::AudioTempoFollower::Lock::kLocked;
-    const bool any_external =
-        follow_external || midi_act.following || audio_following;
+        audio_follow.lock_state() != neon::AudioTempoFollower::Lock::kIdle;
+    FollowSource src = FollowSource::kNone;
+    if (follow_external) {
+      src = FollowSource::kClk;
+    } else if (midi_act.following) {
+      src = FollowSource::kMidi;
+    } else if (audio_live) {
+      src = FollowSource::kAudio;
+    }
+    const bool any_external = src != FollowSource::kNone;
     if (any_external != ext_active) {
       ESP_LOGI(kTag, "external clock %s",
                !any_external          ? "lost"
@@ -474,6 +481,7 @@ void link_service_task(void*) {
       ext_active = any_external;
       app_status_set_ext_clock(any_external);
     }
+    app_status_set_follow_source(src);
     if (follow_external) {
       uint32_t mbpm = 0;
       if (ext_clock.take_tempo_update(&mbpm)) {
