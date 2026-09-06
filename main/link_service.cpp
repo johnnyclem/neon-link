@@ -383,14 +383,14 @@ void link_service_task(void*) {
         session_mbpm = neon::milli_bpm_from_mpb_us(mpb_us);
       }
     }
+    audio_follow.set_session_tempo(session_mbpm);
     neon::OnsetEvent oe;
     uint32_t popped = 0;
     while (onset_queue_pop(&oe)) {
       ++popped;
-      audio_follow.set_session_tempo(session_mbpm);
       audio_follow.on_onset(oe.t_us, oe.strength);
       if (cfg_now.audio_follow_phase) {
-        /* reserved until kAdcLatencyUs benched */
+        /* v1: tempo only */
       }
     }
     audio_follow.active(now_arb);

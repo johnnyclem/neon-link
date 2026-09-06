@@ -61,8 +61,7 @@ constexpr uint32_t kMaxRxFrames = 512;
 // latency the SampleClock already accounts for. Measured against the CV
 // outputs on hardware (docs/AUDIOLINK.md PR8); zero until it is.
 constexpr int32_t kDacLatencyUs = 0;
-// One 48 kHz / 256-frame block. Period measurement is delay-invariant;
-// phase-lock would need a bench calibration of this constant.
+// One 48 kHz / 256-frame block. Period measurement is delay-invariant.
 constexpr int32_t kAdcLatencyUs = 5333;
 
 // JitterBuffer caps its fill target at HALF the ring (the servo needs
@@ -266,6 +265,7 @@ void audio_task(void*) {
   bool i2s_up = false;
   bool software_pace = false;
   bool rx_failed = false;
+  bool last_want_rx = false;
   uint64_t soft_frames = 0;
   int64_t soft_next_us = 0;
   uint8_t last_follow_input = cfg.follow_input;
@@ -324,12 +324,15 @@ void audio_task(void*) {
   for (;;) {
     // --- I2S lifetime (G6) --------------------------------------------
     const bool want_rx = input_needed();
+    if (!want_rx && last_want_rx) {
+      rx_failed = false;
+    }
+    last_want_rx = want_rx;
     // 0→1 input-need while TX is already up: restart so RX comes with it.
     // 1→0 leaves RX running until the next full I2S stop.
     if (i2s_up && want_rx && !io_cfg.enable_input && !rx_failed) {
       io.stop();
       i2s_up = false;
-      neon_config_hold_nvs(false);
       ESP_LOGI(kTag, "I2S restart for RX");
     }
     if (cfg.i2s_needed != 0 && !i2s_up && !software_pace) {
