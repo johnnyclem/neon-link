@@ -78,6 +78,20 @@ TEST_CASE("persist_lazy present") {
   CHECK(s.persist_lazy);
 }
 
+TEST_CASE("follow_source audio is parsed; absent stays empty") {
+  const char* json =
+      "{\"bpm\":120,\"ext_clock\":true,\"follow_source\":\"audio\"}";
+  neon::client::Status s;
+  REQUIRE(neon::client::parse_status(json, std::strlen(json), &s));
+  CHECK(s.follow_source == "audio");
+  CHECK(s.ext_clock);
+
+  const std::string pre = load("status_pre_f5.json");
+  neon::client::Status old;
+  REQUIRE(neon::client::parse_status(pre.c_str(), pre.size(), &old));
+  CHECK(old.follow_source.empty());
+}
+
 TEST_CASE("malformed status is rejected") {
   neon::client::Status s;
   CHECK_FALSE(neon::client::parse_status("not json", 8, &s));

@@ -89,6 +89,7 @@ bool parse_status(const char* json, size_t len, Status* out) {
     }
   }
   get_bool(root, "ext_clock", &s.ext_clock);
+  get_str(root, "follow_source", &s.follow_source);
   get_i64(root, "uptime_s", &s.uptime_s);
   get_u32(root, "phase_milli", &s.phase_milli);
   get_u32(root, "quantum", &s.quantum);

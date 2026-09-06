@@ -352,7 +352,10 @@ void NeonLinkEditor::refreshFromSnapshot() {
     chipSource_.setVisible(true);
     chipTransport_.setVisible(true);
     chipNet_.setVisible(true);
-    chipSource_.setText(st.ext_clock ? "EXT" : "LINK", juce::dontSendNotification);
+    chipSource_.setText(st.follow_source == "audio" ? "AUDIO"
+                             : st.ext_clock         ? "EXT"
+                                                    : "LINK",
+                        juce::dontSendNotification);
     neon::ui::styleChip(chipSource_, neon::ui::neon(), neon::ui::surface());
     chipTransport_.setText(st.playing ? "RUN" : "STOP", juce::dontSendNotification);
     neon::ui::styleChip(chipTransport_,

@@ -40,6 +40,8 @@ struct Status {
   bool playing = false;
   NetworkKind network = NetworkKind::None;
   bool ext_clock = false;
+  // "none" | "clk" | "midi" | "audio". Empty when the firmware omits it.
+  std::string follow_source;
   int64_t uptime_s = 0;
   uint32_t phase_milli = 0;
   uint32_t quantum = 4;
