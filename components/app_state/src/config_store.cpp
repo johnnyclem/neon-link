@@ -10,6 +10,7 @@
 
 #include "app_state/audio_bus.h"
 #include "app_state/timeline_bus.h"
+#include "board_pins.h"
 
 namespace {
 
@@ -30,6 +31,13 @@ uint8_t g_blob[kConfigBlobBuf];
 void publish_buses() {
   engine_config_bus().publish(g_config.engine);
   audio_config_bus().publish(neon::audio_engine_config(g_config));
+}
+
+// Portable sanitize cannot see pins; hide follow on boards with no ADC.
+void board_clamp(neon::Config* cfg) {
+  if (kPinI2sDin < 0) {
+    cfg->audio_follow_enabled = 0;
+  }
 }
 
 bool g_save_pending = false;
@@ -96,6 +104,7 @@ void neon_config_load() {
     ESP_LOGW(kTag, "generated a device token (see the OLED Network page) — "
                    "the web editor needs it to install updates");
   }
+  board_clamp(&g_config);
   if ((!loaded || needed_token) && !persist(g_config)) {
     // Not fatal — the secrets still apply for this boot from RAM — but
     // worth shouting about: one that never reaches NVS will look
@@ -111,6 +120,7 @@ const neon::Config& neon_config() { return g_config; }
 void neon_config_apply(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
+  board_clamp(&clean);
   const bool net = neon::network_identity_changed(g_config, clean);
   g_config = clean;
   publish_buses();
@@ -136,6 +146,7 @@ void neon_config_apply(const neon::Config& cfg) {
 void neon_config_apply_ram(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
+  board_clamp(&clean);
   g_config = clean;
   publish_buses();
   ++g_rev;
@@ -190,6 +201,7 @@ bool neon_config_flush_now() {
 bool neon_config_save(const neon::Config& cfg) {
   neon::Config clean = cfg;
   neon::config_sanitize(&clean);
+  board_clamp(&clean);
   const bool net = neon::network_identity_changed(g_config, clean);
   if (g_nvs_hold && !net) {
     g_config = clean;

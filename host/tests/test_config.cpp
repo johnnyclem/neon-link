@@ -650,12 +650,12 @@ TEST_CASE("i2s_needed follows engine on or Link Audio pub/sub") {
   CHECK(neon::audio_engine_config(cfg).i2s_needed == 1);
 }
 
-TEST_CASE("i2s_needed stays 0 when only audio_follow_enabled is set") {
+TEST_CASE("i2s_needed is 1 when only audio_follow_enabled is set") {
   neon::Config cfg;
   cfg.audio_follow_enabled = 1;
   const neon::AudioEngineConfig ec = neon::audio_engine_config(cfg);
   CHECK(ec.follow_enabled == 1);
-  CHECK(ec.i2s_needed == 0);
+  CHECK(ec.i2s_needed == 1);
 }
 
 TEST_CASE("a v13 config blob defaults audio follow off") {

@@ -19,10 +19,18 @@ const char* kTag = "es8311";
 constexpr uint8_t kAddr = 0x18;
 
 bool g_up = false;
+bool g_mic = false;
 
 bool wr(uint8_t reg, uint8_t val) {
   const uint8_t pkt[2] = {reg, val};
   return i2c_write(kAddr, pkt, 2, 100);
+}
+
+void apply_adc_input() {
+  // 0x14: analog (DMIC=0), LINSEL=Mic1p-Mic1n, PGA 0 dB line / 24 dB mic.
+  // Values from Espressif es8311_codec (SYSTEM_REG14 / ADC_REG17 / ADC_REG18).
+  const uint8_t pga = g_mic ? 0x18 : 0x10;
+  wr(0x14, pga);
 }
 
 bool rd(uint8_t reg, uint8_t* val) {
@@ -86,10 +94,14 @@ bool es8311_start() {
                       wr(0x13, 0x10) && wr(0x1C, 0x6A) && wr(0x37, 0x08);
   // ~75% DAC volume, unmuted.
   const bool dac = wr(0x32, 0xBF) && wr(0x31, 0x00);
-  if (!clocks || !fmt || !analog || !dac) {
+  // ADC power-up, 0 dB digital volume, ALC off (ALC would fight the detector).
+  const bool adc = wr(0x15, 0x00) && wr(0x16, 0x00) && wr(0x17, 0xBF) &&
+                   wr(0x18, 0x00);
+  if (!clocks || !fmt || !analog || !dac || !adc) {
     ESP_LOGW(kTag, "register program failed");
     return false;
   }
+  apply_adc_input();
 
   vTaskDelay(pdMS_TO_TICKS(15));
   pa_set(1);
@@ -111,6 +123,13 @@ void es8311_stop() {
   g_up = false;
 }
 
+void es8311_set_adc_input(bool mic) {
+  g_mic = mic;
+  if (g_up) {
+    apply_adc_input();
+  }
+}
+
 }  // namespace halesp
 
 #else  // !CONFIG_NEON_BOARD_P4DEVKIT
@@ -120,6 +139,8 @@ namespace halesp {
 bool es8311_start() { return true; }
 
 void es8311_stop() {}
+
+void es8311_set_adc_input(bool) {}
 
 }  // namespace halesp
 

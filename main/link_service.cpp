@@ -15,10 +15,12 @@
 #include "freertos/task.h"
 #include "halesp/clkin_capture.hpp"
 #include "halesp/tempo_cv_ledc.hpp"
+#include "neon/audio/tempo_follower.hpp"
 #include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/midi/sync_follower.hpp"
+#include "neon/telemetry/audio_follow_csv.hpp"
 #include "neon/telemetry/emitter.hpp"
 #include "neon/telemetry/midi_pll_csv.hpp"
 #include "neon/tempo_cv.hpp"
@@ -26,6 +28,7 @@
 
 #include "board_mac.h"
 #include "board_pins.h"
+#include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "netman/net_manager.h"
 #include "provision.h"
@@ -195,6 +198,12 @@ void link_service_task(void*) {
     ESP_LOGW(kTag, "CLK/RST IN capture init failed");
   }
   neon::midi::SyncFollower midi_follow;
+  neon::AudioTempoFollower audio_follow;
+  neon::TelemetryTicker afol_ticker(/*ticks_per_line=*/100);  // 10 ms * 100 = 1 Hz
+  uint8_t last_afol_lock = 0;
+  uint32_t onset_window_count = 0;
+  int64_t onset_window_us = 0;
+  uint16_t onset_hz_x10 = 0;
   // The session as of the previous loop's capture (10 ms stale at most),
   // feeding the follower's Link-authority policy (spike §8.4): while the
   // MIDI transport runs, peer tempo edits and peer stops are corrected;
@@ -366,12 +375,102 @@ void link_service_task(void*) {
     const neon::midi::SyncFollower::Actions midi_act =
         midi_follow.poll(now_arb, arb.midi_allowed, midi_session);
 
-    const bool any_external = follow_external || midi_act.following;
+    const auto& cfg_now = neon_config();
+    uint32_t session_mbpm = cfg_now.tempo_milli_bpm;
+    if (have_prev && prev.tempo_mpb_q32 != 0) {
+      const uint64_t mpb_us = (prev.tempo_mpb_q32 + (1ull << 31)) >> 32;
+      if (mpb_us != 0) {
+        session_mbpm = neon::milli_bpm_from_mpb_us(mpb_us);
+      }
+    }
+    neon::OnsetEvent oe;
+    uint32_t popped = 0;
+    while (onset_queue_pop(&oe)) {
+      ++popped;
+      audio_follow.set_session_tempo(session_mbpm);
+      audio_follow.on_onset(oe.t_us, oe.strength);
+      if (cfg_now.audio_follow_phase) {
+        /* reserved until kAdcLatencyUs benched */
+      }
+    }
+    audio_follow.active(now_arb);
+    // audio_ok: permission (arb.audio_allowed) and MIDI is not live.
+    // midi_allowed stays true under kAuto so the PLL can stay warm.
+    const bool audio_ok = arb.audio_allowed && !midi_act.following;
+    uint32_t audio_mbpm = 0;
+    if (audio_ok && audio_follow.take_tempo_update(&audio_mbpm)) {
+      session.set_tempo(static_cast<double>(audio_mbpm) / 1000.0);
+      ESP_LOGI(kTag, "audio tempo -> %u BPM",
+               static_cast<unsigned>(audio_mbpm / 1000));
+    }
+    if (!audio_ok) {
+      uint32_t scratch = 0;
+      audio_follow.take_tempo_update(&scratch);
+    }
+
+    onset_window_count += popped;
+    if (onset_window_us == 0) {
+      onset_window_us = now_arb;
+    }
+    if (now_arb - onset_window_us >= 1000000) {
+      const int64_t dt = now_arb - onset_window_us;
+      onset_hz_x10 = static_cast<uint16_t>(
+          (static_cast<uint64_t>(onset_window_count) * 10ull * 1000000ull) /
+          static_cast<uint64_t>(dt));
+      onset_window_count = 0;
+      onset_window_us = now_arb;
+    }
+
+    neon::FollowStatus fst;
+    fst.enabled = cfg_now.audio_follow_enabled;
+    fst.lock = static_cast<uint8_t>(audio_follow.lock_state());
+    fst.subdiv = audio_follow.subdivision();
+    fst.no_adc = (kPinI2sDin < 0 || follow_no_adc()) ? 1 : 0;
+    fst.onset_hz_x10 = onset_hz_x10;
+    fst.mbpm = audio_follow.estimate_milli_bpm();
+    fst.published_mbpm = audio_follow.tempo_milli_bpm();
+    fst.onsets = audio_follow.onset_count();
+    fst.rejects = audio_follow.rejected_count();
+    follow_status_bus().publish(fst);
+
+    if (fst.lock != last_afol_lock) {
+      ESP_LOGI(kTag, "audio follow %s",
+               fst.lock == 2   ? "locked"
+               : fst.lock == 1 ? "acquiring"
+                               : "idle");
+      last_afol_lock = fst.lock;
+    }
+
+    const neon::TelemetryTick aft =
+        afol_ticker.tick(cfg_now.telemetry_uart_csv != 0 &&
+                         cfg_now.audio_follow_enabled != 0);
+    if (aft.want_header || aft.want_line) {
+      char buf[128];
+      if (aft.want_header &&
+          neon::audio_follow_telemetry_csv_header(buf, sizeof(buf)) != 0) {
+        printf("AFOL,%s\n", buf);
+      }
+      if (aft.want_line) {
+        const neon::AudioFollowTelemetrySample s =
+            neon::audio_follow_telemetry_sample(fst, now_arb, audio_ok &&
+                                                fst.lock == 2);
+        if (neon::audio_follow_telemetry_csv_line(s, buf, sizeof(buf)) != 0) {
+          printf("AFOL,%s\n", buf);
+        }
+      }
+    }
+
+    const bool audio_following =
+        audio_ok &&
+        audio_follow.lock_state() == neon::AudioTempoFollower::Lock::kLocked;
+    const bool any_external =
+        follow_external || midi_act.following || audio_following;
     if (any_external != ext_active) {
       ESP_LOGI(kTag, "external clock %s",
                !any_external          ? "lost"
                : follow_external      ? "active: following CLK IN"
-                                      : "active: following MIDI clock");
+               : midi_act.following   ? "active: following MIDI clock"
+                                      : "active: following audio");
       ext_active = any_external;
       app_status_set_ext_clock(any_external);
     }

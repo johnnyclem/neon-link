@@ -87,15 +87,15 @@ config NEON_AUDIO
         costs nothing.
 
 config NEON_AUDIO_INPUT
-    bool "Audio input (PCM3060 ADC / line in)"
+    bool "Audio input (board has a usable ADC pin map)"
     depends on NEON_AUDIO
     default n
     help
-        Enables the I2S receive side: line-in monitoring, input meters,
-        and the "<name> In" Link Audio channel. Off by default: a duplex
-        DMA ring on the S3 ate ~64 kB of internal RAM and the chip
-        rebooted as soon as WiFi associated. Leave this off unless you
-        have measured the heap.
+        Board has a usable I2S ADC pin map (DIN >= 0). This is a
+        capability flag, not "always allocate a duplex DMA ring." RX
+        starts at runtime when a consumer is on (follow, line-in
+        monitor, or publish line-in). On S3, duplex uses 4 DMA
+        descriptors; a failed RX start falls back to TX-only.
 
 config NEON_AUDIO_AMY
     bool "AMY synth voice (third_party/amy)"
@@ -146,7 +146,7 @@ config NEON_I2S_DOUT
     default -1
 
 config NEON_I2S_DIN
-    int "DIN (ADC → ESP; unused unless NEON_AUDIO_INPUT)"
+    int "DIN (ADC → ESP; RX starts when a consumer is on)"
     default 9 if NEON_BOARD_AMYBOARD
     default 11 if NEON_BOARD_P4DEVKIT
     default -1

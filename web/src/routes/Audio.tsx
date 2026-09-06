@@ -168,6 +168,13 @@ export function Audio(props: PageProps) {
               checked={!!a.follow_enabled}
               onChange={(v) => patch((d) => (d.audio.follow_enabled = v))}
             />
+            {s?.follow?.enabled ? (
+              <p class="card__note" style="margin-top:var(--space-2)">
+                Lock: {s.follow.lock}
+                {s.follow.bpm ? ` · ${s.follow.bpm} BPM` : ""}
+                {s.follow.no_adc ? " · no ADC" : ""}
+              </p>
+            ) : null}
             <div class="fields" style="margin-top:var(--space-3)">
               <NumberField
                 label="Sensitivity"

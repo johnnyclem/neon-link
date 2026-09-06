@@ -42,6 +42,7 @@ class I2sAudio : public hal::IAudioIo {
 
   bool write_block(const int16_t* interleaved) override;
   bool read_block(int16_t* interleaved) override;
+  bool input_running() const { return input_running_; }
   bool dma_mark(int64_t& t_us, uint64_t& frames_consumed) override;
   uint64_t frames_written() const override { return frames_written_; }
   int32_t output_latency_us() const override { return latency_us_; }

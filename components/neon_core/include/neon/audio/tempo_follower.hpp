@@ -35,6 +35,7 @@ class AudioTempoFollower {
   bool take_tempo_update(uint32_t* milli_bpm);
 
   uint32_t tempo_milli_bpm() const { return published_mbpm_; }
+  uint32_t estimate_milli_bpm() const { return est_.tempo_milli_bpm(); }
   uint8_t subdivision() const { return have_class_ ? subdiv_ : 0; }
   uint32_t onset_count() const { return onset_count_; }
   uint32_t rejected_count() const { return rejected_count_; }

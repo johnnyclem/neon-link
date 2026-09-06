@@ -56,14 +56,17 @@ neon::SeqLock<neon::TimelineSnapshot> g_timeline;
 neon::SeqLock<neon::EngineConfig> g_engine_config;
 neon::SeqLock<neon::AudioEngineConfig> g_audio_config;
 neon::SeqLock<neon::AudioStatus> g_audio_status;
+neon::SeqLock<neon::FollowStatus> g_follow_status;
 
 IrqRing<GateEvent, 32> g_gates;
 IrqRing<ControlCommand, 16> g_control;
 IrqRing<SynthEvent, 32> g_synth;
+IrqRing<neon::OnsetEvent, 16> g_onsets;
 
 std::atomic<uint32_t> g_peers{0};
 std::atomic<bool> g_ext_clock{false};
 std::atomic<bool> g_transport{false};
+std::atomic<bool> g_follow_no_adc{false};
 
 }  // namespace
 
@@ -75,6 +78,9 @@ neon::SeqLock<neon::AudioEngineConfig>& audio_config_bus() {
   return g_audio_config;
 }
 neon::SeqLock<neon::AudioStatus>& audio_status_bus() { return g_audio_status; }
+neon::SeqLock<neon::FollowStatus>& follow_status_bus() {
+  return g_follow_status;
+}
 
 void app_status_set_peers(uint32_t peers) { g_peers = peers; }
 uint32_t app_status_peers() { return g_peers; }
@@ -91,3 +97,7 @@ bool control_queue_push(const ControlCommand& cmd) {
 bool control_queue_pop(ControlCommand* cmd) { return g_control.pop(cmd); }
 bool synth_queue_push(const SynthEvent& ev) { return g_synth.push(ev); }
 bool synth_queue_pop(SynthEvent* ev) { return g_synth.pop(ev); }
+bool onset_queue_push(const neon::OnsetEvent& ev) { return g_onsets.push(ev); }
+bool onset_queue_pop(neon::OnsetEvent* ev) { return g_onsets.pop(ev); }
+void follow_set_no_adc(bool v) { g_follow_no_adc = v; }
+bool follow_no_adc() { return g_follow_no_adc; }

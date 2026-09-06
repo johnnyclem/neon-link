@@ -16,7 +16,9 @@
 #include "app_state/audio_bus.h"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "board_pins.h"
 #include "halesp/pulse_hw_gptimer.hpp"
+#include "sdkconfig.h"
 #include "neon/config/json.hpp"
 #include "neon/net/preference.hpp"
 #include "neon/transport.hpp"
@@ -561,6 +563,28 @@ const char* sub_state_str(uint8_t state) {
   }
 }
 
+const char* follow_lock_str(uint8_t lock) {
+  switch (lock) {
+    case 1:
+      return "acquiring";
+    case 2:
+      return "locked";
+    default:
+      return "idle";
+  }
+}
+
+const char* follow_inputs_json() {
+  if (kPinI2sDin < 0) {
+    return "[]";
+  }
+#if CONFIG_NEON_BOARD_P4DEVKIT
+  return "[\"line\",\"mic\"]";
+#else
+  return "[\"line\"]";
+#endif
+}
+
 // GET /api/audio/channels — Link Audio discovery for the subscribe picker.
 esp_err_t handle_audio_channels(httpd_req_t* req) {
   if (!check_local_origin(req)) {
@@ -612,7 +636,9 @@ esp_err_t handle_status(httpd_req_t* req) {
   const halesp::PulseStats ps = halesp::pulse_stats();
   neon::AudioStatus audio;
   audio_status_bus().read(audio);
-  char buf[1900];
+  neon::FollowStatus follow;
+  follow_status_bus().read(follow);
+  char buf[2400];
   const int n = std::snprintf(
       buf, sizeof(buf),
       "{\"bpm\":%u.%03u,\"peers\":%u,\"playing\":%s,\"network\":\"%s\","
@@ -633,7 +659,10 @@ esp_err_t handle_status(httpd_req_t* req) {
       "\"i2s_write_failures\":%u,\"forced_stalls\":%u,"
       "\"heap_free_internal\":%u,"
       "\"heap_free_psram\":%u,\"rssi\":%d,\"priority_profile\":\"%s\","
-      "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u,\"oled\":\"%s\"}}",
+      "\"req_jitter_ms\":%u,\"eff_jitter_ms\":%u,\"oled\":\"%s\","
+      "\"follow\":{\"enabled\":%s,\"lock\":\"%s\",\"subdiv\":%u,"
+      "\"bpm\":%u.%03u,\"onset_hz\":%u.%u,\"published_mbpm\":%u,"
+      "\"no_adc\":%s},\"follow_inputs\":%s}}",
       static_cast<unsigned>(mbpm / 1000), static_cast<unsigned>(mbpm % 1000),
       static_cast<unsigned>(app_status_peers()),
       tl.playing != 0 ? "true" : "false",
@@ -676,7 +705,15 @@ esp_err_t handle_status(httpd_req_t* req) {
       neon::priority_profile_str(
           static_cast<neon::PriorityProfile>(audio.priority_profile)),
       static_cast<unsigned>(audio.req_jitter_ms),
-      static_cast<unsigned>(audio.eff_jitter_ms), oledui_kind_str());
+      static_cast<unsigned>(audio.eff_jitter_ms), oledui_kind_str(),
+      follow.enabled != 0 ? "true" : "false", follow_lock_str(follow.lock),
+      static_cast<unsigned>(follow.subdiv),
+      static_cast<unsigned>(follow.mbpm / 1000),
+      static_cast<unsigned>(follow.mbpm % 1000),
+      static_cast<unsigned>(follow.onset_hz_x10 / 10),
+      static_cast<unsigned>(follow.onset_hz_x10 % 10),
+      static_cast<unsigned>(follow.published_mbpm),
+      follow.no_adc != 0 ? "true" : "false", follow_inputs_json());
   if (n < 0) {
     return httpd_resp_send_500(req);
   }

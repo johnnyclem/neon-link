@@ -243,7 +243,7 @@ AudioEngineConfig audio_engine_config(const Config& cfg) {
   out.la_jitter_ms = a.la_jitter_ms;
   out.i2s_needed =
       (a.enabled != 0 || a.la_publish_mix != 0 || a.la_publish_linein != 0 ||
-       a.la_sub_channel_id[0] != '\0')
+       a.la_sub_channel_id[0] != '\0' || cfg.audio_follow_enabled != 0)
           ? 1
           : 0;
   out.quantum_beats = cfg.quantum_beats;

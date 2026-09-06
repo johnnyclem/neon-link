@@ -32,11 +32,13 @@
 #include "board_pins.h"
 #include "halesp/i2s_audio.hpp"
 #include "netman/net_manager.h"
+#include "halesp/es8311.hpp"
 #include "neon/audio/beat_window.hpp"
 #include "neon/audio/click.hpp"
 #include "neon/audio/jitter_buffer.hpp"
 #include "neon/audio/lpf.hpp"
 #include "neon/audio/mixer.hpp"
+#include "neon/audio/onset_detector.hpp"
 #include "neon/audio/pulse_render.hpp"
 #include "neon/audio/sample_clock.hpp"
 #include "neon/telemetry/csv.hpp"
@@ -59,6 +61,9 @@ constexpr uint32_t kMaxRxFrames = 512;
 // latency the SampleClock already accounts for. Measured against the CV
 // outputs on hardware (docs/AUDIOLINK.md PR8); zero until it is.
 constexpr int32_t kDacLatencyUs = 0;
+// One 48 kHz / 256-frame block. Period measurement is delay-invariant;
+// phase-lock would need a bench calibration of this constant.
+constexpr int32_t kAdcLatencyUs = 5333;
 
 // JitterBuffer caps its fill target at HALF the ring (the servo needs
 // somewhere to go), so honoring the 800 ms jitter maximum takes a ring
@@ -92,6 +97,7 @@ int16_t g_mono_i16[kBlockFrames];
 int16_t g_rx_i16[kMaxRxFrames * 2];
 
 neon::ClickSynth g_click;
+neon::OnsetDetector g_detector;
 neon::PulseRender g_pulse;
 neon::JitterBuffer g_jitter;
 neon::GistFilter g_gist_l;
@@ -200,9 +206,7 @@ void audio_task(void*) {
   io_cfg.sample_rate = kSampleRate;
   io_cfg.block_frames = kBlockFrames;
   io_cfg.dma_desc = kDmaDesc;
-#if CONFIG_NEON_AUDIO_INPUT
-  io_cfg.enable_input = true;
-#endif
+  io_cfg.enable_input = false;
 
   // G6: do not start I2S until the engine or Link Audio actually needs
   // it. Clock-only units never take the flash bus hostage. start()
@@ -210,6 +214,7 @@ void audio_task(void*) {
   neon::SampleClock clock;
   clock.reset(kSampleRate);
   g_click.reset(kSampleRate);
+  g_detector.reset(kSampleRate);
   g_pulse.reset(kSampleRate);
   g_gist_l.set_rate(kSampleRate);
   g_gist_r.set_rate(kSampleRate);
@@ -234,6 +239,7 @@ void audio_task(void*) {
   neon::AudioEngineConfig cfg;
   uint32_t cfg_version = audio_config_bus().read(cfg);
   g_click.set_config(click_config(cfg));
+  g_detector.set_sensitivity(cfg.follow_sensitivity);
   amysynth::set_patch(cfg.amy_patch);
   g_jitter.configure(cfg.la_jitter_ms);
 
@@ -259,15 +265,76 @@ void audio_task(void*) {
 
   bool i2s_up = false;
   bool software_pace = false;
+  bool rx_failed = false;
   uint64_t soft_frames = 0;
   int64_t soft_next_us = 0;
+  uint8_t last_follow_input = cfg.follow_input;
   const bool i2s_pins =
       kPinI2sBclk >= 0 && kPinI2sLrclk >= 0 && kPinI2sDout >= 0;
+  follow_set_no_adc(kPinI2sDin < 0);
+
+  auto input_needed = [&]() -> bool {
+    if (kPinI2sDin < 0) {
+      return false;
+    }
+    return cfg.follow_enabled != 0 || cfg.linein_monitor_gain != 0 ||
+           g_sink_linein.load(std::memory_order_relaxed) >= 0;
+  };
+
+  auto configure_io_cfg = [&](bool want_rx) {
+    io_cfg.enable_input = want_rx;
+#if CONFIG_IDF_TARGET_ESP32S3
+    io_cfg.dma_desc = want_rx ? 4 : 8;
+#else
+    io_cfg.dma_desc = 8;
+#endif
+  };
+
+  auto start_i2s = [&]() -> bool {
+    const uint32_t heap0 =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    bool ok = io.start(io_cfg);
+    if (!ok && io_cfg.enable_input) {
+      ESP_LOGW(kTag, "I2S RX alloc failed; retry TX-only");
+      configure_io_cfg(false);
+      follow_set_no_adc(true);
+      rx_failed = true;
+      ok = io.start(io_cfg);
+    }
+    const uint32_t heap1 =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(kTag, "I2S heap_internal %u -> %u",
+             static_cast<unsigned>(heap0), static_cast<unsigned>(heap1));
+    if (ok) {
+      const bool rx = io.input_running();
+      if (kPinI2sDin < 0 || (io_cfg.enable_input && !rx)) {
+        follow_set_no_adc(true);
+        if (io_cfg.enable_input && !rx) {
+          rx_failed = true;
+        }
+      } else if (rx) {
+        follow_set_no_adc(false);
+        rx_failed = false;
+      }
+      halesp::es8311_set_adc_input(cfg.follow_input != 0);
+    }
+    return ok;
+  };
 
   for (;;) {
     // --- I2S lifetime (G6) --------------------------------------------
+    const bool want_rx = input_needed();
+    // 0→1 input-need while TX is already up: restart so RX comes with it.
+    // 1→0 leaves RX running until the next full I2S stop.
+    if (i2s_up && want_rx && !io_cfg.enable_input && !rx_failed) {
+      io.stop();
+      i2s_up = false;
+      neon_config_hold_nvs(false);
+      ESP_LOGI(kTag, "I2S restart for RX");
+    }
     if (cfg.i2s_needed != 0 && !i2s_up && !software_pace) {
-      if (io.start(io_cfg)) {
+      configure_io_cfg(want_rx);
+      if (start_i2s()) {
         i2s_up = true;
         clock.reset(kSampleRate);
         cfg_version = 0;  // re-apply click/jitter after a mute interval
@@ -297,6 +364,7 @@ void audio_task(void*) {
         ESP_LOGI(kTag, "I2S down; NVS may flush");
       }
       software_pace = false;
+      rx_failed = false;
     }
     if (!i2s_up && !software_pace) {
       vTaskDelay(pdMS_TO_TICKS(6));
@@ -322,6 +390,7 @@ void audio_task(void*) {
     if (new_cfg_version != cfg_version) {
       const bool metro_was_on = cfg.metro_enabled != 0;
       const uint8_t fullband_was = cfg.la_fullband;
+      const uint8_t follow_was = cfg.follow_enabled;
       cfg_version = audio_config_bus().read(cfg);
       if (metro_was_on && cfg.metro_enabled == 0) {
         g_click.fade_out();
@@ -329,6 +398,15 @@ void audio_task(void*) {
       g_click.set_config(click_config(cfg));
       amysynth::set_patch(cfg.amy_patch);
       g_jitter.configure(cfg.la_jitter_ms);
+      g_detector.set_sensitivity(cfg.follow_sensitivity);
+      if (follow_was == 0 && cfg.follow_enabled != 0) {
+        g_detector.reset(kSampleRate);
+        g_detector.set_sensitivity(cfg.follow_sensitivity);
+      }
+      if (cfg.follow_input != last_follow_input) {
+        last_follow_input = cfg.follow_input;
+        halesp::es8311_set_adc_input(cfg.follow_input != 0);
+      }
       if (cfg.la_fullband != fullband_was) {
         g_gist_l.reset();
         g_gist_r.reset();
@@ -398,6 +476,21 @@ void audio_task(void*) {
       src.metro = g_metro;
     }
 
+    const int64_t t0_adc = clock.us_at_frame(first_frame) - kAdcLatencyUs;
+    const uint64_t us_per_frame_q32 = clock.us_per_frame_q32();
+    const bool click_can_leak =
+        cfg.enabled != 0 && cfg.metro_enabled != 0 &&
+        cfg.follow_enabled != 0 &&
+        source_needed(cfg, neon::AudioRole::kMetronome, /*in_mix=*/true);
+    if (click_can_leak && g_click.last_onsets() > 0) {
+      const int64_t click_us =
+          t0_adc + static_cast<int64_t>(
+                       (static_cast<uint64_t>(g_click.last_onset_frame()) *
+                        us_per_frame_q32) >>
+                       32);
+      g_detector.note_click(click_us);
+    }
+
     // The pulse window must stay contiguous whether or not anyone is
     // listening, or the engine's edge stream desynchronises the moment a
     // role is switched on.
@@ -439,11 +532,21 @@ void audio_task(void*) {
     }
 
     const bool have_input = io.read_block(g_in_i16);
-    if (have_input && (want_line || publish_linein)) {
+    const bool want_follow = cfg.follow_enabled != 0;
+    if (have_input && (want_line || publish_linein || want_follow)) {
       neon::int16_to_float(g_in_i16, 2, kBlockFrames, g_line_l, g_line_r);
       if (want_line) {
         src.line_in_l = g_line_l;
         src.line_in_r = g_line_r;
+      }
+      if (want_follow) {
+        neon::OnsetEvent hits[8];
+        const uint32_t n = g_detector.process(
+            g_line_l, g_line_r, kBlockFrames, t0_adc, us_per_frame_q32, hits,
+            8);
+        for (uint32_t i = 0; i < n; ++i) {
+          onset_queue_push(hits[i]);
+        }
       }
     }
 

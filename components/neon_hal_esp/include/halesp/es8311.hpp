@@ -5,11 +5,15 @@
 
 namespace halesp {
 
-// Probe 0x18, program 48 kHz / 32-bit I2S, unmute DAC, raise PA_Ctrl.
-// Call after I2S is enabled so MCLK is already running.
+// Probe 0x18, program 48 kHz / 32-bit I2S, unmute DAC, power ADC, raise
+// PA_Ctrl. Call after I2S is enabled so MCLK is already running.
 bool es8311_start();
 
 // Mute DAC and drop PA_Ctrl. Safe if start() never ran.
 void es8311_stop();
+
+// Analog mux / PGA: false = line (0 dB PGA), true = mic (24 dB). ALC stays
+// off so the onset detector sees real transients. Safe before start().
+void es8311_set_adc_input(bool mic);
 
 }  // namespace halesp

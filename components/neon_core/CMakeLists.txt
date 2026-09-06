@@ -47,6 +47,7 @@ set(NEON_CORE_SRCS
   src/telemetry/csv.cpp
   src/telemetry/linksync_csv.cpp
   src/telemetry/midi_pll_csv.cpp
+  src/telemetry/audio_follow_csv.cpp
   src/telemetry/emitter.cpp
   src/osc/codec.cpp
 )

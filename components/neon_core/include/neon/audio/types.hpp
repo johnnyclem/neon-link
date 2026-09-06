@@ -77,7 +77,7 @@ struct AudioEngineConfig {
   // main/audio_service.cpp's status block for the read.
   uint8_t priority_profile = 0;
 
-  // Follow is not an I2S consumer; i2s_needed stays engine / pub-sub.
+  // Follow is an I2S RX consumer: i2s_needed includes audio_follow_enabled.
   uint8_t follow_enabled = 0;
   uint8_t follow_sensitivity = 128;
   uint8_t follow_input = 0;  // 0 = line, 1 = mic

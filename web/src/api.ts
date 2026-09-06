@@ -122,6 +122,18 @@ export interface AudioChannel {
   local: boolean;
 }
 
+export type FollowLock = "idle" | "acquiring" | "locked";
+
+export interface FollowStatus {
+  enabled: boolean;
+  lock: FollowLock;
+  subdiv: number;
+  bpm: number;
+  onset_hz: number;
+  published_mbpm: number;
+  no_adc?: boolean;
+}
+
 export interface AudioStatus {
   running: boolean;
   underruns: number;
@@ -141,6 +153,8 @@ export interface AudioStatus {
   clock_ppm: number;
   /** SampleClock residual, microseconds. Walks if G3 resync fails. */
   clock_residual_us?: number;
+  /** Live follow lock, from FollowStatus (not AudioStatus on the device). */
+  follow?: FollowStatus;
   /** Board capability for the follow input picker. Length 0 or 1 hides it. */
   follow_inputs?: Array<"line" | "mic">;
 }
