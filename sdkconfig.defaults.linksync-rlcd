@@ -21,7 +21,8 @@ CONFIG_NEON_BOARD_LINKSYNC_RLCD=y
 
 # Onboard ES8311 DAC + speaker amp (PA GPIO46). Click is opt-in:
 # AUDIO > AUDIO ON, then METRONOME ON. metro_enabled / audio.enabled
-# stay 0 in Config. DIN 10 is the vendor ADC pin (FOLLOW still off).
+# stay 0 in Config. DIN 10 is ES7210 mic SDOUT (FOLLOW still off;
+# onboard mics wait on ES7210 bring-up).
 CONFIG_NEON_AUDIO=y
 CONFIG_NEON_I2S_DIN=10
 

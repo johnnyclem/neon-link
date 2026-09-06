@@ -175,24 +175,26 @@ free and carry TRS MIDI, exactly like the MaTouch target. Type A TRS:
 tip = current source through 220 Ω, ring = GND; opto (6N138) on RX.
 
 The ES8311 DAC and speaker amp (PA GPIO46) share that I2S map. The
-build carries the audio engine; click and follow stay off until you
-turn them on (see Speakers below). Codecs sit on the same I2C 13/14
-bus as the RTC and SHTC3, already brought up at boot.
+build carries the audio engine; click stays off until you turn it on
+(see Speakers below). DIN 10 is ES7210 mic SDOUT, not ES8311 ADC.
+Codecs sit on the same I2C 13/14 bus as the RTC and SHTC3, already
+brought up at boot.
 
 ## Speakers — metronome click
 
 The onboard speaker hangs off the ES8311 DAC plus the amp enable on
-GPIO46 (MCLK 16, BCLK 9, WS 45, DOUT 8, DIN 10). The build carries the
+GPIO46 (MCLK 16, BCLK 9, WS 45, DOUT 8). The build carries the
 audio engine; the click is opt-in from the web editor:
 **AUDIO > AUDIO ON**, then **METRONOME ON**. CLICK sets the level, SOUND
 picks the voice, and the click follows the transport — the speaker ticks
 only while the unit shows a running clock. I2S stays down (G6) until the
-engine is enabled, so a silent unit costs nothing.
+engine is enabled, so a silent unit costs nothing. Click-out does not
+use DIN.
 
-FOLLOW is off by default. DIN 10 is the vendor ADC pin so the codec can
-pull session tempo when you enable FOLLOW under AUDIO; CLK IN and MIDI
-clock still outrank it. Speaker click + close mic cannot time-separate
-an on-grid kit — mute AUDIO or turn METRO off.
+FOLLOW is wired for DIN 10 (ES7210 mic SDOUT) and stays off. The
+AUDIO > FOLLOW row appears because DIN is mapped, but the onboard mics
+wait on an ES7210 bring-up — ES8311 ADC registers are the P4 jack path,
+not the RLCD mics.
 
 ## Driver notes (halesp::rlcd_st7305)
 
