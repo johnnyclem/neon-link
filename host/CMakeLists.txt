@@ -58,6 +58,8 @@ add_executable(neon_tests
   tests/test_transport.cpp
   tests/test_sample_clock.cpp
   tests/test_audio_click.cpp
+  tests/test_onset_detector.cpp
+  tests/test_audio_tempo_follower.cpp
   tests/test_pulse_audio.cpp
   tests/test_audio_mixer.cpp
   tests/test_frame_ring.cpp

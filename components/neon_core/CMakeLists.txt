@@ -36,6 +36,8 @@ set(NEON_CORE_SRCS
   src/transport.cpp
   src/audio/sample_clock.cpp
   src/audio/click.cpp
+  src/audio/onset_detector.cpp
+  src/audio/tempo_follower.cpp
   src/audio/pulse_render.cpp
   src/audio/mixer.cpp
   src/audio/resampler.cpp

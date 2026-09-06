@@ -198,4 +198,19 @@ TEST_CASE("clock_source arbitration: the one precedence table") {
   CHECK_FALSE(arb(ClockSource::kExternalMaster, false).midi_allowed);
   CHECK(arb(ClockSource::kMidiMaster, true).midi_allowed);
   CHECK_FALSE(arb(ClockSource::kMidiMaster, true).follow_clk_in);
+
+  // audio_follow_enabled is permission only. Under kAuto with no jack,
+  // audio is allowed even though MIDI is also allowed (the service ANDs
+  // !midi_act.following). kLinkMaster never allows audio, flag or not.
+  CHECK_FALSE(arb(ClockSource::kAuto, false).audio_allowed);
+  const auto arb_af = [](ClockSource s, bool clk_in, bool af) {
+    return neon::arbitrate_clock_source(s, clk_in, af);
+  };
+  CHECK(arb_af(ClockSource::kAuto, false, true).audio_allowed);
+  CHECK(arb_af(ClockSource::kAuto, false, true).midi_allowed);
+  CHECK_FALSE(arb_af(ClockSource::kAuto, true, true).audio_allowed);
+  CHECK_FALSE(arb_af(ClockSource::kLinkMaster, false, true).audio_allowed);
+  CHECK_FALSE(arb_af(ClockSource::kLinkMaster, true, true).audio_allowed);
+  CHECK_FALSE(arb_af(ClockSource::kExternalMaster, false, true).audio_allowed);
+  CHECK_FALSE(arb_af(ClockSource::kMidiMaster, false, true).audio_allowed);
 }

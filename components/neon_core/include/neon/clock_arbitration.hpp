@@ -2,12 +2,10 @@
 
 // One poll's clock_source arbitration verdict (docs/SPIKE_MIDI_PLL.md
 // §5.4), shared by every link service so the precedence contract lives —
-// and is host-tested — in exactly one place: CLK IN outranks MIDI clock
-// under kAuto (the jack is the module's native sync, and a beat-locked
-// drum machine sending both would otherwise fight itself); each master
-// mode pins its own source; the session is the fallback when neither
-// wins. While not allowed, the MIDI follower keeps its PLL warm silently
-// so a handover starts from a live estimate.
+// and is host-tested — in exactly one place: under kAuto, CLK IN outranks
+// MIDI clock, which outranks audio-follow. Each master mode pins its own
+// source; kLinkMaster ignores all three. audio_allowed is permission
+// only — liveness is midi_act.following at the service.
 
 #include "neon/config/model.hpp"
 
@@ -16,10 +14,12 @@ namespace neon {
 struct ClockArbitration {
   bool follow_clk_in = false;  // the jack owns tempo + phase this poll
   bool midi_allowed = false;   // the MIDI follower may publish this poll
+  bool audio_allowed = false;  // permission only; liveness is midi_act.following
 };
 
-constexpr ClockArbitration arbitrate_clock_source(ClockSource source,
-                                                  bool clk_in_active) {
+constexpr ClockArbitration arbitrate_clock_source(
+    ClockSource source, bool clk_in_active,
+    bool audio_follow_enabled = false) {
   ClockArbitration a;
   a.follow_clk_in = (source == ClockSource::kAuto ||
                      source == ClockSource::kExternalMaster) &&
@@ -27,6 +27,8 @@ constexpr ClockArbitration arbitrate_clock_source(ClockSource source,
   a.midi_allowed = (source == ClockSource::kAuto ||
                     source == ClockSource::kMidiMaster) &&
                    !a.follow_clk_in;
+  a.audio_allowed = audio_follow_enabled && source == ClockSource::kAuto &&
+                    !a.follow_clk_in;
   return a;
 }
 
