@@ -597,6 +597,32 @@ int set_list_y() { return g_lay.kSetHeadH + g_lay.kSetTabH; }
 
 int set_list_h() { return g_lay.kH - set_list_y(); }
 
+// AUDIO: hide FOLLOW / F SENS / F PHASE when this board has no ADC.
+constexpr int kAudioVisNoAdc[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+constexpr int kAudioVisNoAdcCount = 9;
+
+const int* audio_row_map(int* count) {
+  if (kPinI2sDin < 0) {
+    *count = kAudioVisNoAdcCount;
+    return kAudioVisNoAdc;
+  }
+  *count = g_menu.item_count();
+  return nullptr;
+}
+
+int settings_real_index(int vis) {
+  using S = neon::MenuModel::Screen;
+  if (g_menu.screen() != S::kAudio) {
+    return vis;
+  }
+  int n = 0;
+  const int* map = audio_row_map(&n);
+  if (map == nullptr || vis < 0 || vis >= n) {
+    return vis;
+  }
+  return map[vis];
+}
+
 int set_row_count(const Snap& s) {
   using S = neon::MenuModel::Screen;
   const S scr = g_menu.screen();
@@ -605,6 +631,11 @@ int set_row_count(const Snap& s) {
   }
   if (scr == S::kConfirm) {
     return 0;
+  }
+  if (scr == S::kAudio) {
+    int n = 0;
+    audio_row_map(&n);
+    return n;
   }
 #if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
   if (scr == S::kSystem) {
@@ -722,9 +753,10 @@ const char* lcd_item_label(int i) {
   } else if (scr == S::kAudio) {
     static const char* k[] = {"AUDIO",  "METRONOME", "CLICK",   "SOUND",
                               "OUT L",  "OUT R",     "LINE IN", "PUBLISH",
-                              "SUB"};
-    if (i >= 0 && i < 9) {
-      return k[i];
+                              "SUB",    "FOLLOW",    "F SENS",  "F PHASE"};
+    const int real = settings_real_index(i);
+    if (real >= 0 && real < 12) {
+      return k[real];
     }
   }
   return g_menu.item_label(i);
@@ -1520,6 +1552,7 @@ void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
       net_row(s, i, label, sizeof(label), value, sizeof(value));
     } else {
       std::snprintf(label, sizeof(label), "%s", lcd_item_label(i));
+      const int real = settings_real_index(i);
       if (g_menu.screen() == S::kSystem &&
           i == neon::MenuModel::kSystemVersionItem) {
         std::snprintf(value, sizeof(value), "%s", s.firmware);
@@ -1529,7 +1562,7 @@ void paint_settings(uint16_t* fb, const Snap& s, Touch pressed) {
                       lcd_is_portrait() ? "PORT" : "LAND");
 #endif
       } else {
-        g_menu.item_value(i, value, sizeof(value));
+        g_menu.item_value(real, value, sizeof(value));
       }
     }
     const bool row_press = pressed.hit == Hit::kRow && pressed.arg == i;
@@ -1743,9 +1776,10 @@ void handle_row_tap(int i) {
     return;
   }
 #endif
-  g_menu.set_cursor(i);
+  const int real = settings_real_index(i);
+  g_menu.set_cursor(real);
   char val[24] = {};
-  g_menu.item_value(i, val, sizeof(val));
+  g_menu.item_value(real, val, sizeof(val));
   if (std::strcmp(val, "ON") == 0 || std::strcmp(val, "LEAD") == 0) {
     g_menu.nudge_value(-1);
   } else {
@@ -1903,7 +1937,7 @@ void fire_settings(Touch t) {
         cycle_ap_policy(-1);
         break;
       }
-      g_menu.set_cursor(t.arg);
+      g_menu.set_cursor(settings_real_index(t.arg));
       g_menu.nudge_value(-1);
       break;
     case Hit::kRowPlus:
@@ -1911,7 +1945,7 @@ void fire_settings(Touch t) {
         cycle_ap_policy(1);
         break;
       }
-      g_menu.set_cursor(t.arg);
+      g_menu.set_cursor(settings_real_index(t.arg));
       g_menu.nudge_value(1);
       break;
     case Hit::kConfirmYes:

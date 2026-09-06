@@ -497,6 +497,11 @@ constexpr int kMidiVisCount = 1;
 constexpr int kSysVis[] = {5, 7, 8, 9, 10, 12, 13, 14, 15, 16};
 constexpr int kSysVisCount = 10;
 
+// AUDIO is already omitted from kMenuVis (no codec). If the screen is
+// entered anyway, drop FOLLOW / F SENS / F PHASE — no ADC.
+constexpr int kAudioVis[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+constexpr int kAudioVisCount = 9;
+
 const int* row_map(neon::MenuModel::Screen scr, int* count) {
   using S = neon::MenuModel::Screen;
   if (scr == S::kMenu) {
@@ -506,6 +511,10 @@ const int* row_map(neon::MenuModel::Screen scr, int* count) {
   if (scr == S::kMidi) {
     *count = kMidiVisCount;
     return kMidiVis;
+  }
+  if (scr == S::kAudio) {
+    *count = kAudioVisCount;
+    return kAudioVis;
   }
   if (scr == S::kSystem) {
     *count = kSysVisCount;

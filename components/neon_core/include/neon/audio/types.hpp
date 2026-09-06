@@ -76,6 +76,25 @@ struct AudioEngineConfig {
   // audio_engine_config() for the cast at the writing end and
   // main/audio_service.cpp's status block for the read.
   uint8_t priority_profile = 0;
+
+  // Copied from Config's v14 tail. Not folded into i2s_needed here.
+  uint8_t follow_enabled = 0;
+  uint8_t follow_sensitivity = 128;
+  uint8_t follow_input = 0;  // 0 = line, 1 = mic
+};
+
+// Published by link_service (one writer). Not AudioStatus: the audio task
+// would overwrite it.
+struct FollowStatus {
+  uint8_t enabled = 0;
+  uint8_t lock = 0;           // 0 idle 1 acquiring 2 locked
+  uint8_t subdiv = 0;         // 0 none, else 1/2/4
+  uint8_t no_adc = 0;         // RX failed / DIN missing
+  uint16_t onset_hz_x10 = 0;  // 39 = 3.9 onsets/s
+  uint32_t mbpm = 0;          // smoothed estimate
+  uint32_t published_mbpm = 0;
+  uint32_t onsets = 0;
+  uint32_t rejects = 0;
 };
 
 // Status published back to the UI (web / OLED) by the audio task.

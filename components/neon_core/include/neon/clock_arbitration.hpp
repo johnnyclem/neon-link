@@ -17,8 +17,7 @@ struct ClockArbitration {
 };
 
 constexpr ClockArbitration arbitrate_clock_source(
-    ClockSource source, bool clk_in_active,
-    bool audio_follow_enabled = false) {
+    ClockSource source, bool clk_in_active, bool audio_follow_enabled) {
   ClockArbitration a;
   a.follow_clk_in = (source == ClockSource::kAuto ||
                      source == ClockSource::kExternalMaster) &&

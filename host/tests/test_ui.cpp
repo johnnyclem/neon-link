@@ -1120,15 +1120,49 @@ TEST_CASE("the audio screen shows values a user can read at the rack") {
   neon::MenuModel m = audio_menu(&cfg);
 
   const char* kLabels[] = {"AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
-                           "OUT R", "LINE IN", "PUBLISH", "SUB"};
+                           "OUT R", "LINE IN", "PUBLISH", "SUB", "FOLLOW",
+                           "F SENS", "F PHASE"};
   const char* kValues[] = {"ON",  "ON",   "100%", "WOOD", "MIX",
-                           "RUN", "OFF",  "ON",   "OFF"};
+                           "RUN", "OFF",  "ON",   "OFF",  "OFF",
+                           "128", "OFF"};
   char buf[24];
   for (int i = 0; i < neon::MenuModel::kAudioItems; ++i) {
     CHECK(std::string(m.item_label(i)) == kLabels[i]);
     m.item_value(i, buf, sizeof(buf));
     CHECK(std::string(buf) == kValues[i]);
   }
+}
+
+TEST_CASE("FOLLOW toggles audio_follow_enabled and F SENS steps by 5") {
+  neon::Config cfg;
+  neon::MenuModel m = audio_menu(&cfg);
+  CHECK(m.item_count() == 12);
+  CHECK(neon::MenuModel::kAudioItems == 12);
+
+  m.on_rotate(9);  // FOLLOW
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.audio_follow_enabled == 1);
+  CHECK(m.take_dirty());
+  m.on_click();
+
+  char buf[24];
+  m.item_value(9, buf, sizeof(buf));
+  CHECK(std::string(buf) == "ON");
+
+  m.on_rotate(1);  // F SENS
+  m.on_click();
+  m.on_rotate(2);
+  CHECK(cfg.audio_follow_sensitivity == 138);
+  m.on_rotate(-100);
+  CHECK(cfg.audio_follow_sensitivity == 0);
+  m.on_click();
+
+  m.on_rotate(1);  // F PHASE
+  m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.audio_follow_phase == 1);
+  m.on_click();
 }
 
 TEST_CASE("the panel can clear a subscription but not choose one") {

@@ -271,10 +271,17 @@ struct Config {
   // Editable from the RLCD's own settings menu; a v12 blob decodes with
   // this back at kClassic — see config_decode.
   MonoTheme mono_theme = MonoTheme::kClassic;
+
+  // Appended in v14. Audio-in tempo follow. Off by default — a v13 blob's
+  // tail padding must not arm a live session.
+  uint8_t audio_follow_enabled = 0;
+  uint8_t audio_follow_phase = 0;          // request_beat_at_time; also off
+  uint8_t audio_follow_sensitivity = 128;  // 0..255
+  uint8_t audio_follow_input = 0;          // 0 = line, 1 = mic (codec)
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 13;
+inline constexpr uint16_t kConfigVersion = 14;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

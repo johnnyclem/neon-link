@@ -89,6 +89,10 @@ let config = {
     jitter_ms: 60,
     channel_name: "",
     sub_channel_id: "",
+    follow_enabled: false,
+    follow_phase: false,
+    follow_sensitivity: 128,
+    follow_input: "line",
   },
   tempo_milli_bpm: 128000,
   wifi: {

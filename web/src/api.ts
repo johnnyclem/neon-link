@@ -101,6 +101,14 @@ export interface AudioConfig {
   channel_name: string;
   /** Empty means not subscribed. */
   sub_channel_id: string;
+  /** Follow incoming audio tempo. Off by default. */
+  follow_enabled: boolean;
+  /** Re-anchor session phase on incoming hits. Off by default. */
+  follow_phase: boolean;
+  /** 0..255, higher = easier to trigger. */
+  follow_sensitivity: number;
+  /** Codec input used for follow. */
+  follow_input: "line" | "mic";
 }
 
 export interface AudioChannel {
@@ -133,6 +141,8 @@ export interface AudioStatus {
   clock_ppm: number;
   /** SampleClock residual, microseconds. Walks if G3 resync fails. */
   clock_residual_us?: number;
+  /** Board capability for the follow input picker. Length 0 or 1 hides it. */
+  follow_inputs?: Array<"line" | "mic">;
 }
 
 export interface Config {

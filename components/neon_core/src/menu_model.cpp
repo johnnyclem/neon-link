@@ -450,8 +450,8 @@ const char* MenuModel::item_label(int index) const {
     }
     case Screen::kAudio: {
       static const char* kItems[kAudioItems] = {
-          "AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
-          "OUT R", "LINE IN", "PUBLISH", "SUB"};
+          "AUDIO", "METRO", "CLICK", "SOUND", "OUT L", "OUT R",
+          "LINE IN", "PUBLISH", "SUB", "FOLLOW", "F SENS", "F PHASE"};
       return kItems[clamp_int(index, 0, kAudioItems - 1)];
     }
     case Screen::kSystem: {
@@ -649,6 +649,18 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         std::snprintf(buf, cap, "%s",
                       a.la_sub_channel_id[0] != '\0' ? "ON" : "OFF");
         break;
+      case 9:
+        std::snprintf(buf, cap, "%s",
+                      cfg_->audio_follow_enabled ? "ON" : "OFF");
+        break;
+      case 10:
+        std::snprintf(buf, cap, "%u",
+                      static_cast<unsigned>(cfg_->audio_follow_sensitivity));
+        break;
+      case 11:
+        std::snprintf(buf, cap, "%s",
+                      cfg_->audio_follow_phase ? "ON" : "OFF");
+        break;
       default:
         break;
     }
@@ -696,6 +708,17 @@ void MenuModel::adjust_audio(int index, int delta) {
       if (delta < 0) {
         a.la_sub_channel_id[0] = '\0';
       }
+      break;
+    case 9:
+      cfg_->audio_follow_enabled = delta > 0 ? 1 : 0;
+      break;
+    case 10:
+      cfg_->audio_follow_sensitivity = static_cast<uint8_t>(clamp_int(
+          static_cast<int>(cfg_->audio_follow_sensitivity) + delta * 5, 0,
+          255));
+      break;
+    case 11:
+      cfg_->audio_follow_phase = delta > 0 ? 1 : 0;
       break;
     default:
       return;

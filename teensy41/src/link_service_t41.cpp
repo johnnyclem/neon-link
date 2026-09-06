@@ -5,6 +5,7 @@
 #include "ablink/session.hpp"
 #include "app_state/config_store.h"
 #include "app_state/timeline_bus.h"
+#include "neon/clock_arbitration.hpp"
 #include "neon/ext_clock.hpp"
 #include "neon/link_snapshot.hpp"
 #include "neon/tempo_cv.hpp"
@@ -137,9 +138,10 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
     }
   }
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
-  const neon::ClockSource source = neon_config().clock_source;
-  const bool follow = source != neon::ClockSource::kLinkMaster &&
-                      g_ext_clock.active(now);
+  const neon::ClockArbitration arb = neon::arbitrate_clock_source(
+      neon_config().clock_source, g_ext_clock.active(now),
+      neon_config().audio_follow_enabled != 0);
+  const bool follow = arb.follow_clk_in;
   if (follow != g_ext_active) {
     g_ext_active = follow;
     app_status_set_ext_clock(follow);

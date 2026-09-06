@@ -165,6 +165,9 @@ void config_sanitize(Config* cfg) {
   if (cfg->mono_theme >= MonoTheme::kCount) {
     cfg->mono_theme = MonoTheme::kClassic;
   }
+  cfg->audio_follow_enabled = cfg->audio_follow_enabled ? 1 : 0;
+  cfg->audio_follow_phase = cfg->audio_follow_phase ? 1 : 0;
+  cfg->audio_follow_input = cfg->audio_follow_input ? 1 : 0;
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -245,6 +248,9 @@ AudioEngineConfig audio_engine_config(const Config& cfg) {
           : 0;
   out.quantum_beats = cfg.quantum_beats;
   out.priority_profile = static_cast<uint8_t>(cfg.priority_profile);
+  out.follow_enabled = cfg.audio_follow_enabled;
+  out.follow_sensitivity = cfg.audio_follow_sensitivity;
+  out.follow_input = cfg.audio_follow_input;
   return out;
 }
 
@@ -443,6 +449,14 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   if (h.version < 13) {
     // mono_theme sits in what was v12 tail padding after display_portrait.
     out->mono_theme = MonoTheme::kClassic;
+  }
+  if (h.version < 14) {
+    // Same padding trap: v13 tail alignment lands on these four bytes
+    // and must not arm follow on a live session.
+    out->audio_follow_enabled = 0;
+    out->audio_follow_phase = 0;
+    out->audio_follow_sensitivity = 128;
+    out->audio_follow_input = 0;
   }
   config_sanitize(out);
   return true;

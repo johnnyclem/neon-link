@@ -99,10 +99,11 @@ class MenuModel {
   // user reaches for at the rack; the pattern editor lives in the web UI.
   static constexpr int kOutputEditItems = 17;
   static constexpr int kMidiItems = 5;
-  // AUDIO, METRO, CLICK, SOUND, OUT L, OUT R, LINE IN, PUBLISH, SUB.
-  // Subscribing from the panel cycles the channels Link Audio discovered;
-  // naming one is the web editor's job, where there is a keyboard.
-  static constexpr int kAudioItems = 9;
+  // AUDIO, METRO, CLICK, SOUND, OUT L, OUT R, LINE IN, PUBLISH, SUB,
+  // FOLLOW, F SENS, F PHASE. Input source is web-only. Subscribing from
+  // the panel cycles the channels Link Audio discovered; naming one is
+  // the web editor's job, where there is a keyboard.
+  static constexpr int kAudioItems = 12;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
   // MIDI NDG, SS SYNC, BRIGHT, BEAT, STYLE, COLOUR, VERSION, REBOOT —
   // REBOOT last.

@@ -156,7 +156,8 @@ void follow_external_clock(hal::ILinkSession& session, int64_t now) {
   g_ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
 
   const neon::ClockArbitration arb = neon::arbitrate_clock_source(
-      neon_config().clock_source, g_ext_clock.active(now));
+      neon_config().clock_source, g_ext_clock.active(now),
+      neon_config().audio_follow_enabled != 0);
   const bool jack = arb.follow_clk_in;
   const neon::midi::SyncFollower::Actions midi_act =
       g_midi_follow.poll(now, arb.midi_allowed, g_midi_session);

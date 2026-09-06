@@ -160,6 +160,52 @@ export function Audio(props: PageProps) {
           </Card>
 
           <Card
+            title="Follow tempo"
+            note="Off by default. CLK IN and MIDI clock outrank this. Does not move phase unless re-anchor is on."
+          >
+            <Toggle
+              label="Follow incoming audio"
+              checked={!!a.follow_enabled}
+              onChange={(v) => patch((d) => (d.audio.follow_enabled = v))}
+            />
+            <div class="fields" style="margin-top:var(--space-3)">
+              <NumberField
+                label="Sensitivity"
+                value={a.follow_sensitivity ?? 128}
+                min={0}
+                max={255}
+                onChange={(v) =>
+                  patch((d) => (d.audio.follow_sensitivity = v))
+                }
+              />
+            </div>
+            <div style="margin-top:var(--space-3)">
+              <Toggle
+                label="Re-anchor phase"
+                checked={!!a.follow_phase}
+                onChange={(v) => patch((d) => (d.audio.follow_phase = v))}
+              />
+              <p class="card__note" style="margin-top:var(--space-2)">
+                Warning: moves the session grid onto incoming hits. Leave off
+                unless ADC latency is measured.
+              </p>
+            </div>
+            {s?.follow_inputs == null || s.follow_inputs.length > 1 ? (
+              <div class="fields" style="margin-top:var(--space-3)">
+                <SelectField
+                  label="Input"
+                  value={a.follow_input ?? "line"}
+                  options={[
+                    { value: "line", label: "Line" },
+                    { value: "mic", label: "Mic" },
+                  ]}
+                  onChange={(v) => patch((d) => (d.audio.follow_input = v))}
+                />
+              </div>
+            ) : null}
+          </Card>
+
+          <Card
             title="Synth"
             note="Notes arriving over BLE or TRS MIDI, played on the Link timeline."
           >

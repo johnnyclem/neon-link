@@ -337,7 +337,8 @@ void link_service_task(void*) {
     ext_clock.set_input_ppqn(neon_config().clock_in_ppqn);
     const int64_t now_arb = esp_timer_get_time();
     const neon::ClockArbitration arb = neon::arbitrate_clock_source(
-        neon_config().clock_source, ext_clock.active(now_arb));
+        neon_config().clock_source, ext_clock.active(now_arb),
+        neon_config().audio_follow_enabled != 0);
     const bool follow_external = arb.follow_clk_in;
 
     neon::midi::SyncEvent mev;

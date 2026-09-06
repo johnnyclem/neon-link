@@ -236,6 +236,11 @@ class AudioPage : public juce::Component {
   neon::ui::NumberField amyPatch_;
   neon::ui::NumberField amyGain_;
   neon::ui::NumberField lineMon_;
+  neon::ui::Toggle followEn_;
+  neon::ui::NumberField followSens_;
+  neon::ui::Toggle followPhase_;
+  neon::ui::SelectField followIn_;
+  juce::Label followNote_;
   neon::ui::Toggle pubMix_;
   neon::ui::Toggle pubLine_;
   neon::ui::Toggle pubMono_;

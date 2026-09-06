@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include <cstddef>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -634,6 +635,9 @@ TEST_CASE("audio_engine_config carries only the live-applied fields") {
   CHECK(ec.la_fullband == 1);
   CHECK(ec.i2s_needed == 1);
   CHECK(ec.quantum_beats == 3);
+  CHECK(ec.follow_enabled == 0);
+  CHECK(ec.follow_sensitivity == 128);
+  CHECK(ec.follow_input == 0);
 }
 
 TEST_CASE("i2s_needed follows engine on or Link Audio pub/sub") {
@@ -644,6 +648,106 @@ TEST_CASE("i2s_needed follows engine on or Link Audio pub/sub") {
   cfg.audio.la_publish_mix = 0;
   std::strcpy(cfg.audio.la_sub_channel_id, "peer-out");
   CHECK(neon::audio_engine_config(cfg).i2s_needed == 1);
+}
+
+TEST_CASE("i2s_needed stays 0 when only audio_follow_enabled is set") {
+  neon::Config cfg;
+  cfg.audio_follow_enabled = 1;
+  const neon::AudioEngineConfig ec = neon::audio_engine_config(cfg);
+  CHECK(ec.follow_enabled == 1);
+  CHECK(ec.i2s_needed == 0);
+}
+
+TEST_CASE("a v13 config blob defaults audio follow off") {
+  neon::Config a;
+  a.audio_follow_enabled = 1;
+  a.audio_follow_phase = 1;
+  a.audio_follow_sensitivity = 255;
+  a.audio_follow_input = 1;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 13;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.audio_follow_enabled == 0);
+  CHECK(b.audio_follow_phase == 0);
+  CHECK(b.audio_follow_sensitivity == 128);
+  CHECK(b.audio_follow_input == 0);
+}
+
+TEST_CASE("a v13 payload size does not arm follow from tail padding") {
+  neon::Config a;
+  a.audio_follow_enabled = 1;
+  a.audio_follow_phase = 1;
+  a.audio_follow_sensitivity = 200;
+  a.audio_follow_input = 1;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 13;
+  h.payload_size =
+      static_cast<uint16_t>(offsetof(neon::Config, audio_follow_enabled));
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.audio_follow_enabled == 0);
+  CHECK(b.audio_follow_phase == 0);
+  CHECK(b.audio_follow_sensitivity == 128);
+  CHECK(b.audio_follow_input == 0);
+}
+
+TEST_CASE("audio follow survives a v14 round trip and sanitizes") {
+  neon::Config a;
+  a.audio_follow_enabled = 1;
+  a.audio_follow_phase = 1;
+  a.audio_follow_sensitivity = 200;
+  a.audio_follow_input = 1;
+  std::vector<uint8_t> buf(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
+  neon::Config b;
+  REQUIRE(neon::config_decode(buf.data(), buf.size(), &b));
+  CHECK(b.audio_follow_enabled == 1);
+  CHECK(b.audio_follow_phase == 1);
+  CHECK(b.audio_follow_sensitivity == 200);
+  CHECK(b.audio_follow_input == 1);
+
+  neon::Config c;
+  c.audio_follow_enabled = 9;
+  c.audio_follow_phase = 3;
+  c.audio_follow_input = 7;
+  neon::config_sanitize(&c);
+  CHECK(c.audio_follow_enabled == 1);
+  CHECK(c.audio_follow_phase == 1);
+  CHECK(c.audio_follow_input == 1);
+
+  const neon::AudioEngineConfig ec = neon::audio_engine_config(b);
+  CHECK(ec.follow_enabled == 1);
+  CHECK(ec.follow_sensitivity == 200);
+  CHECK(ec.follow_input == 1);
 }
 
 TEST_CASE("published channel names derive from the device name") {

@@ -405,6 +405,51 @@ TEST_CASE("an audio partial update leaves the rest of the config alone") {
   CHECK(cfg.quantum_beats == 7);
 }
 
+TEST_CASE("audio JSON partial-merge does not enable follow when the key is absent") {
+  neon::Config cfg;
+  CHECK(cfg.audio_follow_enabled == 0);
+  CHECK(cfg.audio_follow_phase == 0);
+  CHECK(cfg.audio_follow_sensitivity == 128);
+  CHECK(cfg.audio_follow_input == 0);
+
+  const char* doc = R"({"audio":{"metro_enabled":true,"enabled":true}})";
+  REQUIRE(neon::config_from_json(doc, std::strlen(doc), &cfg));
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio_follow_enabled == 0);
+  CHECK(cfg.audio_follow_phase == 0);
+  CHECK(cfg.audio_follow_sensitivity == 128);
+  CHECK(cfg.audio_follow_input == 0);
+}
+
+TEST_CASE("audio follow JSON round-trips under the audio object") {
+  neon::Config a;
+  a.audio_follow_enabled = 1;
+  a.audio_follow_phase = 1;
+  a.audio_follow_sensitivity = 200;
+  a.audio_follow_input = 1;
+
+  char buf[8192];
+  REQUIRE(neon::config_to_json(a, buf, sizeof(buf)) > 0);
+  CHECK(std::strstr(buf, "\"follow_enabled\":true") != nullptr);
+  CHECK(std::strstr(buf, "\"follow_phase\":true") != nullptr);
+  CHECK(std::strstr(buf, "\"follow_sensitivity\":200") != nullptr);
+  CHECK(std::strstr(buf, "\"follow_input\":\"mic\"") != nullptr);
+
+  neon::Config b;
+  REQUIRE(neon::config_from_json(buf, std::strlen(buf), &b));
+  CHECK(b.audio_follow_enabled == 1);
+  CHECK(b.audio_follow_phase == 1);
+  CHECK(b.audio_follow_sensitivity == 200);
+  CHECK(b.audio_follow_input == 1);
+
+  const char* line = R"({"audio":{"follow_input":"line","follow_enabled":false}})";
+  REQUIRE(neon::config_from_json(line, std::strlen(line), &b));
+  CHECK(b.audio_follow_enabled == 0);
+  CHECK(b.audio_follow_input == 0);
+  CHECK(b.audio_follow_phase == 1);  // absent key keeps current
+}
+
 TEST_CASE("audio roles are names, and an unknown one changes nothing") {
   neon::Config cfg;
   cfg.audio.role_l = neon::AudioRole::kLineIn;

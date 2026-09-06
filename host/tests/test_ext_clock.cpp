@@ -179,7 +179,7 @@ TEST_CASE("config sanitize covers the new clock-source fields") {
 TEST_CASE("clock_source arbitration: the one precedence table") {
   using neon::ClockSource;
   const auto arb = [](ClockSource s, bool clk_in) {
-    return neon::arbitrate_clock_source(s, clk_in);
+    return neon::arbitrate_clock_source(s, clk_in, false);
   };
 
   // kAuto: CLK IN wins while alive, MIDI only in its absence.

@@ -407,6 +407,14 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddNumberToObject(audio, "jitter_ms", ac.la_jitter_ms);
   cJSON_AddStringToObject(audio, "channel_name", ac.la_channel_name);
   cJSON_AddStringToObject(audio, "sub_channel_id", ac.la_sub_channel_id);
+  // follow_* are Config-tail siblings of AudioConfig (v14); nested here
+  // so the editor does not grow a new top-level key.
+  cJSON_AddBoolToObject(audio, "follow_enabled", cfg.audio_follow_enabled != 0);
+  cJSON_AddBoolToObject(audio, "follow_phase", cfg.audio_follow_phase != 0);
+  cJSON_AddNumberToObject(audio, "follow_sensitivity",
+                          cfg.audio_follow_sensitivity);
+  cJSON_AddStringToObject(audio, "follow_input",
+                          cfg.audio_follow_input != 0 ? "mic" : "line");
 
   cJSON* ap = cJSON_AddObjectToObject(root, "ap");
   cJSON_AddStringToObject(ap, "policy", ap_policy_str(cfg.ap_policy));
@@ -699,6 +707,17 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
             sizeof(ac.la_channel_name));
     get_str(audio, "sub_channel_id", ac.la_sub_channel_id,
             sizeof(ac.la_sub_channel_id));
+    get_bool_u8(audio, "follow_enabled", &cfg->audio_follow_enabled);
+    get_bool_u8(audio, "follow_phase", &cfg->audio_follow_phase);
+    get_u8(audio, "follow_sensitivity", &cfg->audio_follow_sensitivity);
+    {
+      const cJSON* fin = cJSON_GetObjectItemCaseSensitive(audio, "follow_input");
+      if (str_eq(fin, "line")) {
+        cfg->audio_follow_input = 0;
+      } else if (str_eq(fin, "mic")) {
+        cfg->audio_follow_input = 1;
+      }
+    }
   }
 
   const cJSON* ap = cJSON_GetObjectItemCaseSensitive(root, "ap");

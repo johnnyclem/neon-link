@@ -1345,6 +1345,13 @@ AudioPage::AudioPage(EditorHost& host) : host_(host) {
   addAndMakeVisible(amyPatch_);
   addAndMakeVisible(amyGain_);
   addAndMakeVisible(lineMon_);
+  addAndMakeVisible(followEn_);
+  addAndMakeVisible(followSens_);
+  addAndMakeVisible(followPhase_);
+  addAndMakeVisible(followIn_);
+  followNote_.setColour(juce::Label::textColourId, neon::ui::muted());
+  followNote_.setFont(juce::Font(juce::FontOptions(12.0f)));
+  addAndMakeVisible(followNote_);
   addAndMakeVisible(pubMix_);
   addAndMakeVisible(pubLine_);
   addAndMakeVisible(pubMono_);
@@ -1433,6 +1440,32 @@ void AudioPage::load(const neon::Config& cfg, const Snapshot& snap) {
       d.audio.linein_monitor_gain = static_cast<uint8_t>(fromPct(v));
     });
   };
+  followEn_.setLabel("Follow incoming audio");
+  followEn_.setValue(cfg.audio_follow_enabled != 0);
+  followEn_.onChange = [this](bool v) {
+    host_.patch([v](neon::Config& d) { d.audio_follow_enabled = v ? 1 : 0; });
+  };
+  followSens_.set("Sensitivity", cfg.audio_follow_sensitivity, 0, 255, 5);
+  followSens_.onChange = [this](int v) {
+    host_.patch([v](neon::Config& d) {
+      d.audio_follow_sensitivity = static_cast<uint8_t>(v);
+    });
+  };
+  followPhase_.setLabel("Re-anchor phase");
+  followPhase_.setValue(cfg.audio_follow_phase != 0);
+  followPhase_.onChange = [this](bool v) {
+    host_.patch([v](neon::Config& d) { d.audio_follow_phase = v ? 1 : 0; });
+  };
+  followIn_.set("Input", cfg.audio_follow_input != 0 ? 2 : 1,
+                {{1, "Line"}, {2, "Mic"}});
+  followIn_.onChange = [this](int id) {
+    host_.patch([id](neon::Config& d) { d.audio_follow_input = id == 2 ? 1 : 0; });
+  };
+  followNote_.setText(
+      "Off by default. CLK IN and MIDI clock outrank this. Does not move "
+      "phase unless re-anchor is on. Warning: re-anchor yanks the session "
+      "grid onto incoming hits.",
+      juce::dontSendNotification);
   pubMix_.setLabel("Publish the mix");
   pubMix_.setValue(a.la_publish_mix != 0);
   pubMix_.onChange = [this](bool v) {
@@ -1529,7 +1562,7 @@ void AudioPage::tickStatus(const Snapshot& snap) {
   refresh_.setButtonText(snap.audio_refreshing ? "Looking…" : "Refresh");
 }
 
-int AudioPage::preferredHeight() const { return pane_ == 0 ? 620 : 480; }
+int AudioPage::preferredHeight() const { return pane_ == 0 ? 820 : 480; }
 
 void AudioPage::resized() {
   neon::ui::Stack st{getLocalBounds()};
@@ -1550,6 +1583,11 @@ void AudioPage::resized() {
   amyPatch_.setVisible(out);
   amyGain_.setVisible(out);
   lineMon_.setVisible(out);
+  followEn_.setVisible(out);
+  followSens_.setVisible(out);
+  followPhase_.setVisible(out);
+  followIn_.setVisible(out);
+  followNote_.setVisible(out);
   pubMix_.setVisible(!out);
   pubLine_.setVisible(!out);
   pubMono_.setVisible(!out);
@@ -1577,6 +1615,12 @@ void AudioPage::resized() {
     amyGain_.setBounds(st.next(48));
     st.skip(6);
     lineMon_.setBounds(st.next(48));
+    st.skip(6);
+    followEn_.setBounds(st.next(28));
+    followSens_.setBounds(st.next(48));
+    followPhase_.setBounds(st.next(28));
+    followIn_.setBounds(st.next(48));
+    followNote_.setBounds(st.next(48));
   } else {
     pubMix_.setBounds(st.next(28));
     pubLine_.setBounds(st.next(28));
