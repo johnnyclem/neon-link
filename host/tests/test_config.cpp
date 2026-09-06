@@ -690,11 +690,6 @@ TEST_CASE("a v13 config blob defaults audio follow off") {
 
 TEST_CASE("a v13 payload size does not arm follow from tail padding") {
   neon::Config a;
-  a.audio_follow_enabled = 1;
-  a.audio_follow_phase = 1;
-  a.audio_follow_sensitivity = 200;
-  a.audio_follow_input = 1;
-
   std::vector<uint8_t> full(neon::config_blob_size());
   REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
 
@@ -706,10 +701,17 @@ TEST_CASE("a v13 payload size does not arm follow from tail padding") {
   };
   Hdr h;
   std::memcpy(&h, full.data(), sizeof(h));
+  // v13 Config was 8-byte aligned: mono_theme at 973, sizeof 976. Those
+  // two tail-padding bytes land on audio_follow_enabled / _phase.
+  constexpr uint16_t kV13Payload = 976;
+  const size_t follow_off = offsetof(neon::Config, audio_follow_enabled);
+  REQUIRE(follow_off == 974);
+  REQUIRE(follow_off < kV13Payload);
   h.version = 13;
-  h.payload_size =
-      static_cast<uint16_t>(offsetof(neon::Config, audio_follow_enabled));
-  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  h.payload_size = kV13Payload;
+  uint8_t* payload = full.data() + sizeof(h);
+  std::memset(payload + follow_off, 0xff, kV13Payload - follow_off);
+  h.crc = neon::crc32(payload, h.payload_size);
   std::memcpy(full.data(), &h, sizeof(h));
 
   neon::Config b;

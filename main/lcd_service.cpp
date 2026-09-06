@@ -698,6 +698,10 @@ void commit_menu() {
   live.display_dim_s = g_cfg.display_dim_s;
   live.display_dim_level = g_cfg.display_dim_level;
   live.audio = g_cfg.audio;
+  live.audio_follow_enabled = g_cfg.audio_follow_enabled;
+  live.audio_follow_phase = g_cfg.audio_follow_phase;
+  live.audio_follow_sensitivity = g_cfg.audio_follow_sensitivity;
+  live.audio_follow_input = g_cfg.audio_follow_input;
   live.color_theme = g_cfg.color_theme;
   live.display_portrait = g_cfg.display_portrait;
   live.ap_policy = g_cfg.ap_policy;

@@ -321,6 +321,11 @@ void ui_task(void*) {
       live.display_dim_level = ui_cfg.display_dim_level;
       live.big_beat_display = ui_cfg.big_beat_display;
       live.beat_style = ui_cfg.beat_style;
+      live.audio = ui_cfg.audio;
+      live.audio_follow_enabled = ui_cfg.audio_follow_enabled;
+      live.audio_follow_phase = ui_cfg.audio_follow_phase;
+      live.audio_follow_sensitivity = ui_cfg.audio_follow_sensitivity;
+      live.audio_follow_input = ui_cfg.audio_follow_input;
       neon_config_apply(live);
       ui_cfg = live;
     } else if (!menu.editing()) {

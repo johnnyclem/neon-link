@@ -463,6 +463,10 @@ void commit_menu() {
   live.display_dim_s = g_cfg.display_dim_s;
   live.display_dim_level = g_cfg.display_dim_level;
   live.audio = g_cfg.audio;
+  live.audio_follow_enabled = g_cfg.audio_follow_enabled;
+  live.audio_follow_phase = g_cfg.audio_follow_phase;
+  live.audio_follow_sensitivity = g_cfg.audio_follow_sensitivity;
+  live.audio_follow_input = g_cfg.audio_follow_input;
   neon_config_apply(live);
   g_cfg = live;
   apply_backlight(esp_timer_get_time());
