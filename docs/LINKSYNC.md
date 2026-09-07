@@ -49,6 +49,7 @@ Do not move these without updating this file and the carrier.
 | MIDI RX  | **D7**   | **44** | UART1 @ 31250. Silk RX / expansion UART Grove RX. |
 | OLED SDA | **D4**   | **5** | Grove IIC on the Seeed XIAO expansion base. |
 | OLED SCL | **D5**   | **6** | Grove IIC. 0.96" SSD1306 128×64 @ 0x3C. |
+| Play/stop | **D0** Grove | **1** | SIG / N/A / 3V3 / GND. Grove button, active-high. Tap = quantized play/stop. |
 | Jack sense / batt divider | D1 | 2 | Expansion user button; reserved |
 | —        | D2       | 3 | **Do not use** — JTAG strap |
 | User LED | onboard  | 21 | Inverted: LOW = on |
@@ -103,6 +104,12 @@ from the MAC — the same secret as the SoftAP password).
 Fallback after 90 s: SoftAP `LINK-SYNC-XXXX`. The SSID belongs on the
 enclosure.
 
+Grove **D0** button (expansion port labeled 0 / N/A / 3V3 / GND): tap
+toggles transport at the next loop boundary — the same quantized
+play/stop as the other dongle KEY buttons. The LED then flashes on the
+downbeat while playing. Onboard BOOT is not used for transport; hold
+BOOT while tapping RESET to enter the ROM bootloader.
+
 Single orange LED (LOW = on):
 
 | State | Pattern |
@@ -119,7 +126,8 @@ separate red LED on the module.
 ## Scope
 
 **In:** Link join, tempo follow, MIDI clock 24 PPQN, Start / Stop /
-Continue + SPP, BLE provisioning, single-LED status, TRS-A default.
+Continue + SPP, BLE provisioning, single-LED status, Grove D0 tap =
+quantized play/stop, TRS-A default.
 
 **Out (so they stop coming back):**
 

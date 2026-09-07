@@ -258,9 +258,10 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.amyboard" bui
 ### Run on the link-sync dongle (XIAO ESP32S3)
 
 A separate build target in this tree: Link join, 24 PPQN MIDI clock,
-start/stop/continue and song position out one TRS jack. No audio, no
-OLED. **Reference board only — PRs welcome, no support for arbitrary
-hardware.** See **[docs/LINKSYNC.md](docs/LINKSYNC.md)**.
+start/stop/continue and song position out one TRS jack. Grove D0
+button tap is quantized play/stop. No audio, no OLED. **Reference
+board only — PRs welcome, no support for arbitrary hardware.** See
+**[docs/LINKSYNC.md](docs/LINKSYNC.md)**.
 
 ```bash
 idf.py set-target esp32s3

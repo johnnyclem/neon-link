@@ -54,6 +54,7 @@ inline constexpr int kPinI2sPa = -1;
 //   D6 TX / D7 RX — same pads on every XIAO MCU (GPIOs differ).
 // Not D2/GPIO3 (JTAG strap). GPIO0 / 45 / 46 — boot / VDD_SPI / ROM.
 // USER LED GPIO21, inverted (LOW = on). Charge LED is separate.
+// Grove D0 (SIG / N/A / 3V3 / GND) is the play/stop button.
 // See docs/LINKSYNC.md.
 
 inline constexpr int kPinClk1 = 0;
@@ -80,6 +81,17 @@ inline constexpr int kPinMidiTx = 43;
 inline constexpr int kPinMidiRx = 44;
 #endif
 inline constexpr int kPinJackSense = -1;  // D1 / GPIO2 if populated
+#if CONFIG_IDF_TARGET_ESP32C3
+// XIAO ESP32C3 D0 = GPIO2.
+inline constexpr int kPinPlayStop = 2;
+#elif CONFIG_IDF_TARGET_ESP32C6
+// XIAO ESP32C6 D0 = GPIO0.
+inline constexpr int kPinPlayStop = 0;
+#else
+// XIAO ESP32S3 D0 = GPIO1. Grove button: SIG high when pressed.
+inline constexpr int kPinPlayStop = 1;
+#endif
+inline constexpr bool kPlayStopActiveLow = false;
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -756,4 +768,9 @@ inline constexpr int kAmyCvClockChannel = 1;
 inline constexpr float kAmyGateHighVolts = 5.0f;
 inline constexpr float kAmyGateLowVolts = 0.0f;
 
+#endif
+
+#if !CONFIG_NEON_BOARD_LINKSYNC
+inline constexpr int kPinPlayStop = -1;
+inline constexpr bool kPlayStopActiveLow = true;
 #endif
