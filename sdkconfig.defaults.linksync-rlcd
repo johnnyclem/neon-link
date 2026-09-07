@@ -18,7 +18,10 @@ CONFIG_NEON_BOARD_LINKSYNC_RLCD=y
 # CONFIG_NEON_BOARD_LINKSYNC_TAB5 is not set
 # CONFIG_NEON_BOARD_LINKSYNC_C3OLED is not set
 # CONFIG_NEON_BOARD_LINKSYNC_MATOUCH is not set
-# CONFIG_NEON_AUDIO is not set
+# Metronome click through the ES8311 + PA. Off in Config until the
+# panel's CLICK row is turned on (audio.enabled / metro_enabled stay 0).
+CONFIG_NEON_AUDIO=y
+# CONFIG_NEON_AUDIO_INPUT is not set
 
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="16MB"

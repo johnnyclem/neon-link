@@ -81,10 +81,11 @@ Tenths of a BPM are not shown. The old right-hand beat stage is gone.
 The panel's two 3 W speakers hang off dual NS4168 I2S amps (LRCK 21,
 BCLK 22, SDOUT 23 — no MCLK, no codec registers). The build carries the
 audio engine; the click is opt-in from the glass or the web editor:
-**AUDIO > AUDIO ON**, then **METRONOME ON**. CLICK sets the level, SOUND
-picks the voice, and the click follows the transport — speakers tick only
-while the panel shows a running clock. I2S stays down (G6) until the
-engine is enabled, so a silent unit costs nothing.
+**AUDIO > CLICK** cycles **OFF / CLICK / WOOD / METRO** (default OFF).
+LEVEL sets the volume. The accent always lands on the downbeat, and
+the click follows the transport — speakers tick only while the panel
+shows a running clock. Selecting a voice starts the audio engine;
+AUDIO remains the master switch.
 
 Settings tabs match the web UI: **OUTPUTS**, **NETWORK**, **MIDI**,
 **AUDIO**, **SYSTEM**. Tap a row to cycle/toggle; **−** / **+** on a

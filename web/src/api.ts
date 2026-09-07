@@ -29,6 +29,7 @@ export type AudioRole =
   | "link_in"
   | "line_in";
 export type ClickSound = "sine" | "noise" | "wood";
+export type ClickMode = "off" | "click" | "wood" | "metro";
 export type SubState = "idle" | "buffering" | "playing";
 
 export interface ClockConfig {
@@ -78,6 +79,8 @@ export interface AudioConfig {
   role_r: AudioRole;
   metro_enabled: boolean;
   metro_sound: ClickSound;
+  /** Derived speaker/metronome control. Off by default. */
+  click_mode?: ClickMode;
   /** 0..255, where 200 is unity. */
   metro_gain: number;
   metro_accent: boolean;

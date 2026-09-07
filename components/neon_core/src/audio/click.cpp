@@ -15,22 +15,24 @@ struct Voice {
   float decay_ms;
   uint32_t len_ms;
   bool noise;
+  float amp;
 };
 
-// Accent and normal are the same voice a fifth apart (and a touch louder),
-// which is what makes a downbeat read as "the same click, emphasised".
+// Accent is the same voice, louder and a touch longer, always on beat 1.
 Voice voice_for(ClickSound sound, bool accent) {
   switch (sound) {
     case ClickSound::kNoise:
-      return Voice{0.0f, 0.0f, 0.0f, accent ? 12.0f : 8.0f,
-                   accent ? 40u : 30u, true};
+      // Pitchless tick: short noise burst, quiet off-beats.
+      return Voice{0.0f, 0.0f, 0.0f, accent ? 5.0f : 3.0f,
+                   accent ? 16u : 9u, true, accent ? 1.0f : 0.42f};
     case ClickSound::kWood:
-      return Voice{accent ? 2400.0f : 1600.0f, accent ? 3600.0f : 2400.0f,
-                   0.4f, accent ? 9.0f : 7.0f, 40u, false};
+      return Voice{accent ? 1320.0f : 880.0f, accent ? 1980.0f : 1760.0f,
+                   0.35f, accent ? 8.0f : 6.0f, accent ? 28u : 20u, false,
+                   accent ? 1.0f : 0.7f};
     case ClickSound::kSine:
     default:
       return Voice{accent ? 1500.0f : 1000.0f, 0.0f, 0.0f,
-                   accent ? 28.0f : 22.0f, 90u, false};
+                   accent ? 28.0f : 22.0f, 90u, false, accent ? 1.0f : 0.72f};
   }
 }
 
@@ -82,7 +84,7 @@ void ClickSynth::trigger(bool accent) {
   phase2_inc_ = kTwoPi * v.f2 / rate;
   mix2_ = v.mix2;
   noise_ = v.noise;
-  amp_ = (accent ? 1.0f : 0.72f) * gain_from_byte(cfg_.gain);
+  amp_ = v.amp * gain_from_byte(cfg_.gain);
   // Fixed seed per hit: two identical clicks must render identically.
   rng_ = 0x9e3779b9u;
 }

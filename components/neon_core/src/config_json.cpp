@@ -105,6 +105,19 @@ const char* click_sound_str(ClickSound s) {
   }
 }
 
+const char* click_mode_str(ClickMode m) {
+  switch (m) {
+    case ClickMode::kClick:
+      return "click";
+    case ClickMode::kWood:
+      return "wood";
+    case ClickMode::kMetro:
+      return "metro";
+    default:
+      return "off";
+  }
+}
+
 const char* policy_str(MidiRouteConfig::ClockPolicy p) {
   switch (p) {
     case MidiRouteConfig::ClockPolicy::kReplace:
@@ -393,6 +406,7 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddStringToObject(audio, "role_r", audio_role_str(ac.role_r));
   cJSON_AddBoolToObject(audio, "metro_enabled", ac.metro_enabled != 0);
   cJSON_AddStringToObject(audio, "metro_sound", click_sound_str(ac.metro_sound));
+  cJSON_AddStringToObject(audio, "click_mode", click_mode_str(click_mode(ac)));
   cJSON_AddNumberToObject(audio, "metro_gain", ac.metro_gain);
   cJSON_AddBoolToObject(audio, "metro_accent", ac.metro_accent != 0);
   cJSON_AddBoolToObject(audio, "amy_enabled", ac.amy_enabled != 0);
@@ -673,10 +687,22 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     const cJSON* snd = cJSON_GetObjectItemCaseSensitive(audio, "metro_sound");
     if (str_eq(snd, "sine")) {
       ac.metro_sound = ClickSound::kSine;
-    } else if (str_eq(snd, "noise")) {
+    } else if (str_eq(snd, "noise") || str_eq(snd, "click")) {
       ac.metro_sound = ClickSound::kNoise;
     } else if (str_eq(snd, "wood")) {
       ac.metro_sound = ClickSound::kWood;
+    } else if (str_eq(snd, "metro")) {
+      ac.metro_sound = ClickSound::kSine;
+    }
+    const cJSON* mode = cJSON_GetObjectItemCaseSensitive(audio, "click_mode");
+    if (str_eq(mode, "off")) {
+      apply_click_mode(ac, ClickMode::kOff);
+    } else if (str_eq(mode, "click")) {
+      apply_click_mode(ac, ClickMode::kClick);
+    } else if (str_eq(mode, "wood")) {
+      apply_click_mode(ac, ClickMode::kWood);
+    } else if (str_eq(mode, "metro")) {
+      apply_click_mode(ac, ClickMode::kMetro);
     }
     get_u8(audio, "metro_gain", &ac.metro_gain);
     get_bool_u8(audio, "metro_accent", &ac.metro_accent);

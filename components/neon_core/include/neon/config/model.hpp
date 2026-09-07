@@ -70,6 +70,45 @@ struct AudioConfig {
   char la_sub_channel_id[48] = "";
 };
 
+inline ClickMode click_mode(const AudioConfig& a) {
+  return click_mode_of(a.metro_enabled, a.metro_sound);
+}
+
+inline bool audio_has_other_consumers(const AudioConfig& a) {
+  return a.amy_enabled != 0 || a.linein_monitor_gain != 0 ||
+         a.la_publish_mix != 0 || a.la_publish_linein != 0 ||
+         a.la_sub_channel_id[0] != '\0';
+}
+
+inline void apply_click_mode(AudioConfig& a, ClickMode m) {
+  if (m == ClickMode::kOff) {
+    a.metro_enabled = 0;
+    return;
+  }
+  a.enabled = 1;
+  a.metro_enabled = 1;
+  a.metro_accent = 1;
+  switch (m) {
+    case ClickMode::kClick:
+      a.metro_sound = ClickSound::kNoise;
+      break;
+    case ClickMode::kWood:
+      a.metro_sound = ClickSound::kWood;
+      break;
+    default:
+      a.metro_sound = ClickSound::kSine;
+      break;
+  }
+}
+
+// RLCD has no separate AUDIO row: I2S exists to drive the speaker
+// click. OLED / web / plugin keep `enabled` as its own switch.
+inline void idle_audio_if_click_unused(AudioConfig& a) {
+  if (a.metro_enabled == 0 && !audio_has_other_consumers(a)) {
+    a.enabled = 0;
+  }
+}
+
 // The Config::ap_pass member's struct-literal default, and the fallback a
 // too-short/empty password sanitizes to. This is NOT what a shipping unit
 // actually boots with: first boot (no valid stored config) overwrites it

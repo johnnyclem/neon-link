@@ -31,6 +31,42 @@ enum class ClickSound : uint8_t {
   kSoundCount = 3,
 };
 
+// One control for the speaker/metronome: off, or a voice. CLICK is the
+// pitchless tick; WOOD is a woodblock; METRO is the pitched sine.
+enum class ClickMode : uint8_t {
+  kOff = 0,
+  kClick = 1,
+  kWood = 2,
+  kMetro = 3,
+  kCount = 4,
+};
+
+inline ClickMode click_mode_of(uint8_t metro_enabled, ClickSound sound) {
+  if (metro_enabled == 0) {
+    return ClickMode::kOff;
+  }
+  if (sound == ClickSound::kNoise) {
+    return ClickMode::kClick;
+  }
+  if (sound == ClickSound::kWood) {
+    return ClickMode::kWood;
+  }
+  return ClickMode::kMetro;
+}
+
+inline const char* click_mode_name(ClickMode m) {
+  switch (m) {
+    case ClickMode::kClick:
+      return "CLICK";
+    case ClickMode::kWood:
+      return "WOOD";
+    case ClickMode::kMetro:
+      return "METRO";
+    default:
+      return "OFF";
+  }
+}
+
 // Gain bytes are 0..255 with 200 = unity, so the UI can push a little
 // past 0 dB (255 ≈ +2.1 dB) without a separate sign convention.
 inline constexpr uint8_t kUnityGainByte = 200;

@@ -356,6 +356,8 @@ TEST_CASE("the audio block round-trips through JSON") {
   CHECK(b.audio.enabled == 1);
   CHECK(b.audio.role_r == neon::AudioRole::kRun);
   CHECK(b.audio.metro_sound == neon::ClickSound::kNoise);
+  CHECK(neon::click_mode(b.audio) == neon::ClickMode::kClick);
+  CHECK(std::strstr(buf, "\"click_mode\":\"click\"") != nullptr);
   CHECK(b.audio.metro_gain == 180);
   CHECK(b.audio.metro_accent == 0);
   CHECK(b.audio.amy_gain == 220);
@@ -386,6 +388,30 @@ TEST_CASE("gist_lpf JSON is inverted from the stored fullband flag") {
                                  std::strlen(R"({"audio":{"gist_lpf":true}})"),
                                  &cfg));
   CHECK(cfg.audio.la_fullband == 0);
+}
+
+TEST_CASE("click_mode JSON drives metro_enabled and metro_sound") {
+  neon::Config cfg;
+  const char* wood = R"({"audio":{"click_mode":"wood"}})";
+  REQUIRE(neon::config_from_json(wood, std::strlen(wood), &cfg));
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(cfg.audio.metro_accent == 1);
+
+  const char* click = R"({"audio":{"click_mode":"click"}})";
+  REQUIRE(neon::config_from_json(click, std::strlen(click), &cfg));
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kClick);
+
+  const char* metro = R"({"audio":{"click_mode":"metro"}})";
+  REQUIRE(neon::config_from_json(metro, std::strlen(metro), &cfg));
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+
+  const char* off = R"({"audio":{"click_mode":"off"}})";
+  REQUIRE(neon::config_from_json(off, std::strlen(off), &cfg));
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kOff);
 }
 
 TEST_CASE("an audio partial update leaves the rest of the config alone") {

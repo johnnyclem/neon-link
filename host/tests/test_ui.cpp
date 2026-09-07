@@ -1073,28 +1073,29 @@ TEST_CASE("the audio screen edits the metronome and the output roles") {
   CHECK(m.take_dirty());
   m.on_click();
 
-  m.on_rotate(1);    // METRO
+  m.on_rotate(1);    // CLICK mode
   m.on_click();
-  m.on_rotate(1);
+  m.on_rotate(1);    // OFF -> CLICK
   CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
+  m.on_rotate(1);    // WOOD
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
+  m.on_rotate(1);    // METRO
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+  m.on_rotate(1);    // wrap to OFF
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(cfg.audio.enabled == 1);  // AUDIO row stays on
+  m.on_rotate(-1);   // back to METRO
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
   m.on_click();
 
-  m.on_rotate(1);    // CLICK volume
+  m.on_rotate(1);    // LEVEL
   m.on_click();
   m.on_rotate(-4);
   CHECK(cfg.audio.metro_gain == neon::kUnityGainByte - 20);
   m.on_rotate(1000);
   CHECK(cfg.audio.metro_gain == 255);  // clamped, never wrapped
-  m.on_click();
-
-  m.on_rotate(1);    // SOUND cycles and wraps
-  m.on_click();
-  m.on_rotate(1);
-  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
-  m.on_rotate(1);
-  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
-  m.on_rotate(1);
-  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
   m.on_click();
 
   m.on_rotate(1);    // OUT L
@@ -1119,9 +1120,9 @@ TEST_CASE("the audio screen shows values a user can read at the rack") {
   cfg.audio.la_publish_mix = 1;
   neon::MenuModel m = audio_menu(&cfg);
 
-  const char* kLabels[] = {"AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
+  const char* kLabels[] = {"AUDIO", "CLICK", "LEVEL", "OUT L",
                            "OUT R", "LINE IN", "PUBLISH", "SUB"};
-  const char* kValues[] = {"ON",  "ON",   "100%", "WOOD", "MIX",
+  const char* kValues[] = {"ON",  "WOOD", "100%", "MIX",
                            "RUN", "OFF",  "ON",   "OFF"};
   char buf[24];
   for (int i = 0; i < neon::MenuModel::kAudioItems; ++i) {
@@ -1135,7 +1136,7 @@ TEST_CASE("the panel can clear a subscription but not choose one") {
   neon::Config cfg;
   std::strcpy(cfg.audio.la_sub_channel_id, "peer/Live Master");
   neon::MenuModel m = audio_menu(&cfg);
-  m.on_rotate(8);  // SUB
+  m.on_rotate(7);  // SUB
   m.on_click();
   m.on_rotate(1);  // forwards does nothing: there is no list here
   CHECK(std::string(cfg.audio.la_sub_channel_id) == "peer/Live Master");

@@ -1337,7 +1337,6 @@ AudioPage::AudioPage(EditorHost& host) : host_(host) {
   addAndMakeVisible(roleR_);
   addAndMakeVisible(peakL_);
   addAndMakeVisible(peakR_);
-  addAndMakeVisible(metroEn_);
   addAndMakeVisible(metroSnd_);
   addAndMakeVisible(metroGain_);
   addAndMakeVisible(metroAcc_);
@@ -1389,22 +1388,16 @@ void AudioPage::load(const neon::Config& cfg, const Snapshot& snap) {
   };
   peakL_.set("L", static_cast<int>(s.peak_l));
   peakR_.set("R", static_cast<int>(s.peak_r));
-  metroEn_.setLabel("Click on every beat");
-  metroEn_.setValue(a.metro_enabled != 0);
-  metroEn_.onChange = [this](bool v) {
-    host_.patch([v](neon::Config& d) { d.audio.metro_enabled = v ? 1 : 0; });
-  };
-  metroSnd_.set("Sound", a.metro_sound == ClickSound::kNoise ? 2
-                         : a.metro_sound == ClickSound::kWood  ? 3
-                                                               : 1,
-                {{1, "Sine"}, {2, "Noise"}, {3, "Wood"}});
-  metroSnd_.onChange = [this](int id) {
-    host_.patch([id](neon::Config& d) {
-      d.audio.metro_sound = id == 2   ? ClickSound::kNoise
-                            : id == 3 ? ClickSound::kWood
-                                      : ClickSound::kSine;
-    });
-  };
+  {
+    const int mode = static_cast<int>(neon::click_mode(a));
+    metroSnd_.set("Click", mode + 1,
+                  {{1, "Off"}, {2, "Click"}, {3, "Wood"}, {4, "Metro"}});
+    metroSnd_.onChange = [this](int id) {
+      host_.patch([id](neon::Config& d) {
+        neon::apply_click_mode(d.audio, static_cast<neon::ClickMode>(id - 1));
+      });
+    };
+  }
   metroGain_.set("Level %", toPct(a.metro_gain), 0, 127);
   metroGain_.onChange = [this](int v) {
     host_.patch([v](neon::Config& d) { d.audio.metro_gain = static_cast<uint8_t>(fromPct(v)); });
@@ -1542,10 +1535,10 @@ void AudioPage::resized() {
   roleR_.setVisible(out);
   peakL_.setVisible(out);
   peakR_.setVisible(out);
-  metroEn_.setVisible(out);
+  metroEn_.setVisible(false);
   metroSnd_.setVisible(out);
   metroGain_.setVisible(out);
-  metroAcc_.setVisible(out);
+  metroAcc_.setVisible(false);
   amyEn_.setVisible(out);
   amyPatch_.setVisible(out);
   amyGain_.setVisible(out);
@@ -1567,10 +1560,8 @@ void AudioPage::resized() {
     peakL_.setBounds(st.next(16));
     peakR_.setBounds(st.next(16));
     st.skip(6);
-    metroEn_.setBounds(st.next(28));
     metroSnd_.setBounds(st.next(48));
     metroGain_.setBounds(st.next(48));
-    metroAcc_.setBounds(st.next(28));
     st.skip(6);
     amyEn_.setBounds(st.next(28));
     amyPatch_.setBounds(st.next(48));

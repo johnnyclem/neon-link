@@ -81,10 +81,11 @@ config NEON_AUDIO
     default y if NEON_BOARD_AMYBOARD
     default n
     help
-        Brings up the AMYboard's I2S audio path: a 48 kHz stereo render
-        loop on core 1, the metronome, clock/reset/run as sample-accurate
-        audio, and the Link Audio taps. Off leaves the codecs idle and
-        costs nothing.
+        Brings up the I2S audio path: a 48 kHz stereo render loop on
+        core 1, the metronome, clock/reset/run as sample-accurate audio,
+        and the Link Audio taps. On the RLCD 4.2 this is the ES8311 and
+        speaker amp; the click stays off until CLICK is enabled in
+        settings. Off leaves the codecs idle and costs nothing.
 
 config NEON_AUDIO_INPUT
     bool "Audio input (PCM3060 ADC / line in)"

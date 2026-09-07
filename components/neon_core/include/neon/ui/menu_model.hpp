@@ -99,10 +99,11 @@ class MenuModel {
   // user reaches for at the rack; the pattern editor lives in the web UI.
   static constexpr int kOutputEditItems = 17;
   static constexpr int kMidiItems = 5;
-  // AUDIO, METRO, CLICK, SOUND, OUT L, OUT R, LINE IN, PUBLISH, SUB.
+  // AUDIO, CLICK, LEVEL, OUT L, OUT R, LINE IN, PUBLISH, SUB.
+  // CLICK is the four-state speaker/metronome: OFF / CLICK / WOOD / METRO.
   // Subscribing from the panel cycles the channels Link Audio discovered;
   // naming one is the web editor's job, where there is a keyboard.
-  static constexpr int kAudioItems = 9;
+  static constexpr int kAudioItems = 8;
   // LATENCY, RESET, SOURCE, IN PPQN, GATE CLK, QUANTUM, RST EDGE,
   // MIDI NDG, SS SYNC, BRIGHT, BEAT, STYLE, COLOUR, VERSION, REBOOT —
   // REBOOT last.

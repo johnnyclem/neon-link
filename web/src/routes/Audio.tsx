@@ -125,36 +125,50 @@ export function Audio(props: PageProps) {
             ) : null}
           </Card>
 
-          <Card title="Metronome">
-            <Toggle
-              label="Click on every beat"
-              checked={a.metro_enabled}
-              onChange={(v) => patch((d) => (d.audio.metro_enabled = v))}
+          <Card
+            title="Click"
+            note="Off by default. Accent always lands on the downbeat. CLICK is a pitchless tick, WOOD a woodblock, METRO the pitched tone."
+          >
+            <SelectField
+              label="Speaker click"
+              value={
+                a.click_mode ??
+                (!a.metro_enabled
+                  ? "off"
+                  : a.metro_sound === "noise"
+                    ? "click"
+                    : a.metro_sound === "wood"
+                      ? "wood"
+                      : "metro")
+              }
+              options={[
+                { value: "off", label: "Off" },
+                { value: "click", label: "Click" },
+                { value: "wood", label: "Wood" },
+                { value: "metro", label: "Metro" },
+              ]}
+              onChange={(v) =>
+                patch((d) => {
+                  d.audio.click_mode = v;
+                  if (v === "off") {
+                    d.audio.metro_enabled = false;
+                  } else {
+                    d.audio.enabled = true;
+                    d.audio.metro_enabled = true;
+                    d.audio.metro_accent = true;
+                    d.audio.metro_sound =
+                      v === "click" ? "noise" : v === "wood" ? "wood" : "sine";
+                  }
+                })
+              }
             />
             <div class="fields" style="margin-top:var(--space-3)">
-              <SelectField
-                label="Sound"
-                value={a.metro_sound}
-                options={[
-                  { value: "sine", label: "Sine" },
-                  { value: "noise", label: "Noise" },
-                  { value: "wood", label: "Wood" },
-                ]}
-                onChange={(v) => patch((d) => (d.audio.metro_sound = v))}
-              />
               <NumberField
                 label="Level %"
                 value={toPct(a.metro_gain)}
                 min={0}
                 max={127}
                 onChange={(v) => patch((d) => (d.audio.metro_gain = fromPct(v)))}
-              />
-            </div>
-            <div style="margin-top:var(--space-3)">
-              <Toggle
-                label="Accent the downbeat"
-                checked={a.metro_accent}
-                onChange={(v) => patch((d) => (d.audio.metro_accent = v))}
               />
             </div>
           </Card>

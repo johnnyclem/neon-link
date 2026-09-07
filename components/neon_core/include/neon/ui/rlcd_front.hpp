@@ -34,6 +34,7 @@ class RlcdFrontPanel {
   enum class Action : uint8_t { kNone, kReboot, kPowerOff };
 
   static constexpr int kItems = 9;  // 8 settings + POWER
+  static constexpr int kThemeItem = 6;
   static constexpr int kPowerItem = 8;
   static constexpr int64_t kIdleUs = 25000000;
   static constexpr int64_t kTempoIdleUs = 3000000;  // Tempo screen auto-close
@@ -78,7 +79,18 @@ class RlcdFrontPanel {
   // screen's BOOT=up/KEY=down reads right there). A vertical list must
   // follow suit: BOOT (top) walks the cursor up, not down. Landscape keeps
   // the original one-button convention (tap down, hold up).
-  bool portrait() const { return cfg_ != nullptr && cfg_->display_portrait; }
+  // Menu navigation follows the committed orientation. Cycling THEME
+  // through tall/wide must not reverse BOOT mid-edit, and the glass
+  // does not rotate until the edit commits.
+  bool portrait() const {
+    if (cfg_ == nullptr) {
+      return false;
+    }
+    if (mode_ == Mode::kEdit && cursor_ == kThemeItem) {
+      return stash32_ != 0;
+    }
+    return cfg_->display_portrait != 0;
+  }
   int nav_step() const { return portrait() ? -1 : 1; }
 
   bool readonly(int index) const;

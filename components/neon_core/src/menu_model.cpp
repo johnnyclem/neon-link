@@ -117,17 +117,6 @@ const char* audio_role_name(AudioRole r) {
   }
 }
 
-const char* click_sound_name(ClickSound s) {
-  switch (s) {
-    case ClickSound::kNoise:
-      return "NOISE";
-    case ClickSound::kWood:
-      return "WOOD";
-    default:
-      return "SINE";
-  }
-}
-
 // Percent of the unity gain byte, which is what the web slider shows too.
 unsigned gain_pct(uint8_t g) {
   return static_cast<unsigned>((static_cast<uint32_t>(g) * 100u) /
@@ -450,7 +439,7 @@ const char* MenuModel::item_label(int index) const {
     }
     case Screen::kAudio: {
       static const char* kItems[kAudioItems] = {
-          "AUDIO", "METRO", "CLICK", "SOUND", "OUT L",
+          "AUDIO", "CLICK", "LEVEL", "OUT L",
           "OUT R", "LINE IN", "PUBLISH", "SUB"};
       return kItems[clamp_int(index, 0, kAudioItems - 1)];
     }
@@ -621,31 +610,28 @@ void MenuModel::item_value(int index, char* buf, int cap) const {
         std::snprintf(buf, cap, "%s", a.enabled ? "ON" : "OFF");
         break;
       case 1:
-        std::snprintf(buf, cap, "%s", a.metro_enabled ? "ON" : "OFF");
+        std::snprintf(buf, cap, "%s", click_mode_name(click_mode(a)));
         break;
       case 2:
         std::snprintf(buf, cap, "%u%%", gain_pct(a.metro_gain));
         break;
       case 3:
-        std::snprintf(buf, cap, "%s", click_sound_name(a.metro_sound));
-        break;
-      case 4:
         std::snprintf(buf, cap, "%s", audio_role_name(a.role_l));
         break;
-      case 5:
+      case 4:
         std::snprintf(buf, cap, "%s", audio_role_name(a.role_r));
         break;
-      case 6:
+      case 5:
         if (a.linein_monitor_gain == 0) {
           std::snprintf(buf, cap, "OFF");
         } else {
           std::snprintf(buf, cap, "%u%%", gain_pct(a.linein_monitor_gain));
         }
         break;
-      case 7:
+      case 6:
         std::snprintf(buf, cap, "%s", a.la_publish_mix ? "ON" : "OFF");
         break;
-      case 8:
+      case 7:
         std::snprintf(buf, cap, "%s",
                       a.la_sub_channel_id[0] != '\0' ? "ON" : "OFF");
         break;
@@ -661,36 +647,35 @@ void MenuModel::adjust_audio(int index, int delta) {
     case 0:
       a.enabled = delta > 0 ? 1 : 0;
       break;
-    case 1:
-      a.metro_enabled = delta > 0 ? 1 : 0;
+    case 1: {
+      const int n = static_cast<int>(ClickMode::kCount);
+      const int cur = static_cast<int>(click_mode(a));
+      apply_click_mode(a, static_cast<ClickMode>(
+                              wrap_int(cur + delta, n)));
       break;
+    }
     case 2:
       a.metro_gain = static_cast<uint8_t>(
           clamp_int(static_cast<int>(a.metro_gain) + delta * 5, 0, 255));
       break;
     case 3:
-      a.metro_sound = static_cast<ClickSound>(wrap_int(
-          static_cast<int>(a.metro_sound) + delta,
-          static_cast<int>(ClickSound::kSoundCount)));
-      break;
-    case 4:
       a.role_l = static_cast<AudioRole>(
           wrap_int(static_cast<int>(a.role_l) + delta,
                    static_cast<int>(AudioRole::kRoleCount)));
       break;
-    case 5:
+    case 4:
       a.role_r = static_cast<AudioRole>(
           wrap_int(static_cast<int>(a.role_r) + delta,
                    static_cast<int>(AudioRole::kRoleCount)));
       break;
-    case 6:
+    case 5:
       a.linein_monitor_gain = static_cast<uint8_t>(clamp_int(
           static_cast<int>(a.linein_monitor_gain) + delta * 5, 0, 255));
       break;
-    case 7:
+    case 6:
       a.la_publish_mix = delta > 0 ? 1 : 0;
       break;
-    case 8:
+    case 7:
       // The panel can only clear a subscription: picking one needs the
       // discovered channel list, which lives in the editor.
       if (delta < 0) {

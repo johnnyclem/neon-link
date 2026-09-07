@@ -90,9 +90,9 @@ rollback. Plus, unique to this face:
     home for both directions, since only two front buttons are usable
     (the third is the PWR button, reserved for power on/off).
   - Menu: BOOT tap/hold = cursor down/up, KEY tap = edit, KEY hold =
-    back. Eight settings (the e-paper six plus SCREEN = landscape /
-    portrait and THEME, below) and a POWER row (restart / power off /
-    cancel).
+    back. Eight settings (the e-paper six plus THEME and CLICK) and a
+    POWER row (restart / power off / cancel). THEME picks both the live
+    face and the orientation — there is no separate SCREEN row.
   - Power off paints the splash, drops the panel to LPM (the image
     persists), and deep-sleeps the ESP32. KEY wakes it.
   - **Button legend on splash only** — the three physical buttons sit in
@@ -103,7 +103,7 @@ rollback. Plus, unique to this face:
     `START/STOP  HOLD MENU`) so the cluster reads as the control, not a
     pair of floating corner boxes. Once the live face is running the
     labels come off — they will be silkscreened on the enclosure — so
-    Pulse / Dots / Console / Hero keep the glass for tempo and beat.
+    Pulse / Ink / Night / Classic keep the glass for tempo and beat.
 
 - **Landscape / portrait** — the panel is a 300×400 portrait controller
   the firmware normally drives as 400×300 landscape (buttons on the top
@@ -111,7 +111,8 @@ rollback. Plus, unique to this face:
   (300×400, the status face reflowed tall) oriented so the buttons sit
   on the **left** — the way the panel turns into a portrait stand. There
   is no accelerometer, so it is a stored preference toggled three ways:
-  - **Menu:** the SCREEN row (landscape ⇄ portrait). The everyday path.
+  - **Menu:** THEME includes a tall and a wide variant of each face.
+    The everyday path.
   - **Blind chord:** hold **KEY + BOOT together for 3 s**. After ~0.7 s
     a "ROTATING TO …" countdown appears in the orientation it is about
     to switch to (so it reads upright in the stand you are turning
@@ -124,32 +125,28 @@ rollback. Plus, unique to this face:
   draw ops take logical 300×400 coordinates that map into the physical
   400×300 buffer, so the packer and ST7305 driver are untouched.
 
-- **Themes** — the THEME menu row (also `config.mono_theme` in the web
-  editor / JSON API) switches the live status face. Every theme renders
-  in both orientations; the settings/tempo/power overlays keep one shared
-  layout and simply invert with the dark themes, so the whole UI reads as
-  one piece. A theme only restyles the live face — the buttons, menu, and
-  data are identical everywhere. The faces (`neon::MonoTheme`,
-  host-tested, previewable via the render code on the host):
-  - `CLASSIC` — the original face: header, BPM, beat dots, network,
-    footer. The default.
-  - `INK` — light and chrome-free: peers + battery, a big centered BPM,
-    beat dots, transport state.
-  - `DOTS` — dark, dot-matrix hero digits, peers + battery in the header.
-  - `HERO` — dark, one giant integer BPM readable across a room.
-  - `CONSOLE` — dark instrument panel: LINK session box, a TAP / PEERS /
-    BATT data column, RUN / STOP with the active word underlined.
-  - `GRID` — light, everything boxed: title bar, tempo row, one tall cell
-    per beat, an inverted state banner, peer tick boxes.
+- **Themes** — the THEME menu row cycles eight choices, each a face plus
+  an orientation: Pulse / Ink / Night / Classic × tall / wide. Default is
+  Classic (wide). The same `config.mono_theme` + `display_portrait` fields
+  the web editor uses; the panel just edits them as one control. A theme
+  only restyles the live face — the buttons, menu, and data are identical
+  everywhere. Overlays invert with the dark themes (Night). The four
+  faces (`neon::MonoTheme`, host-tested):
   - `PULSE` — the metronome face: while playing the whole screen is a
     giant beat count that flashes inverted on the one (the reflective
     panel repaints in milliseconds, so it can afford to be a metronome);
     stopped, it settles into a big-BPM standby.
+  - `INK` — light and chrome-free: peers + battery, a big centered BPM,
+    beat dots, transport state.
   - `NIGHT` — the classic face inverted for dark rooms.
-  The minimal faces still print the setup-AP credentials along the bottom
-  edge whenever the box is offering its setup network — physical access
-  stays the credential. The enum is named `MonoTheme` (not `RlcdTheme`)
-  so the e-paper faces can adopt the same vocabulary later.
+  - `CLASSIC` — the original face: header, BPM, beat dots, network,
+    footer. The default.
+  Dots / Hero / Console / Grid still render if set from the web editor;
+  the on-device menu no longer offers them. The minimal faces still print
+  the setup-AP credentials along the bottom edge whenever the box is
+  offering its setup network — physical access stays the credential. The
+  enum is named `MonoTheme` (not `RlcdTheme`) so the e-paper faces can
+  adopt the same vocabulary later.
 
 ## Pin map
 
@@ -174,10 +171,14 @@ classic U0TXD/U0RXD pads (GPIO 43/44) on the 2×8 expansion header are
 free and carry TRS MIDI, exactly like the MaTouch target. Type A TRS:
 tip = current source through 220 Ω, ring = GND; opto (6N138) on RX.
 
-The ES8311/ES7210 audio path is wired into the Kconfig I2S defaults
-but `CONFIG_NEON_AUDIO` ships **off** — enable it manually if you want
-the metronome click through the onboard speaker, and measure the heap
-first (see the Kconfig help on `NEON_AUDIO_INPUT`).
+The ES8311 DAC and speaker amp (PA GPIO 46) are compiled in. Speaker
+click is opt-in from the two-button settings list **CLICK**, which
+cycles **OFF / CLICK / WOOD / METRO** (default OFF). Any voice other
+than OFF starts I2S; OFF idles the codec. CLICK is a pitchless tick,
+WOOD a woodblock, METRO the pitched tone. The accent always lands on
+the downbeat, and the click follows transport — it ticks only while
+the panel shows a running clock. Onboard mics (ES7210 on DIN 10) are
+not used.
 
 ## Driver notes (halesp::rlcd_st7305)
 

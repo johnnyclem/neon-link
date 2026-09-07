@@ -720,10 +720,9 @@ const char* lcd_item_label(int i) {
     }
 #endif
   } else if (scr == S::kAudio) {
-    static const char* k[] = {"AUDIO",  "METRONOME", "CLICK",   "SOUND",
-                              "OUT L",  "OUT R",     "LINE IN", "PUBLISH",
-                              "SUB"};
-    if (i >= 0 && i < 9) {
+    static const char* k[] = {"AUDIO",  "CLICK",     "LEVEL",   "OUT L",
+                              "OUT R",  "LINE IN",   "PUBLISH", "SUB"};
+    if (i >= 0 && i < 8) {
       return k[i];
     }
   }

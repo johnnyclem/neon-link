@@ -386,6 +386,7 @@ TEST_CASE("audio defaults are off and quiet") {
   const neon::Config cfg;
   CHECK(cfg.audio.enabled == 0);
   CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kOff);
   CHECK(cfg.audio.role_l == neon::AudioRole::kMix);
   CHECK(cfg.audio.role_r == neon::AudioRole::kMix);
   CHECK(cfg.audio.metro_gain == neon::kUnityGainByte);
@@ -395,6 +396,37 @@ TEST_CASE("audio defaults are off and quiet") {
   CHECK(cfg.audio.la_jitter_ms == 60);
   CHECK(cfg.audio.la_channel_name[0] == '\0');
   CHECK(cfg.audio.la_sub_channel_id[0] == '\0');
+}
+
+TEST_CASE("apply_click_mode maps OFF/CLICK/WOOD/METRO") {
+  neon::Config cfg;
+  neon::apply_click_mode(cfg.audio, neon::ClickMode::kClick);
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_accent == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kClick);
+
+  neon::apply_click_mode(cfg.audio, neon::ClickMode::kWood);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kWood);
+
+  neon::apply_click_mode(cfg.audio, neon::ClickMode::kMetro);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kMetro);
+
+  neon::apply_click_mode(cfg.audio, neon::ClickMode::kOff);
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(cfg.audio.enabled == 1);  // engine switch is independent
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kOff);
+
+  neon::idle_audio_if_click_unused(cfg.audio);
+  CHECK(cfg.audio.enabled == 0);
+
+  cfg.audio.amy_enabled = 1;
+  cfg.audio.enabled = 1;
+  neon::idle_audio_if_click_unused(cfg.audio);
+  CHECK(cfg.audio.enabled == 1);
 }
 
 TEST_CASE("the audio block survives an encode/decode round trip") {

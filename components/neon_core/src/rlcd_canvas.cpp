@@ -489,8 +489,8 @@ static void render_portrait(RlcdCanvas& c, const RlcdPanelStatus& rs) {
 
   if (s.overlay == 1 || s.overlay == 2) {
     c.draw_text(14, 98, s.overlay == 2 ? "EDIT" : "MENU", 2);
-    // Rows sit between the top BOOT tab and the bottom KEY tab (all nine
-    // settings must clear the KEY tab that starts at height-44).
+    // Rows sit between the top BOOT tab and the bottom KEY tab (eight
+    // settings plus POWER must clear the KEY tab that starts at height-44).
     const int row0 = 116;
     const int row_h = 26;
     for (int i = 0; i < s.n_items && i < 10; ++i) {

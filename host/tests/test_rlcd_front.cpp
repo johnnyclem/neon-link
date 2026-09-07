@@ -83,6 +83,18 @@ TEST_CASE("auto-repeat is inert outside the tempo screen") {
   CHECK(ui.mode() == Mode::kLive);
 }
 
+TEST_CASE("menu rows are the e-paper six plus THEME, CLICK, POWER") {
+  Config cfg;
+  RlcdFrontPanel ui(&cfg);
+  CHECK(RlcdFrontPanel::kItems == 9);
+  CHECK(std::strcmp(ui.item_label(6), "THEME") == 0);
+  CHECK(std::strcmp(ui.item_label(7), "CLICK") == 0);
+  CHECK(std::strcmp(ui.item_label(8), "POWER") == 0);
+  for (int i = 0; i < RlcdFrontPanel::kItems; ++i) {
+    CHECK(std::strcmp(ui.item_label(i), "SCREEN") != 0);
+  }
+}
+
 TEST_CASE("menu navigation with two buttons") {
   Config cfg;
   RlcdFrontPanel ui(&cfg);
@@ -194,61 +206,136 @@ TEST_CASE("quantum steps through the ladder and the value renders") {
   CHECK(std::strcmp(v, "8") == 0);
 }
 
-TEST_CASE("SCREEN row toggles portrait and renders its value") {
+TEST_CASE("THEME row cycles face and orientation together") {
   Config cfg;
+  cfg.mono_theme = neon::MonoTheme::kClassic;
   cfg.display_portrait = 0;
   RlcdFrontPanel ui(&cfg);
   ui.on_key_short(1);
   ui.on_key_long(2);
-  for (int i = 0; i < 6; ++i) {
-    ui.on_boot_short(3 + i);  // cursor -> 6 = SCREEN
+  for (int i = 0; i < RlcdFrontPanel::kThemeItem; ++i) {
+    ui.on_boot_short(3 + i);  // cursor -> THEME
   }
-  CHECK(ui.cursor() == 6);
+  CHECK(ui.cursor() == RlcdFrontPanel::kThemeItem);
   char v[16];
-  ui.item_value(6, v, sizeof(v));
-  CHECK(std::strcmp(v, "LAND") == 0);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Classic (wide)") == 0);
 
-  ui.on_key_short(10);   // enter edit
-  ui.on_boot_short(11);  // toggle
+  ui.on_key_short(20);   // enter edit
+  ui.on_boot_short(21);  // Classic (wide) wraps to Pulse (tall)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kPulse);
   CHECK(cfg.display_portrait == 1);
-  ui.item_value(6, v, sizeof(v));
-  CHECK(std::strcmp(v, "PORT") == 0);
-  ui.on_key_short(12);  // commit
-  CHECK(ui.mode() == Mode::kMenu);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Pulse (tall)") == 0);
+  ui.on_boot_short(22);  // Pulse (wide)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kPulse);
+  CHECK(cfg.display_portrait == 0);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Pulse (wide)") == 0);
+  ui.on_boot_short(23);  // Ink (tall)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kInk);
+  CHECK(cfg.display_portrait == 1);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Ink (tall)") == 0);
+  ui.on_key_long(24);  // cancel
+  CHECK(cfg.mono_theme == neon::MonoTheme::kClassic);
+  CHECK(cfg.display_portrait == 0);
+  CHECK_FALSE(ui.take_dirty());
+
+  ui.on_key_short(25);   // re-enter edit
+  ui.on_boot_long(26);   // Classic (wide) -> Classic (tall)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kClassic);
+  CHECK(cfg.display_portrait == 1);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Classic (tall)") == 0);
+  ui.on_boot_long(27);  // Night (wide)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kNight);
+  CHECK(cfg.display_portrait == 0);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Night (wide)") == 0);
+  ui.on_key_short(28);  // commit
   CHECK(ui.take_dirty());
+  CHECK(cfg.mono_theme == neon::MonoTheme::kNight);
+  CHECK(cfg.display_portrait == 0);
 }
 
-TEST_CASE("THEME row cycles the mono theme and reverts on cancel") {
+TEST_CASE("THEME row maps a retired face onto the four-theme cycle") {
   Config cfg;
-  cfg.mono_theme = neon::MonoTheme::kClassic;
+  cfg.mono_theme = neon::MonoTheme::kDots;
+  cfg.display_portrait = 0;
+  RlcdFrontPanel ui(&cfg);
+  ui.on_key_short(1);
+  ui.on_key_long(2);
+  for (int i = 0; i < RlcdFrontPanel::kThemeItem; ++i) {
+    ui.on_boot_short(3 + i);
+  }
+  char v[16];
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "DOTS") == 0);
+
+  ui.on_key_short(20);
+  ui.on_boot_short(21);  // mapped Classic (wide) wraps to Pulse (tall)
+  CHECK(cfg.mono_theme == neon::MonoTheme::kPulse);
+  CHECK(cfg.display_portrait == 1);
+  ui.item_value(RlcdFrontPanel::kThemeItem, v, sizeof(v));
+  CHECK(std::strcmp(v, "Pulse (tall)") == 0);
+  ui.on_key_long(22);  // cancel restores the web-set face
+  CHECK(cfg.mono_theme == neon::MonoTheme::kDots);
+  CHECK(cfg.display_portrait == 0);
+}
+
+TEST_CASE("CLICK row cycles OFF/CLICK/WOOD/METRO, default off") {
+  Config cfg;
+  CHECK(cfg.audio.enabled == 0);
+  CHECK(cfg.audio.metro_enabled == 0);
   RlcdFrontPanel ui(&cfg);
   ui.on_key_short(1);
   ui.on_key_long(2);
   for (int i = 0; i < 7; ++i) {
-    ui.on_boot_short(3 + i);  // cursor -> 7 = THEME
+    ui.on_boot_short(3 + i);  // cursor -> 7 = CLICK
   }
   CHECK(ui.cursor() == 7);
   char v[16];
   ui.item_value(7, v, sizeof(v));
-  CHECK(std::strcmp(v, "CLASSIC") == 0);
+  CHECK(std::strcmp(v, "OFF") == 0);
 
-  ui.on_key_short(20);   // enter edit
-  ui.on_boot_short(21);  // CLASSIC -> INK
-  CHECK(cfg.mono_theme == neon::MonoTheme::kInk);
+  ui.on_key_short(20);
+  ui.on_boot_short(21);  // OFF -> CLICK
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
   ui.item_value(7, v, sizeof(v));
-  CHECK(std::strcmp(v, "INK") == 0);
-  ui.on_boot_long(22);  // back down -> CLASSIC
-  ui.on_boot_long(23);  // wraps to NIGHT
-  CHECK(cfg.mono_theme == neon::MonoTheme::kNight);
+  CHECK(std::strcmp(v, "CLICK") == 0);
+  ui.on_boot_short(22);  // CLICK -> WOOD
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kWood);
+  ui.item_value(7, v, sizeof(v));
+  CHECK(std::strcmp(v, "WOOD") == 0);
+  ui.on_boot_short(23);  // WOOD -> METRO
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kSine);
+  ui.item_value(7, v, sizeof(v));
+  CHECK(std::strcmp(v, "METRO") == 0);
   ui.on_key_long(24);  // cancel
-  CHECK(cfg.mono_theme == neon::MonoTheme::kClassic);
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(cfg.audio.enabled == 0);
   CHECK_FALSE(ui.take_dirty());
 
-  ui.on_key_short(25);   // re-enter edit
-  ui.on_boot_short(26);  // -> INK
+  ui.on_key_short(25);
+  ui.on_boot_short(26);  // OFF -> CLICK
   ui.on_key_short(27);   // commit
   CHECK(ui.take_dirty());
-  CHECK(cfg.mono_theme == neon::MonoTheme::kInk);
+  CHECK(cfg.audio.enabled == 1);
+  CHECK(cfg.audio.metro_enabled == 1);
+  CHECK(cfg.audio.metro_sound == neon::ClickSound::kNoise);
+
+  ui.on_key_short(28);
+  ui.on_boot_short(29);  // CLICK -> WOOD
+  ui.on_boot_short(30);  // WOOD -> METRO
+  ui.on_boot_short(31);  // METRO -> OFF
+  CHECK(cfg.audio.metro_enabled == 0);
+  CHECK(cfg.audio.enabled == 0);
+  ui.on_key_short(32);  // commit
+  CHECK(ui.take_dirty());
+  CHECK(neon::click_mode(cfg.audio) == neon::ClickMode::kOff);
 }
 
 TEST_CASE("menu idles back to live and reverts a pending edit") {

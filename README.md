@@ -299,7 +299,8 @@ idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-epd"
 Same dongle firmware on the 4.2" ST7305 reflective panel — repaints in
 milliseconds with no flash, so the glass shows the beat live, then
 drops to a 1 Hz microamp scan when idle. Battery gauge on the panel,
-TRS MIDI on the expansion header's TXD/RXD pads.
+TRS MIDI on the expansion header's TXD/RXD pads. Settings **CLICK** cycles OFF / CLICK / WOOD / METRO to the onboard
+speaker (off by default).
 See **[docs/LINKSYNC_RLCD.md](docs/LINKSYNC_RLCD.md)**.
 
 ```bash

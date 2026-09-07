@@ -340,6 +340,10 @@ void apply_ui_config(const neon::Config& ui_cfg) {
   live.midi_trs_type = ui_cfg.midi_trs_type;
   live.display_portrait = ui_cfg.display_portrait;
   live.mono_theme = ui_cfg.mono_theme;
+  live.audio.enabled = ui_cfg.audio.enabled;
+  live.audio.metro_enabled = ui_cfg.audio.metro_enabled;
+  live.audio.metro_sound = ui_cfg.audio.metro_sound;
+  live.audio.metro_accent = ui_cfg.audio.metro_accent;
   neon_config_apply(live);
 }
 
@@ -566,8 +570,10 @@ void rlcd_task(void*) {
     neon_config_flush(now);
 
     // Keep the panel orientation in step with config — covers a change made
-    // in the web editor as well as the chord toggle above.
-    if (canvas->orientation() != orient_of(ui_cfg)) {
+    // in the web editor as well as the chord toggle above. Skip while THEME
+    // is being edited so cycling tall/wide does not rotate the menu.
+    if (ui.mode() != neon::RlcdFrontPanel::Mode::kEdit &&
+        canvas->orientation() != orient_of(ui_cfg)) {
       canvas->set_orientation(orient_of(ui_cfg));
       have_fp = false;
     }

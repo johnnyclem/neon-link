@@ -215,18 +215,62 @@ bool RlcdFrontPanel::take_toggle() {
 }
 
 namespace {
-// Order matches MonoTheme; kept to <= 15 chars so a value fits its slot.
+// Fallback names for themes the RLCD menu no longer offers (still
+// reachable from the web editor). Order matches MonoTheme.
 const char* kThemeNames[] = {"CLASSIC", "INK",  "DOTS",  "HERO",
                              "CONSOLE", "GRID", "PULSE", "NIGHT"};
 static_assert(sizeof(kThemeNames) / sizeof(kThemeNames[0]) ==
                   static_cast<size_t>(MonoTheme::kCount),
               "theme name per MonoTheme value");
+
+// THEME row: four faces × tall/wide. Names fit the 15-char value slot.
+struct FaceChoice {
+  MonoTheme theme;
+  uint8_t portrait;  // 1 = tall
+  const char* name;
+};
+
+constexpr int kFaceN = 8;
+const FaceChoice kFaces[kFaceN] = {
+    {MonoTheme::kPulse, 1, "Pulse (tall)"},
+    {MonoTheme::kPulse, 0, "Pulse (wide)"},
+    {MonoTheme::kInk, 1, "Ink (tall)"},
+    {MonoTheme::kInk, 0, "Ink (wide)"},
+    {MonoTheme::kNight, 1, "Night (tall)"},
+    {MonoTheme::kNight, 0, "Night (wide)"},
+    {MonoTheme::kClassic, 1, "Classic (tall)"},
+    {MonoTheme::kClassic, 0, "Classic (wide)"},
+};
+static_assert(sizeof("Classic (wide)") <= 16, "value slot is 15 chars + NUL");
+
+bool face_listed(MonoTheme t) {
+  return t == MonoTheme::kPulse || t == MonoTheme::kInk ||
+         t == MonoTheme::kNight || t == MonoTheme::kClassic;
+}
+
+int face_index(const Config& c) {
+  const MonoTheme t = face_listed(c.mono_theme) ? c.mono_theme
+                                                : MonoTheme::kClassic;
+  const uint8_t p = c.display_portrait ? 1 : 0;
+  for (int i = 0; i < kFaceN; ++i) {
+    if (kFaces[i].theme == t && kFaces[i].portrait == p) {
+      return i;
+    }
+  }
+  return kFaceN - 1;
+}
+
+void apply_face(Config& c, int i) {
+  const FaceChoice& f = kFaces[wrap(i, kFaceN)];
+  c.mono_theme = f.theme;
+  c.display_portrait = f.portrait;
+}
 }  // namespace
 
 const char* RlcdFrontPanel::item_label(int index) const {
-  static const char* kLabels[kItems] = {"PPQN",     "TRS",      "AP",
-                                        "QUANTUM",  "SS SYNC",  "MIDI CLK",
-                                        "SCREEN",   "THEME",    "POWER"};
+  static const char* kLabels[kItems] = {"PPQN",    "TRS",     "AP",
+                                        "QUANTUM", "SS SYNC", "MIDI CLK",
+                                        "THEME",   "CLICK",   "POWER"};
   if (index < 0 || index >= kItems) {
     return "";
   }
@@ -262,12 +306,16 @@ void RlcdFrontPanel::item_value(int index, char* buf, int cap) const {
       std::snprintf(buf, cap, "%s", cfg_->midi_clock_out ? "ON" : "OFF");
       break;
     case 6:
-      std::snprintf(buf, cap, "%s", cfg_->display_portrait ? "PORT" : "LAND");
+      if (face_listed(cfg_->mono_theme)) {
+        std::snprintf(buf, cap, "%s", kFaces[face_index(*cfg_)].name);
+      } else {
+        std::snprintf(buf, cap, "%s",
+                      kThemeNames[static_cast<uint8_t>(cfg_->mono_theme) %
+                                  static_cast<uint8_t>(MonoTheme::kCount)]);
+      }
       break;
     case 7:
-      std::snprintf(buf, cap, "%s",
-                    kThemeNames[static_cast<uint8_t>(cfg_->mono_theme) %
-                                static_cast<uint8_t>(MonoTheme::kCount)]);
+      std::snprintf(buf, cap, "%s", click_mode_name(click_mode(cfg_->audio)));
       break;
     case 8:
       std::snprintf(buf, cap, ">");
@@ -307,10 +355,11 @@ void RlcdFrontPanel::stash() {
       stash8_ = cfg_->midi_clock_out;
       break;
     case 6:
-      stash8_ = cfg_->display_portrait;
+      stash8_ = static_cast<uint8_t>(cfg_->mono_theme);
+      stash32_ = cfg_->display_portrait;
       break;
     case 7:
-      stash8_ = static_cast<uint8_t>(cfg_->mono_theme);
+      stash8_ = static_cast<uint8_t>(click_mode(cfg_->audio));
       break;
     default:
       break;
@@ -338,10 +387,12 @@ void RlcdFrontPanel::revert() {
       cfg_->midi_clock_out = stash8_;
       break;
     case 6:
-      cfg_->display_portrait = stash8_;
+      cfg_->mono_theme = static_cast<MonoTheme>(stash8_);
+      cfg_->display_portrait = stash32_ ? 1 : 0;
       break;
     case 7:
-      cfg_->mono_theme = static_cast<MonoTheme>(stash8_);
+      apply_click_mode(cfg_->audio, static_cast<ClickMode>(stash8_));
+      idle_audio_if_click_unused(cfg_->audio);
       break;
     default:
       break;
@@ -380,13 +431,14 @@ void RlcdFrontPanel::step(int delta) {
       cfg_->midi_clock_out = cfg_->midi_clock_out ? 0 : 1;
       break;
     case 6:
-      cfg_->display_portrait = cfg_->display_portrait ? 0 : 1;
+      apply_face(*cfg_, face_index(*cfg_) + (delta > 0 ? 1 : -1));
       break;
     case 7: {
-      const int n = static_cast<int>(MonoTheme::kCount);
-      const int t =
-          wrap(static_cast<int>(cfg_->mono_theme) + (delta > 0 ? 1 : -1), n);
-      cfg_->mono_theme = static_cast<MonoTheme>(t);
+      const int n = static_cast<int>(ClickMode::kCount);
+      const int cur = static_cast<int>(click_mode(cfg_->audio));
+      apply_click_mode(cfg_->audio, static_cast<ClickMode>(
+                                        wrap(cur + (delta > 0 ? 1 : -1), n)));
+      idle_audio_if_click_unused(cfg_->audio);
       break;
     }
     default:
