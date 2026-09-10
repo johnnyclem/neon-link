@@ -168,8 +168,14 @@ From the vendor board manifest and schematic
 
 The console is the native USB Serial/JTAG on the Type-C port, so the
 classic U0TXD/U0RXD pads (GPIO 43/44) on the 2×8 expansion header are
-free and carry TRS MIDI, exactly like the MaTouch target. Type A TRS:
-tip = current source through 220 Ω, ring = GND; opto (6N138) on RX.
+free for MIDI, the same path as the C3 OLED stamp. **TX = GPIO 43**
+(24 PPQN + start/stop/continue while playing, if MIDI CLK is ON).
+**RX = GPIO 44** (opto-isolated MIDI IN → clock PLL + transport; always
+live). Type A TRS OUT: tip = DIN 5 (TX through 220 Ω), ring = DIN 4
+(3V3 through 220 Ω), sleeve = GND. IN is the MIDI chip’s opto onto RX;
+do not wire a DIN loop straight to GPIO 44. A UART MIDI module on
+those four pins (TX, RX, 3V3, GND, jumpers at 3.3 V) is
+[adapters/midi-uart-breakout](../adapters/midi-uart-breakout/README.md).
 
 The ES8311 DAC and speaker amp (PA GPIO 46) are compiled in. Speaker
 click is opt-in from the two-button settings list **CLICK**, which

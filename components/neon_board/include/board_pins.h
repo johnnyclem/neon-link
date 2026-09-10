@@ -269,8 +269,11 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-inline constexpr int kPinMidiTx = -1;
-inline constexpr int kPinMidiRx = -1;
+// Grove HY2.0-4P (Port A): GPIO53 / GPIO54. UART1 @ 31250, same
+// MIDI-chip hookup as the RLCD (TX, RX, 3V3, GND, jumpers 3.3 V).
+// Yellow = 53 TX, white = 54 RX; swap the two if OUT is silent.
+inline constexpr int kPinMidiTx = 53;
+inline constexpr int kPinMidiRx = 54;
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 
@@ -392,9 +395,8 @@ inline constexpr int kPinTempoCv = -1;
 // TRS MIDI clock out (UART1 @ 31250, ClockEngine on core 1). GPIO43 is the
 // classic UART0 TXD, free on this board because the console runs on the
 // native USB Serial/JTAG, and it is broken out on the expansion header as
-// "TX". Wire a TRS jack (Type A: tip = current source through 220R, ring =
-// GND) to hear 24 PPQN clock. RX is left unwired — this board sends clock,
-// it does not follow external MIDI.
+// "TX". Type A TRS OUT: tip = TX through 220R, ring = 3V3 through 220R.
+// RX (GPIO44) is MIDI IN after an opto — midi_service drains it into the PLL.
 inline constexpr int kPinMidiTx = 43;  // U0TXD on the header
 // TRS MIDI in (UART1 RX @ 31250). GPIO44 is the classic UART0 RXD, the
 // header pad silk-labelled RXD/IO44, free because the console is on the

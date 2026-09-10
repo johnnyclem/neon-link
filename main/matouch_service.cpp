@@ -1241,70 +1241,8 @@ void test_note_tick() {
   }
 }
 
-// External MIDI clock follow. Bytes arrive on RX (GPIO44) from a MIDI IN
-// source; 24 PPQN clock is counted over a ~1 s window to estimate BPM
-// (pushed to the Link session as kSetTempo), and Start/Stop drive the
-// transport. Tempo + transport follow, not sample-accurate phase lock.
-int g_midi_clocks = 0;
-int64_t g_midi_window_us = 0;
-int64_t g_midi_last_rx_us = 0;
-
-void midi_in_tick() {
-  const int64_t now = esp_timer_get_time();
-  uint8_t buf[128];
-  for (;;) {
-    const int n = halesp::midi_uart_read(buf, sizeof(buf));
-    if (n <= 0) {
-      break;
-    }
-    for (int i = 0; i < n; ++i) {
-      const uint8_t b = buf[i];
-      if (b == 0xF8) {  // clock
-        ++g_midi_clocks;
-        g_midi_last_rx_us = now;
-      } else if (b == 0xFA || b == 0xFB) {  // start / continue
-        ControlCommand c{};
-        c.kind = ControlCommand::Kind::kPlayNow;
-        control_queue_push(c);
-        g_midi_last_rx_us = now;
-      } else if (b == 0xFC) {  // stop
-        ControlCommand c{};
-        c.kind = ControlCommand::Kind::kStopNow;
-        control_queue_push(c);
-        g_midi_last_rx_us = now;
-      }
-    }
-    if (n < static_cast<int>(sizeof(buf))) {
-      break;
-    }
-  }
-  if (g_midi_window_us == 0) {
-    g_midi_window_us = now;
-  }
-  const int64_t dt = now - g_midi_window_us;
-  if (dt >= 1000000) {
-    if (g_midi_clocks > 0) {
-      // 24 PPQN: milli_bpm = clocks / (dt seconds) / 24 * 60 * 1000
-      //                    = clocks * 2.5e9 / dt_us.
-      const uint32_t milli_bpm = static_cast<uint32_t>(
-          (static_cast<int64_t>(g_midi_clocks) * 2500000000LL) / dt);
-      if (milli_bpm >= neon::kMinMilliBpm && milli_bpm <= neon::kMaxMilliBpm) {
-        ControlCommand c{};
-        c.kind = ControlCommand::Kind::kSetTempo;
-        c.arg = static_cast<int32_t>(milli_bpm);
-        control_queue_push(c);
-      }
-    }
-    g_midi_clocks = 0;
-    g_midi_window_us = now;
-  }
-}
-
-// True for ~0.6 s after the last realtime byte, for the live-face badge.
-bool midi_in_active() {
-  return g_midi_last_rx_us != 0 &&
-         (esp_timer_get_time() - g_midi_last_rx_us) < 600000;
-}
+// MIDI IN follow lives in midi_service (PLL + transport), same as C3.
+bool midi_in_active() { return app_status_ext_clock(); }
 
 void draw_midi_in_badge() {
   if (midi_in_active()) {
@@ -1521,7 +1459,6 @@ void matouch_task(void*) {
         g_dimmer.note_activity(now);
         g_swallow_touch = tdown;  // drop the rest of the waking gesture
       }
-      midi_in_tick();
       test_note_tick();
       wifi_tick();
       // A transport started remotely must un-blank: playing never
@@ -1535,7 +1472,6 @@ void matouch_task(void*) {
     }
     handle_encoder();
     handle_touch();
-    midi_in_tick();    // follow external MIDI clock + start/stop on RX
     test_note_tick();  // release a pending test note
 
     wifi_tick();  // auto-save + return home once the join gets an IP

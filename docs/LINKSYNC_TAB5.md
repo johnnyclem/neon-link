@@ -44,7 +44,10 @@ Isolated tree: `build-linksync-tab5/`. Does not overwrite CrowPanel or
 S3 sdkconfig.
 
 SoftAP is `LINK-TAB-XXXX` (password on the glass). Grove HY2.0-4P
-(GPIO 53/54) is reserved for MIDI later.
+(GPIO **53 TX** / **54 RX**, UART1 @ 31250) is MIDI IN+OUT — same
+four-wire hookup as the RLCD (TX, RX, 3V3, GND; MIDI-chip jumpers at
+3.3 V). Swap 53/54 if OUT is silent. Clock/transport follow uses the
+C3 OLED PLL path (`midi_service`).
 
 ## Idle dimming
 

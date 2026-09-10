@@ -58,6 +58,7 @@ unit with IDF 5.5.5 and `sdkconfig.defaults.p4v31`:
 | Link Audio | **Yes** — I2S via the onboard ES8311 3.5 mm jack |
 | Audio (ES8311) | **Yes** — MCLK13 SCLK12 LRCK10 DOUT9 DIN11 PA53 |
 | Encoder | KY-040 on GPIO 2/3/4 (40-pin header) |
+| MIDI IN+OUT | **Yes** — UART1 GPIO **20 TX / 21 RX** on the 40-pin header (not the USB-UART TXD/RXD). Opto on RX. Same C3 OLED PLL follow. |
 
 ## I2C header
 
