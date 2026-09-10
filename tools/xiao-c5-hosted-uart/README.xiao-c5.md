@@ -1,9 +1,14 @@
 # XIAO ESP32-C5 ESP-Hosted UART slave
 
+**Abandoned.** The C5 Hosted UART path never synced. CrowPanel Advance
+5.0" (`linksync-p4lcd`) uses the onboard C6 over SDIO for Wi-Fi and
+Crowtail UART1 GPIO 47/48 for MIDI (DIP = UART). Do not flash this
+image onto a C5 in that header expecting the P4 firmware to talk to it.
+
 Coprocessor image for a **Seeed XIAO ESP32-C5** seated on the CrowPanel
-Advance 5.0" XIAO header with the back DIP on **WM**. The P4 talks to
-this chip over UART1 (GPIO 47/48) instead of the onboard C6 (2.4 GHz
-only).
+Advance 5.0" XIAO header with the back DIP on **WM**. Historical: the P4
+was meant to talk to this chip over UART1 (GPIO 47/48) instead of the
+onboard C6 (2.4 GHz only).
 
 Upstream example: `idf.py create-project-from-example "espressif/esp_hosted=2.12.9:slave"`
 plus the XIAO overlay at the bottom of `sdkconfig.defaults.esp32c5`.

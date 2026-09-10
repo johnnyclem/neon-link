@@ -192,7 +192,7 @@ extern "C" void app_main(void) {
   neon_start_link_service();
   // ClockEngine owns TRS/UART clock out on link-sync; this task drains
   // MIDI IN into the PLL (C3 OLED path). UART init is a no-op when both
-  // MIDI pins are -1 (P4 LCD Hosted radio owns UART1).
+  // MIDI pins are -1.
   neon_start_midi_service();
   // Always linked: web_ui resolves /api/audio/channels against these
   // symbols. On link-sync the service is a no-op (CONFIG_NEON_AUDIO=n).

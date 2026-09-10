@@ -33,6 +33,12 @@ BUILD_DIR="build-linksync-p4lcd"
 SDKCONFIG="$BUILD_DIR/sdkconfig"
 DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linksync-p4lcd"
 
+# Stale C5 Hosted UART sdkconfig claims UART1; Crowtail MIDI needs it.
+if [[ -f "$SDKCONFIG" ]] && grep -q 'CONFIG_ESP_HOSTED_UART_HOST_INTERFACE=y' "$SDKCONFIG"; then
+  echo "Dropping stale C5 Hosted UART sdkconfig so Crowtail MIDI can own UART1."
+  rm -f "$SDKCONFIG"
+fi
+
 echo "Building link-sync-p4lcd (ESP32-P4, isolated $BUILD_DIR)..."
 idf.py -B "$BUILD_DIR" -DSDKCONFIG="$SDKCONFIG" \
   -DSDKCONFIG_DEFAULTS="$DEFAULTS" \

@@ -416,7 +416,7 @@ int neon_wifi_scan(NeonWifiScanEntry* out, int max_entries) {
   if (out == nullptr || max_entries <= 0) {
     return 0;
   }
-  // Hosted UART init blocks ~20 s (or forever). Do not start a second
+  // Hosted init can block ~20 s (or forever). Do not start a second
   // esp_wifi_init from SCAN while the radio task is still waiting.
   if (!netman::wifi_driver_ready()) {
     ESP_LOGW(kTag, "scan skipped: wifi driver not up");

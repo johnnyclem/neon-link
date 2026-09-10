@@ -62,19 +62,17 @@ bool start_ap_from_config() {
 }
 
 #if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
-// Hosted UART blocks in esp_wifi_init until the C5 sends ESPInit — up
-// to ~20 s, or forever if the coprocessor never talks. RUN/STOP live on
-// this task's control-queue loop, so SoftAP must not run here.
-// XIAO EN is not on the header, so a missed ESPInit is recovered by
-// retrying after the user taps RST on the C5.
+// Hosted SDIO to the onboard C6 can block in esp_wifi_init if the
+// coprocessor firmware is old or silent. RUN/STOP live on this task's
+// control-queue loop, so SoftAP must not run here.
 bool g_hosted_ap_kicked = false;
 int64_t g_hosted_retry_us = 0;
 
 void hosted_ap_task(void*) {
   if (start_ap_from_config()) {
-    ESP_LOGI(kTag, "C5 up; setup AP is on the air");
+    ESP_LOGI(kTag, "C6 up; setup AP is on the air");
   } else {
-    ESP_LOGW(kTag, "P4 LCD: SoftAP failed; retry after C5 RST");
+    ESP_LOGW(kTag, "P4 LCD: SoftAP failed; local Link only");
     g_hosted_retry_us = esp_timer_get_time() + 3000000;
     g_hosted_ap_kicked = false;
   }
@@ -89,7 +87,7 @@ void kick_hosted_ap() {
     return;
   }
   g_hosted_ap_kicked = true;
-  ESP_LOGI(kTag, "C5 Hosted AP starting in background");
+  ESP_LOGI(kTag, "C6 Hosted AP starting in background");
   if (xTaskCreate(hosted_ap_task, "hosted_ap", 8192, nullptr, 5, nullptr) !=
       pdPASS) {
     g_hosted_ap_kicked = false;
@@ -130,9 +128,9 @@ void link_service_task(void*) {
   neon_provision_start();
 
 #if CONFIG_NEON_BOARD_LINKSYNC_P4LCD
-  // Hosted UART to the XIAO C5 (DIP=WM). Onboard C6 is not used.
-  // Kick SoftAP off-thread so the local Link session starts even if
-  // the C5 never INIT's — otherwise RUN queues a toggle nobody pops.
+  // Hosted SDIO to the onboard C6. Kick SoftAP off-thread so the
+  // local Link session (and Crowtail MIDI) start even if the C6
+  // never INIT's — otherwise RUN queues a toggle nobody pops.
   kick_hosted_ap();
 #elif CONFIG_NEON_BOARD_LINKSYNC_TAB5
   // Hosted only talks to the C6 inside esp_wifi_init (ap_start).

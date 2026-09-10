@@ -1,10 +1,10 @@
 dependencies:
   # .local hostname for the web editor (milestone 8) and general discovery.
   espressif/mdns: "^1.0.0"
-  # ESP32-P4 has no radio. CrowPanel P4LCD uses a XIAO ESP32-C5 over
-  # Hosted UART (2.12, matches tools/xiao-c5-hosted-uart). Tab5 / other
-  # P4 boards that still run factory C6 1.x firmware need that C6
-  # reflashed to Hosted 2.12 before rebuilding.
+  # ESP32-P4 has no radio. CrowPanel P4LCD uses the onboard C6 over
+  # Hosted SDIO (2.12). Tab5 / other P4 boards that still run factory
+  # C6 1.x firmware need that C6 reflashed to Hosted 2.12. The XIAO
+  # C5 Hosted UART path is abandoned.
   espressif/esp_wifi_remote:
     matches:
       - if: "idf_version >= 6.0 && target == esp32p4"
