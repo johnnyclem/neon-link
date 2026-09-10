@@ -29,23 +29,34 @@ C6 SDIO is **not** the Waveshare Function-EV map:
 RGB data/sync eat GPIO 2–19, 40, 41. Do not enable the P4 EMAC — those
 pins collide with SDIO.
 
-## UART1 Crowtail — MIDI IN+OUT
+## UART ports — MIDI on UART3-IN
 
-DIP on the back: **UART**, not wireless-module. That routes GPIO 47/48
-to Crowtail. The onboard C6 (Wi-Fi) is SDIO and is unaffected.
+Three serial jacks plus the console. MIDI uses **UART3-IN**, not
+Crowtail UART1: GPIO 47/48 are muxed with the wireless-module SPI
+through an SGM3005, and IDF rejects GPIO 47 (`not usable, maybe used
+by others`).
 
-| Net | GPIO | Grove wire (host names) |
-|-----|------|-------------------------|
-| UART1 TX | **47** | white (host TX → MIDI OUT) |
-| UART1 RX | **48** | yellow (host RX ← MIDI IN after the opto) |
-| 3V3 / 5V | — | red (MIDI-chip jumpers at 3.3 V) |
-| GND | — | black |
+| Silk | Connector | GPIOs | Notes |
+|------|-----------|-------|--------|
+| UART-0 | UART USB-C (CH343) | 37 TX / 38 RX | Console. Do not steal. |
+| UART-1 | HY2.0-4P Crowtail | 47 TX / 48 RX | DIP UART vs WM. SPI/UART mux. Leave it. |
+| UART3-IN | XH2.54-4P | **27 TX / 28 RX** | MIDI. MOS level-shifted. |
+| I2C | HY2.0-4P | 45 SDA / 46 SCL | 3.3 V for the MIDI chip. |
 
-Same four-wire hookup as the RLCD (TX, RX, 3V3, GND). Clock/transport
-follow uses the C3 OLED PLL path (`midi_service`). Swap 47/48 if OUT
-is silent.
+| Net | GPIO | On UART3-IN |
+|-----|------|-------------|
+| UART TX | **27** | host TX → MIDI OUT |
+| UART RX | **28** | host RX ← MIDI IN after the opto |
+| GND | — | common |
+| 5V | — | **panel power input** — not MIDI VCC |
 
-Do not use UART3-IN for this. That port is 5V/2A power + IO27/28.
+Same TX/RX/GND hookup as the RLCD. Take **3V3** from Crowtail UART1
+or I2C (red), not the 5 V pin on UART3-IN. MIDI-chip jumpers at 3.3 V.
+Clock/transport follow uses the C3 OLED PLL path (`midi_service`).
+Swap 27/28 if OUT is silent.
+
+The onboard C6 (Wi-Fi) is SDIO and is unaffected. DIP can stay UART
+or WM — MIDI no longer needs that switch.
 
 ## Build & flash
 
@@ -102,10 +113,11 @@ Link runs a local session even if the C6 never INIT's. SoftAP is
 added`) and the panel reboots every ~20 s.
 
 The Wi-Fi radio is the **onboard ESP32-C6** (ESP-Hosted SDIO, 2.4 GHz).
-DIP must be **UART** so Crowtail MIDI owns GPIO 47/48. Do not also
-init a XIAO C5 on UART1 — that path never synced and is abandoned.
-Factory C6 1.x firmware needs a Hosted 2.12 slave image or SoftAP
-stays down; MIDI and the local Link session still run.
+Do not init a XIAO C5 on UART1 — that path never synced and is
+abandoned. Factory C6 1.x firmware needs a Hosted 2.12 slave image or
+SoftAP stays down; MIDI and the local Link session still run. The
+unit on the bench brought SoftAP up on co-proc 2.3.0 with a version
+mismatch warning.
 
 This unit: ESP32-P4 **rev v1.3**, MAC `e8:f6:0a:e0:44:a3`, 32 MB HEX
 PSRAM @ 200 MHz, IDF 5.5.5. Do not flash a `REV_MIN_301` image.

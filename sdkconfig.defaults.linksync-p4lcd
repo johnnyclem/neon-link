@@ -63,8 +63,8 @@ CONFIG_UART_ISR_IN_IRAM=y
 # CONFIG_ETH_USE_ESP32_EMAC is not set
 
 # Onboard C6 over SDIO is the Wi-Fi radio (Elecrow 49–54, RESET 20).
-# UART1 GPIO 47/48 is Crowtail MIDI (DIP = UART). The XIAO C5 Hosted
-# UART path never synced and is abandoned — do not claim UART1.
+# MIDI is UART3-IN GPIO 27/28 (not Crowtail 47/48 — SGM3005 mux).
+# The XIAO C5 Hosted UART path never synced and is abandoned.
 # CONFIG_ESP_HOST_WIFI_ENABLED is not set
 # CONFIG_SLAVE_IDF_TARGET_ESP32C5 is not set
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y

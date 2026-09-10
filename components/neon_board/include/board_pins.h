@@ -204,8 +204,9 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 #elif CONFIG_NEON_BOARD_LINKSYNC_P4LCD
 
 // CrowPanel Advance 5.0" ESP32-P4 (800×480 RGB565). Pulse channels are
-// virtual. Crowtail UART1 GPIO 47/48 is MIDI (DIP = UART). Onboard C6
-// over SDIO is the radio. The XIAO C5 Hosted UART path is abandoned.
+// virtual. MIDI is UART3-IN (GPIO 27/28). Crowtail UART1 GPIO 47/48 is
+// muxed with the wireless-module SPI through an SGM3005 — IDF rejects
+// GPIO 47. Onboard C6 over SDIO is the radio. XIAO C5 Hosted is abandoned.
 inline constexpr int kPinClk1 = 0;
 inline constexpr int kPinClk2 = 1;
 inline constexpr int kPinClk3 = 2;
@@ -215,11 +216,11 @@ inline constexpr int kPinRun = 5;
 inline constexpr bool kPulseVirtual = true;
 
 inline constexpr int kPinTempoCv = -1;
-// Crowtail UART1 (DIP = UART, not WM): GPIO47 / GPIO48. UART1 @ 31250,
-// same MIDI-chip hookup as the RLCD (TX, RX, 3V3, GND, jumpers 3.3 V).
-// White = 47 TX, yellow = 48 RX; swap the two if OUT is silent.
-inline constexpr int kPinMidiTx = 47;
-inline constexpr int kPinMidiRx = 48;
+// UART3-IN XH2.54-4P: GPIO27 TX / GPIO28 RX, MOS level-shifted.
+// UART1 @ 31250. Do not take VCC from this jack's 5 V pin — that is a
+// power *input*. 3V3 from Crowtail UART1 or I2C. Swap 27/28 if silent.
+inline constexpr int kPinMidiTx = 27;
+inline constexpr int kPinMidiRx = 28;
 inline constexpr int kPinClkIn = -1;
 inline constexpr int kPinRstIn = -1;
 

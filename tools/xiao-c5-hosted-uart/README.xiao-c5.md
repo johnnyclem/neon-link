@@ -2,8 +2,8 @@
 
 **Abandoned.** The C5 Hosted UART path never synced. CrowPanel Advance
 5.0" (`linksync-p4lcd`) uses the onboard C6 over SDIO for Wi-Fi and
-Crowtail UART1 GPIO 47/48 for MIDI (DIP = UART). Do not flash this
-image onto a C5 in that header expecting the P4 firmware to talk to it.
+UART3-IN GPIO 27/28 for MIDI. Do not flash this image onto a C5 in
+that header expecting the P4 firmware to talk to it.
 
 Coprocessor image for a **Seeed XIAO ESP32-C5** seated on the CrowPanel
 Advance 5.0" XIAO header with the back DIP on **WM**. Historical: the P4
