@@ -56,13 +56,23 @@ mix them.
 | Touch SCL | 39 | |
 | Touch INT | 40 | |
 | Touch RST | 18 | |
-| MIDI TX | **43** | U0TXD, UART1 @ 31250 — 24 PPQN TRS clock |
+| MIDI TX | **43** | header pin 15, U0TXD, UART1 @ 31250 |
+| MIDI RX | **44** | header pin 14, U0RXD, opto required |
 
-Pulse channels are virtual — there are no Eurorack jacks. Native USB
-Serial/JTAG is the console (so classic UART0 on GPIO43/44 is free), and
-there is no USB-UART bridge. TRS **MIDI clock out** rides GPIO43: wire a
-jack (Type A — tip = 220 Ω from TX, ring = GND) and it sends a
-Link-derived 24 PPQN clock whenever Settings → MIDI → CLK OUT is on.
+Pulse channels are virtual. Native USB Serial/JTAG is the console, so
+classic UART0 on GPIO 43/44 is free. MIDI is the **right-hand** 24-pin
+column, skipping the 5 V rail on the top pin:
+
+| Header pin | Net | GPIO |
+|------------|-----|------|
+| 12 | 3V3 | — (MIDI-chip VCC, jumpers 3.3 V) |
+| 13 | GND | — |
+| 14 | RX | **44** |
+| 15 | TX | **43** |
+
+Do not use the 5 V pin. Swap 43/44 if OUT is silent. Clock/transport
+follow is the C3 OLED PLL path (`midi_service`). CLK OUT still emits
+Link 24 PPQN while playing.
 
 ## What it does
 

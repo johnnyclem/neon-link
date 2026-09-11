@@ -70,6 +70,9 @@ extern "C" void app_main(void) {
 #elif CONFIG_NEON_BOARD_LINKSYNC_C3OLED
   ESP_LOGI(kTag, "link-sync firmware starting (C3 0.42 OLED) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
+#elif CONFIG_NEON_BOARD_LINKSYNC_MATOUCH
+  ESP_LOGI(kTag, "link-sync firmware starting (MaTouch 1.28) free_heap=%u",
+           (unsigned)esp_get_free_heap_size());
 #elif CONFIG_NEON_BOARD_LINKSYNC_RLCD
   ESP_LOGI(kTag, "link-sync firmware starting (RLCD 4.2) free_heap=%u",
            (unsigned)esp_get_free_heap_size());
