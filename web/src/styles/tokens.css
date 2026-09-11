@@ -208,3 +208,20 @@
   --success: #0A7A48; /* Connected / running */
   --danger: #C42828; /* Errors, disconnect */
 }
+
+[data-theme="link"] {
+  color-scheme: dark;
+  --bg: #0B0C0F; /* Page background */
+  --surface: #14161A; /* Cards, panels */
+  --surface-2: #1C1F26; /* Elevated / selected */
+  --border: #2A2E38; /* Hairlines, dividers */
+  --text: #E8EAED; /* Primary text */
+  --text-muted: #8B909A; /* Secondary labels */
+  --neon: #F5C518; /* Primary accent — Link active, focus, key actions */
+  --hero: #FF9A32; /* Hero tempo digits — large, always visible */
+  --neon-dim: #C48A14; /* Secondary accent / hover */
+  --magenta: #FF2D95; /* Alerts, BLE active, special states */
+  --yellow: #FFD060; /* Warnings, attention */
+  --success: #3DFF9A; /* Connected / running */
+  --danger: #FF4D4D; /* Errors, disconnect */
+}

@@ -128,6 +128,12 @@ void refresh_pal(neon::ColorTheme t) {
       hot = 0xC4006A;
       danger = 0xC42828;
       break;
+    case neon::ColorTheme::kLink:
+      neon = 0xF5C518;
+      neon_dim = 0xC48A14;
+      hero = 0xFF9A32;
+      hot = 0xFF2D95;
+      break;
     default:  // Void — the design-system default
       break;
   }

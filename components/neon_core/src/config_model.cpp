@@ -150,7 +150,7 @@ void config_sanitize(Config* cfg) {
     cfg->beat_style = BeatStyle::kNumber;
   }
   if (cfg->color_theme >= ColorTheme::kCount) {
-    cfg->color_theme = ColorTheme::kTeal;
+    cfg->color_theme = ColorTheme::kLink;
   }
   cfg->midi_trs_type = cfg->midi_trs_type ? 1 : 0;
   if (cfg->display_dim_s > 3600) {
@@ -443,6 +443,14 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
   if (h.version < 13) {
     // mono_theme sits in what was v12 tail padding after display_portrait.
     out->mono_theme = MonoTheme::kClassic;
+  }
+  if (h.version < 14) {
+    // Factory colour default was Teal. Link (graphite + orange) is the
+    // neon-link face; remap only Teal so a user who picked Amber/Void
+    // keeps it.
+    if (out->color_theme == ColorTheme::kTeal) {
+      out->color_theme = ColorTheme::kLink;
+    }
   }
   config_sanitize(out);
   return true;

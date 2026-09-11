@@ -366,7 +366,7 @@ TEST_CASE("out-of-range roles, tempo, and retries are clamped") {
   cfg.ap_channel = 99;
   neon::config_sanitize(&cfg);
   CHECK(cfg.beat_style == neon::BeatStyle::kNumber);
-  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
+  CHECK(cfg.color_theme == neon::ColorTheme::kLink);
   CHECK(cfg.engine.clocks[0].role == neon::OutputRole::kClock);
   CHECK(cfg.tempo_milli_bpm == neon::kMinMilliBpm);
   CHECK(cfg.wifi_retries == 1);
@@ -506,7 +506,7 @@ TEST_CASE("a v3 config blob keeps its settings and defaults the audio block") {
   CHECK(b.audio.la_sub_channel_id[0] == '\0');
 }
 
-TEST_CASE("a v8 config blob defaults the colour theme to teal") {
+TEST_CASE("a v8 config blob defaults the colour theme to link") {
   neon::Config a;
   a.color_theme = neon::ColorTheme::kPaper;
 
@@ -527,7 +527,7 @@ TEST_CASE("a v8 config blob defaults the colour theme to teal") {
 
   neon::Config b;
   REQUIRE(neon::config_decode(full.data(), full.size(), &b));
-  CHECK(b.color_theme == neon::ColorTheme::kTeal);
+  CHECK(b.color_theme == neon::ColorTheme::kLink);
 }
 
 TEST_CASE("a v11 config blob defaults display_portrait to landscape") {

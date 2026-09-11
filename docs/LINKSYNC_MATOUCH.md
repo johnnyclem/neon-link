@@ -79,9 +79,10 @@ Link 24 PPQN while playing.
 - **Boot splash** — "NEON / link-mat" proves the panel before Link is up.
 - **Live face** — hero tempo (`120`), a 120-dot phase ring that fills
   once per bar with a bright head at the current beat position, peer
-  count (`N LINK` + pips), and a RUN/STOP chip. Colour palettes (Teal
-  default, Void, Phosphor, Amber, Magenta, Paper) live under
-  Settings → System → COLOUR; the same choice is on the web editor.
+  count (`N LINK` + pips), and a RUN/STOP chip. Colour palettes live
+  under Settings → System → COLOUR (same list as the web editor).
+  Default is **LINK**: graphite chassis, orange/yellow accent. Also
+  Void, Teal, Phosphor, Amber, Magenta, Paper.
 - **Beat styles** — while playing with Settings → System → BEAT on, the
   dial shows a full-screen beat animation set by STYLE: Number, Pie,
   Pendulum or Pulse (a colour echo of `neon::ui::draw_beat_stage`). BEAT

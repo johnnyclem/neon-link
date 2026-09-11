@@ -156,7 +156,8 @@ enum class ColorTheme : uint8_t {
   kAmber = 3,
   kMagenta = 4,
   kPaper = 5,
-  kCount = 6,
+  kLink = 6,
+  kCount = 7,
 };
 
 // Live-face layouts for the 1-bit panels (RLCD today; the e-paper faces
@@ -275,10 +276,10 @@ struct Config {
   // 0 = Type A (MMA), 1 = Type B. Does not rewire the physical jack.
   uint8_t midi_trs_type = 0;
 
-  // Appended in v9. Colour LCD / web palette. Teal is the default on the
-  // MaTouch dial so the hero BPM is not pure white on a near-black void.
-  // A v8 blob decodes with this set to kTeal — see config_decode.
-  ColorTheme color_theme = ColorTheme::kTeal;
+  // Appended in v9. Colour LCD / web palette. Link (graphite + orange)
+  // is the product face. A v8 blob decodes Teal then v14 remaps it to
+  // Link — see config_decode.
+  ColorTheme color_theme = ColorTheme::kLink;
 
   // Appended in v10 (docs/SOLAROS_PORTS_HANDOFF.md §3). Idle display
   // power: after display_dim_s seconds without local input the panel
@@ -313,7 +314,7 @@ struct Config {
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 13;
+inline constexpr uint16_t kConfigVersion = 14;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;

@@ -91,6 +91,8 @@ const char* color_theme_name(ColorTheme t) {
       return "MAG";
     case ColorTheme::kPaper:
       return "PAPER";
+    case ColorTheme::kLink:
+      return "LINK";
     default:
       return "TEAL";
   }

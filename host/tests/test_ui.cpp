@@ -917,7 +917,7 @@ TEST_CASE("system menu cycles beat styles") {
 
 TEST_CASE("system menu cycles colour themes") {
   neon::Config cfg;
-  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
+  CHECK(cfg.color_theme == neon::ColorTheme::kLink);
   neon::MenuModel m(&cfg);
   m.on_click();
   m.on_rotate(5);
@@ -926,8 +926,12 @@ TEST_CASE("system menu cycles colour themes") {
   CHECK(std::string(m.item_label(m.cursor())) == "COLOUR");
   char buf[16];
   m.item_value(m.cursor(), buf, sizeof(buf));
-  CHECK(std::string(buf) == "TEAL");
+  CHECK(std::string(buf) == "LINK");
   m.on_click();
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kVoid);
+  m.on_rotate(1);
+  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
   m.on_rotate(1);
   CHECK(cfg.color_theme == neon::ColorTheme::kPhosphor);
   m.on_rotate(1);
@@ -937,9 +941,7 @@ TEST_CASE("system menu cycles colour themes") {
   m.on_rotate(1);
   CHECK(cfg.color_theme == neon::ColorTheme::kPaper);
   m.on_rotate(1);
-  CHECK(cfg.color_theme == neon::ColorTheme::kVoid);
-  m.on_rotate(1);
-  CHECK(cfg.color_theme == neon::ColorTheme::kTeal);
+  CHECK(cfg.color_theme == neon::ColorTheme::kLink);
 }
 
 TEST_CASE("giant beat fills the panel with white numerals on black") {

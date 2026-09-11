@@ -18,9 +18,9 @@ std::string encode(const neon::Config& cfg) {
 
 TEST_CASE("config JSON: color_theme names") {
   neon::Config a;
-  CHECK(a.color_theme == neon::ColorTheme::kTeal);
+  CHECK(a.color_theme == neon::ColorTheme::kLink);
   const std::string json = encode(a);
-  CHECK(json.find("\"color_theme\":\"teal\"") != std::string::npos);
+  CHECK(json.find("\"color_theme\":\"link\"") != std::string::npos);
 
   a.color_theme = neon::ColorTheme::kAmber;
   neon::Config b;
@@ -32,9 +32,13 @@ TEST_CASE("config JSON: color_theme names") {
   REQUIRE(neon::config_from_json(paper, std::strlen(paper), &b));
   CHECK(b.color_theme == neon::ColorTheme::kPaper);
 
+  const char* link = "{\"color_theme\":\"link\"}";
+  REQUIRE(neon::config_from_json(link, std::strlen(link), &b));
+  CHECK(b.color_theme == neon::ColorTheme::kLink);
+
   const char* junk = "{\"color_theme\":\"rainbow\"}";
   REQUIRE(neon::config_from_json(junk, std::strlen(junk), &b));
-  CHECK(b.color_theme == neon::ColorTheme::kPaper);
+  CHECK(b.color_theme == neon::ColorTheme::kLink);
 }
 
 TEST_CASE("config JSON: mono_theme names") {

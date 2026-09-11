@@ -27,11 +27,11 @@ struct ColorPalette {
   Rgb hero;
 };
 
-inline constexpr int kColorThemeCount = 6;
+inline constexpr int kColorThemeCount = 7;
 
-inline constexpr const char* kColorThemeId[kColorThemeCount] = {"void", "teal", "phosphor", "amber", "magenta", "paper"};
+inline constexpr const char* kColorThemeId[kColorThemeCount] = {"void", "teal", "phosphor", "amber", "magenta", "paper", "link"};
 
-inline constexpr const char* kColorThemeLabel[kColorThemeCount] = {"VOID", "TEAL", "PHOSPHOR", "AMBER", "MAGENTA", "PAPER"};
+inline constexpr const char* kColorThemeLabel[kColorThemeCount] = {"VOID", "TEAL", "PHOSPHOR", "AMBER", "MAGENTA", "PAPER", "LINK"};
 
 inline constexpr ColorPalette kColorPalettes[kColorThemeCount] = {
     {{11, 12, 15}, {20, 22, 26}, {28, 31, 38}, {0, 240, 255}, {0, 168, 179}, {232, 234, 237}, {139, 144, 154}, {255, 45, 149}, {0, 240, 255}},  // void
@@ -40,6 +40,7 @@ inline constexpr ColorPalette kColorPalettes[kColorThemeCount] = {
     {{20, 16, 10}, {30, 24, 16}, {42, 34, 22}, {255, 176, 32}, {196, 132, 24}, {242, 230, 208}, {176, 154, 116}, {255, 77, 138}, {255, 194, 74}},  // amber
     {{20, 10, 18}, {30, 16, 24}, {42, 24, 36}, {255, 90, 176}, {208, 64, 144}, {240, 224, 234}, {176, 144, 160}, {255, 45, 149}, {255, 122, 196}},  // magenta
     {{243, 238, 230}, {255, 251, 245}, {230, 223, 212}, {0, 114, 120}, {10, 138, 148}, {26, 24, 20}, {92, 86, 76}, {196, 0, 106}, {0, 100, 108}},  // paper
+    {{11, 12, 15}, {20, 22, 26}, {28, 31, 38}, {245, 197, 24}, {196, 138, 20}, {232, 234, 237}, {139, 144, 154}, {255, 45, 149}, {255, 154, 50}},  // link
 };
 
 inline const ColorPalette& color_palette(uint8_t theme) {

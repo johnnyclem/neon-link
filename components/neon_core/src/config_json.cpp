@@ -175,6 +175,8 @@ const char* color_theme_str(ColorTheme t) {
       return "magenta";
     case ColorTheme::kPaper:
       return "paper";
+    case ColorTheme::kLink:
+      return "link";
     default:
       return "teal";
   }
@@ -591,6 +593,8 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
       cfg->color_theme = ColorTheme::kMagenta;
     } else if (str_eq(theme, "paper")) {
       cfg->color_theme = ColorTheme::kPaper;
+    } else if (str_eq(theme, "link")) {
+      cfg->color_theme = ColorTheme::kLink;
     }
   }
   {
