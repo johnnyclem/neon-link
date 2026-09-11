@@ -30,8 +30,9 @@ enum class EncoderPress : unsigned char {
 };
 
 // Debounced press detection; reports each gesture exactly once. Call every
-// UI frame. A long press fires as soon as the hold threshold passes rather
-// than on release, so the panel reacts under the finger.
+// UI frame. The GPIO switch is sampled on a 2 ms task (same as I2C) so a
+// ~125 ms click survives a slow blit. A long press fires as soon as the
+// hold threshold passes rather than on release.
 EncoderPress encoder_take_press();
 
 // Drop queued shorts/longs (e.g. right after opening the menu so the

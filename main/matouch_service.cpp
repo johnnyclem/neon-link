@@ -1360,7 +1360,8 @@ void handle_encoder() {
     if (detents != 0) {
       push_tempo(detents);
     }
-    if (press == halesp::EncoderPress::kShort) {
+    if (press == halesp::EncoderPress::kShort ||
+        press == halesp::EncoderPress::kDouble) {
       push_kind(ControlCommand::Kind::kToggle);
     } else if (press == halesp::EncoderPress::kLong) {
       push_kind(ControlCommand::Kind::kTapTempo);

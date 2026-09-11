@@ -26,10 +26,12 @@ int g_count_rem = 0;
 int g_counts_per_detent = 4;  // ×4 decode; boards may override (e.g. 2)
 int g_pin_sw = -1;
 
-// GPIO (PCNT) switch debounce — sampled on the UI thread.
-bool g_sw_last = true;  // active-low, idle high
-int64_t g_sw_change_us = 0;
-bool g_long_fired = false;
+// Bounce filter on the switch. Short/long gestures are decided in the
+// 2 ms sample task (GPIO) or the I2C sampler — not on the UI frame,
+// which on MaTouch is ~40 ms plus a 115 KB SPI blit and used to miss
+// clicks shorter than ~0.5 s.
+constexpr int64_t kSwDebounceUs = 20000;
+constexpr int64_t kSwLongUs = 600000;
 
 // I2C expander path: a 4 ms task samples A/B/SW so short clicks and
 // detents survive the 100 ms OLED frame. Gestures are queued for the UI.
@@ -55,6 +57,8 @@ constexpr int kM5TimeoutMs = 20;
 constexpr bool kM5Invert = false;
 // STM32 firmware counts both quadrature edges; one mechanical detent is 2.
 constexpr int kM5CountsPerDetent = 2;
+
+void pcnt_sw_task(void*);
 
 bool setup_pcnt(int pin_a, int pin_b, int pin_sw) {
   pcnt_unit_config_t unit_cfg = {};
@@ -105,7 +109,46 @@ bool setup_pcnt(int pin_a, int pin_b, int pin_sw) {
   io.pin_bit_mask = 1ull << pin_sw;
   io.mode = GPIO_MODE_INPUT;
   io.pull_up_en = GPIO_PULLUP_ENABLE;
-  return gpio_config(&io) == ESP_OK;
+  if (gpio_config(&io) != ESP_OK) {
+    return false;
+  }
+  // Same 2 ms poll as the I2C encoder: shorts must survive a slow UI
+  // frame (MaTouch blit). Play/stop fires on release after bounce.
+  xTaskCreatePinnedToCore(pcnt_sw_task, "enc_sw", 2048, nullptr, 4, nullptr,
+                          0);
+  return true;
+}
+
+void pcnt_sw_task(void*) {
+  bool sw_last = true;  // active-low, idle high
+  if (g_pin_sw >= 0) {
+    sw_last = gpio_get_level(static_cast<gpio_num_t>(g_pin_sw)) != 0;
+  }
+  int64_t sw_change_us = esp_timer_get_time();
+  bool long_fired = false;
+  TickType_t wake = xTaskGetTickCount();
+  for (;;) {
+    if (g_pin_sw >= 0) {
+      const bool level =
+          gpio_get_level(static_cast<gpio_num_t>(g_pin_sw)) != 0;
+      const int64_t now = esp_timer_get_time();
+      if (level != sw_last && now - sw_change_us > kSwDebounceUs) {
+        const bool pressed = !level;
+        sw_last = level;
+        sw_change_us = now;
+        if (pressed) {
+          long_fired = false;
+        } else if (!long_fired) {
+          g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+      if (!sw_last && !long_fired && now - sw_change_us > kSwLongUs) {
+        long_fired = true;
+        g_i2c_longs.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(2));
+  }
 }
 
 void i2c_encoder_task(void*) {
@@ -150,11 +193,9 @@ void i2c_encoder_task(void*) {
     }
 
     if (gpio_exp_get_level(kGpioExpEncSw, &sw)) {
-      constexpr int64_t kDebounceUs = 20000;
-      constexpr int64_t kLongUs = 600000;
       const bool level = sw != 0;  // idle high, pressed low
       const int64_t now = esp_timer_get_time();
-      if (level != sw_last && now - sw_change_us > kDebounceUs) {
+      if (level != sw_last && now - sw_change_us > kSwDebounceUs) {
         const bool pressed = !level;
         sw_last = level;
         sw_change_us = now;
@@ -164,7 +205,7 @@ void i2c_encoder_task(void*) {
           g_i2c_shorts.fetch_add(1, std::memory_order_relaxed);
         }
       }
-      if (!sw_last && !long_fired && now - sw_change_us > kLongUs) {
+      if (!sw_last && !long_fired && now - sw_change_us > kSwLongUs) {
         long_fired = true;
         g_i2c_longs.fetch_add(1, std::memory_order_relaxed);
       }
@@ -392,52 +433,29 @@ void encoder_set_counts_per_detent(int counts) {
 }
 
 EncoderPress encoder_take_press() {
-  if (g_backend == Backend::kI2cExp || g_backend == Backend::kM5Unit) {
-    const int64_t mute_until =
-        g_mute_press_until_us.load(std::memory_order_relaxed);
-    if (mute_until != 0 && esp_timer_get_time() < mute_until) {
-      g_i2c_shorts.store(0, std::memory_order_relaxed);
-      g_i2c_longs.store(0, std::memory_order_relaxed);
-      return EncoderPress::kNone;
-    }
-    const int longs = g_i2c_longs.exchange(0, std::memory_order_relaxed);
-    const int shorts = g_i2c_shorts.exchange(0, std::memory_order_relaxed);
-    if (longs > 0) {
-      return EncoderPress::kLong;
-    }
-    if (shorts >= 2) {
-      return EncoderPress::kDouble;
-    }
-    if (shorts == 1) {
-      return EncoderPress::kShort;
-    }
+  if (g_backend == Backend::kNone) {
     return EncoderPress::kNone;
   }
-  if (g_pin_sw < 0) {
+  // GPIO PCNT and both I2C backends queue into the same atomics. The
+  // GPIO switch used to be sampled here on the UI frame and missed
+  // clicks shorter than a blit.
+  const int64_t mute_until =
+      g_mute_press_until_us.load(std::memory_order_relaxed);
+  if (mute_until != 0 && esp_timer_get_time() < mute_until) {
+    g_i2c_shorts.store(0, std::memory_order_relaxed);
+    g_i2c_longs.store(0, std::memory_order_relaxed);
     return EncoderPress::kNone;
   }
-  constexpr int64_t kDebounceUs = 20000;
-  constexpr int64_t kLongUs = 600000;
-
-  const bool level = gpio_get_level(static_cast<gpio_num_t>(g_pin_sw)) != 0;
-  const int64_t now = esp_timer_get_time();
-
-  if (level != g_sw_last && now - g_sw_change_us > kDebounceUs) {
-    const bool pressed = !level;  // active-low
-    g_sw_last = level;
-    g_sw_change_us = now;
-    if (pressed) {
-      g_long_fired = false;
-      return EncoderPress::kNone;  // decided on release, or on the timeout
-    }
-    // Released: a short press only counts if the long one never fired.
-    return g_long_fired ? EncoderPress::kNone : EncoderPress::kShort;
-  }
-
-  // Still held past the threshold: fire once, under the finger.
-  if (!g_sw_last && !g_long_fired && now - g_sw_change_us > kLongUs) {
-    g_long_fired = true;
+  const int longs = g_i2c_longs.exchange(0, std::memory_order_relaxed);
+  const int shorts = g_i2c_shorts.exchange(0, std::memory_order_relaxed);
+  if (longs > 0) {
     return EncoderPress::kLong;
+  }
+  if (shorts >= 2) {
+    return EncoderPress::kDouble;
+  }
+  if (shorts == 1) {
+    return EncoderPress::kShort;
   }
   return EncoderPress::kNone;
 }
