@@ -603,6 +603,40 @@ TEST_CASE("mono_theme survives a round trip and sanitizes junk") {
   CHECK(c.mono_theme == neon::MonoTheme::kClassic);
 }
 
+TEST_CASE("a v14 config blob defaults osc_panel_mode to standard") {
+  neon::Config a;
+  a.osc_panel_mode = 1;
+
+  std::vector<uint8_t> full(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, full.data(), full.size()) == full.size());
+
+  struct Hdr {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t payload_size;
+    uint32_t crc;
+  };
+  Hdr h;
+  std::memcpy(&h, full.data(), sizeof(h));
+  h.version = 14;
+  h.crc = neon::crc32(full.data() + sizeof(h), h.payload_size);
+  std::memcpy(full.data(), &h, sizeof(h));
+
+  neon::Config b;
+  REQUIRE(neon::config_decode(full.data(), full.size(), &b));
+  CHECK(b.osc_panel_mode == 0);
+}
+
+TEST_CASE("osc_panel_mode survives a current-version round trip") {
+  neon::Config a;
+  a.osc_panel_mode = 1;
+  std::vector<uint8_t> buf(neon::config_blob_size());
+  REQUIRE(neon::config_encode(a, buf.data(), buf.size()) == buf.size());
+  neon::Config b;
+  REQUIRE(neon::config_decode(buf.data(), buf.size(), &b));
+  CHECK(b.osc_panel_mode == 1);
+}
+
 TEST_CASE("a v6 config blob defaults the beat style to number") {
   neon::Config a;
   a.beat_style = neon::BeatStyle::kPulse;

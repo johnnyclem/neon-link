@@ -165,6 +165,7 @@ void config_sanitize(Config* cfg) {
   if (cfg->mono_theme >= MonoTheme::kCount) {
     cfg->mono_theme = MonoTheme::kClassic;
   }
+  cfg->osc_panel_mode = cfg->osc_panel_mode ? 1 : 0;
 
   AudioConfig& a = cfg->audio;
   a.enabled = a.enabled ? 1 : 0;
@@ -451,6 +452,9 @@ bool config_decode(const uint8_t* buf, size_t len, Config* out) {
     if (out->color_theme == ColorTheme::kTeal) {
       out->color_theme = ColorTheme::kLink;
     }
+  }
+  if (h.version < 15) {
+    out->osc_panel_mode = 0;
   }
   config_sanitize(out);
   return true;

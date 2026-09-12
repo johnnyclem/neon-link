@@ -228,5 +228,20 @@ size_t encode_int(const char* address, int32_t v, uint8_t* out, size_t cap) {
   return encode_one(address, 'i', static_cast<uint32_t>(v), out, cap);
 }
 
+size_t encode_bang(const char* address, uint8_t* out, size_t cap) {
+  if (!address_valid(address)) {
+    return 0;
+  }
+  const size_t addr_pad = string_padded(address);
+  const size_t total = addr_pad + 4;  // ",\0\0\0"
+  if (cap < total) {
+    return 0;
+  }
+  std::memset(out, 0, total);
+  std::memcpy(out, address, std::strlen(address));
+  out[addr_pad] = ',';
+  return total;
+}
+
 }  // namespace osc
 }  // namespace neon

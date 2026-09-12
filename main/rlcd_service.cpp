@@ -57,12 +57,15 @@ constexpr int64_t kRepeatLeadUs = 300000;
 constexpr int64_t kRepeatSlowUs = 150000;
 constexpr int64_t kRepeatFastUs = 60000;
 constexpr int kRepeatAccelAfter = 5;
-// Hold KEY+BOOT together this long to flip landscape<->portrait. Blind
-// gesture (no accelerometer, PWR is not readable): long enough that the
-// two control buttons are never both held this long by accident, and a
-// "keep holding" cue appears partway through.
-constexpr int64_t kOrientHoldUs = 3000000;
-constexpr int64_t kOrientHintUs = 700000;
+// Hold KEY+BOOT together this long to flip standard (LINK) <-> OSC
+// panel mode. Long enough that a two-button scene tap never lands here,
+// and a "keep holding" cue appears partway through.
+constexpr int64_t kModeHoldUs = 3000000;
+constexpr int64_t kModeHintUs = 700000;
+// Anything shorter than the mode-switch hint is "next scene". 20 ms is
+// just bounce; a real two-button tap is usually 40–150 ms.
+constexpr int64_t kSceneChordMinUs = 20000;
+constexpr int64_t kSceneFlashUs = 1500000;
 // Battery: fixed correction for the ~160 mV lost before the divider, and a
 // charging heuristic. There is no charge-status GPIO on this board, so we
 // infer "on external power" from the rail: a charger holds VBAT near 4.2 V
@@ -93,6 +96,7 @@ uint32_t fingerprint(const neon::RlcdPanelStatus& rs) {
   h = h * 33u + (s.usb_power ? 1u : 0u);
   h = h * 33u + s.overlay;
   h = h * 33u + static_cast<uint32_t>(s.cursor);
+  h = h * 33u + (neon_config().osc_panel_mode ? 1u : 0u);
   h = h * 33u + static_cast<uint32_t>(s.power_cursor);
   h = h * 33u + rs.beat;
   h = h * 33u + rs.quantum;
@@ -298,6 +302,14 @@ void fill_status(neon::RlcdPanelStatus* rs, neon::RlcdFrontPanel& ui,
     std::snprintf(s->detail, sizeof(s->detail), "BLE PROV  ESP BLE Prov app");
   } else if (!s->provisioned) {
     std::snprintf(s->detail, sizeof(s->detail), "NO WIFI  wait for SoftAP");
+  } else if (cfg.osc_panel_mode) {
+    const int idx = neon_osc_scene_index();
+    const int n = neon_osc_scene_count();
+    if (idx >= 0 && n > 0) {
+      std::snprintf(s->detail, sizeof(s->detail), "OSC  %d/%d", idx + 1, n);
+    } else {
+      std::snprintf(s->detail, sizeof(s->detail), "OSC  scene");
+    }
   } else {
     std::snprintf(s->detail, sizeof(s->detail), "MIDI CLOCK  24 PPQN  %s",
                   trs);
@@ -359,9 +371,8 @@ void keys_init() {
   gpio_config(&io);
 }
 
-// Full-screen "keep holding to rotate" cue with a countdown, centered for
-// the current canvas orientation.
-void render_orient_hint(neon::RlcdCanvas& c, bool to_portrait, int secs) {
+// Full-screen "keep holding to switch LINK/OSC" cue with a countdown.
+void render_mode_hint(neon::RlcdCanvas& c, bool to_osc, int secs) {
   c.clear();
   const int w = c.width();
   const int h = c.height();
@@ -369,8 +380,8 @@ void render_orient_hint(neon::RlcdCanvas& c, bool to_portrait, int secs) {
     const int tw = static_cast<int>(std::strlen(str)) * 6 * sc;
     c.draw_text((w - tw) / 2, y, str, sc);
   };
-  center(h / 2 - 76, "ROTATING TO", 2);
-  center(h / 2 - 40, to_portrait ? "PORTRAIT" : "LANDSCAPE", 4);
+  center(h / 2 - 76, "HOLD FOR", 2);
+  center(h / 2 - 40, to_osc ? "OSC" : "LINK", 4);
   char buf[16];
   std::snprintf(buf, sizeof(buf), "HOLD %d", secs < 0 ? 0 : secs);
   center(h / 2 + 24, buf, 3);
@@ -445,19 +456,44 @@ void rlcd_task(void*) {
   ChordState chord = kIdle;
   int64_t chord_since = 0;
   bool chord_fired = false;
+  int64_t scene_flash_until = 0;
+  const char* scene_flash = "next";
+  bool osc_boot_was = false;
+  int64_t osc_boot_since = 0;
+
+  auto reset_osc_edges = [&]() {
+    osc_boot_was = false;
+    osc_boot_since = 0;
+  };
 
   for (;;) {
     const int64_t now = esp_timer_get_time();
     bool user = false;
+    bool osc_want_toggle = false;
 
-    // Orientation chord: both control buttons held together. While a chord
-    // is active (or draining) the individual button state machines are held
+    auto flash_scene = [&](const char* label) {
+      scene_flash = label;
+      scene_flash_until = now + kSceneFlashUs;
+      user = true;
+      planner.note_user(now);
+      if (ui.mode() == neon::RlcdFrontPanel::Mode::kSplash) {
+        ui.show_live(now);
+      }
+    };
+
+    // Mode chord: both control buttons held together. While a chord is
+    // active (or draining) the individual button state machines are held
     // reset, so no menu/tempo/transport event escapes.
     const bool key_raw =
         gpio_get_level(static_cast<gpio_num_t>(key.pin())) == 0;
     const bool boot_raw =
         gpio_get_level(static_cast<gpio_num_t>(boot.pin())) == 0;
-    bool orient_hint = false;
+    bool mode_hint = false;
+    const auto ui_mode = ui.mode();
+    const bool liveish =
+        ui_mode == neon::RlcdFrontPanel::Mode::kLive ||
+        ui_mode == neon::RlcdFrontPanel::Mode::kSplash;
+    const bool osc_live = ui_cfg.osc_panel_mode && liveish;
     if (key_raw && boot_raw) {
       if (chord != kChord) {
         chord = kChord;
@@ -466,33 +502,91 @@ void rlcd_task(void*) {
       }
       key.reset();
       boot.reset();
+      reset_osc_edges();
       user = true;
       planner.note_user(now);
-      if (!chord_fired && now - chord_since >= kOrientHoldUs) {
+      if (!chord_fired && now - chord_since >= kModeHoldUs) {
         chord_fired = true;
-        ui_cfg.display_portrait = ui_cfg.display_portrait ? 0 : 1;
-        canvas->set_orientation(orient_of(ui_cfg));
+        ui_cfg.osc_panel_mode = ui_cfg.osc_panel_mode ? 0 : 1;
         ui.show_live(now);
         neon::Config live = neon_config();
-        live.display_portrait = ui_cfg.display_portrait;
+        live.osc_panel_mode = ui_cfg.osc_panel_mode;
         neon_config_apply(live);
         ui_cfg = neon_config();
-        have_fp = false;  // force a full repaint in the new orientation
-        ESP_LOGI(kTag, "orientation -> %s",
-                 ui_cfg.display_portrait ? "portrait" : "landscape");
-      } else if (!chord_fired && now - chord_since >= kOrientHintUs) {
-        orient_hint = true;
+        have_fp = false;
+        ESP_LOGI(kTag, "panel mode -> %s",
+                 ui_cfg.osc_panel_mode ? "osc" : "standard");
+      } else if (!chord_fired && now - chord_since >= kModeHintUs) {
+        mode_hint = true;
       }
     } else if (chord != kIdle) {
       // A chord just ended: swallow input until both buttons are released.
       key.reset();
       boot.reset();
+      reset_osc_edges();
       if (!key_raw && !boot_raw) {
+        const int64_t held = now - chord_since;
+        // Short KEY+BOOT (before the 0.7 s mode hint):
+        // standard = next scene, OSC = play/pause.
+        if (!chord_fired && liveish && held >= kSceneChordMinUs &&
+            held < kModeHintUs) {
+          if (ui_cfg.osc_panel_mode) {
+            osc_want_toggle = true;
+            user = true;
+            planner.note_user(now);
+            if (ui.mode() == neon::RlcdFrontPanel::Mode::kSplash) {
+              ui.show_live(now);
+            }
+            ESP_LOGI(kTag, "KEY+BOOT: play/pause (%d ms)",
+                     static_cast<int>(held / 1000));
+          } else {
+            neon_osc_scene_next();
+            flash_scene("next");
+            ESP_LOGI(kTag, "KEY+BOOT: scene next (%d ms)",
+                     static_cast<int>(held / 1000));
+          }
+        } else {
+          ESP_LOGI(kTag, "KEY+BOOT release %d ms fired=%d mode=%d",
+                   static_cast<int>(held / 1000),
+                   static_cast<int>(chord_fired), static_cast<int>(ui_mode));
+        }
         chord = kIdle;
       } else {
         chord = kDrain;
       }
+    } else if (osc_live) {
+      // OSC live: KEY tap = next scene, KEY hold = menu (same 0.5 s
+      // as standard), BOOT tap = prev scene, KEY+BOOT tap = play/pause.
+      boot.reset();
+      bool ks = false, kl = false, kr = false;
+      key.poll(now, &ks, &kl, &kr);
+      (void)kr;
+      if (ks) {
+        neon_osc_scene_next();
+        flash_scene("next");
+        ESP_LOGI(kTag, "KEY: scene next");
+      }
+      if (kl) {
+        ui.on_key_long(now);
+        user = true;
+        planner.note_user(now);
+        ESP_LOGI(kTag, "KEY hold: menu");
+      }
+      if (boot_raw && !osc_boot_was) {
+        osc_boot_was = true;
+        osc_boot_since = now;
+      } else if (!boot_raw && osc_boot_was) {
+        const int64_t held = now - osc_boot_since;
+        osc_boot_was = false;
+        if (held >= kDebounceUs && held < kModeHintUs) {
+          neon_osc_scene_prev();
+          flash_scene("prev");
+          ESP_LOGI(kTag, "BOOT: scene prev (%d ms)",
+                   static_cast<int>(held / 1000));
+        }
+      }
     } else {
+      reset_osc_edges();
       bool ks = false, kl = false, kr = false;
       bool bs = false, bl = false, br = false;
       key.poll(now, &ks, &kl, &kr);
@@ -509,25 +603,16 @@ void rlcd_task(void*) {
       }
     }
 
-    // While the chord is being held past the hint threshold, take over the
-    // glass with a live "keep holding" cue and a countdown, drawn in the
-    // orientation we are about to switch TO so it reads upright in the stand
-    // the user is turning the panel toward. The flip is the confirmation.
-    if (orient_hint) {
+    // While the chord is held past the hint threshold, take over the
+    // glass with a live "keep holding" cue and a countdown.
+    if (mode_hint) {
       const int secs =
-          static_cast<int>((kOrientHoldUs - (now - chord_since)) / 1000000) + 1;
-      const auto cur = canvas->orientation();
-      const auto target =
-          ui_cfg.display_portrait ? neon::RlcdCanvas::Orientation::kLandscape
-                                  : neon::RlcdCanvas::Orientation::kPortrait;
-      canvas->set_orientation(target);
+          static_cast<int>((kModeHoldUs - (now - chord_since)) / 1000000) + 1;
       halesp::rlcd_st7305_set_power(true);
       hpm = true;
-      render_orient_hint(
-          *canvas, target == neon::RlcdCanvas::Orientation::kPortrait, secs);
+      render_mode_hint(*canvas, ui_cfg.osc_panel_mode == 0, secs);
       neon::rlcd::pack_frame(canvas->data(), packed);
       halesp::rlcd_st7305_present(packed);
-      canvas->set_orientation(cur);  // restore; the real flip is on fire
       have_fp = false;
       vTaskDelay(pdMS_TO_TICKS(10));
       continue;
@@ -542,7 +627,7 @@ void rlcd_task(void*) {
       control_queue_push(cmd);
       user = true;
     }
-    if (ui.take_toggle()) {
+    if (ui.take_toggle() || osc_want_toggle) {
       ControlCommand cmd{};
       cmd.kind = ControlCommand::Kind::kToggle;
       control_queue_push(cmd);
@@ -602,6 +687,10 @@ void rlcd_task(void*) {
 
     neon::RlcdPanelStatus st{};
     fill_status(&st, ui, now);
+    if (now < scene_flash_until) {
+      std::snprintf(st.base.detail, sizeof(st.base.detail), "SCENE  %s",
+                    scene_flash);
+    }
     st.battery_mv = battery_mv;
     st.battery_pct = battery_percent(battery_mv);
     st.base.usb_power = charging;

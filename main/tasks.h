@@ -54,6 +54,13 @@ void neon_start_telemetry_service();
 // out. Idles until cfg.osc_enabled is set (docs/OSC.md).
 void neon_start_osc_service();
 
+// Ableton Session grid over Wi-Fi OSC (AbletonOSC :11000). No-op if
+// osc_target is empty. next/prev stop at the ends of the set.
+void neon_osc_scene_next();
+void neon_osc_scene_prev();
+int neon_osc_scene_index();  // 0-based, -1 unknown
+int neon_osc_scene_count();  // -1 unknown
+
 // Core 1: the I2S audio render loop, plus its core-0 control task.
 // A no-op unless CONFIG_NEON_AUDIO is set and audio is enabled in the
 // stored configuration.

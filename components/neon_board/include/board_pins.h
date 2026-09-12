@@ -319,7 +319,7 @@ inline constexpr float kAmyGateLowVolts = 0.0f;
 // Unicore RISC-V, 4 MB embedded flash, no PSRAM. Native USB Serial/JTAG.
 // See docs/LINKSYNC_C3OLED.md.
 //
-//   GPIO5  OLED SDA (SSD1306 @ 0x3C)
+//   GPIO5  OLED SDA (SSD1306 @ 0x3C). Also M5 Grove I2C (ByteButton 0x47).
 //   GPIO6  OLED SCL
 //   GPIO8  blue LED, inverted (HIGH = off; also a boot strap — leave high)
 //   GPIO9  BOOT button, active low, used as the only UI click

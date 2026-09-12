@@ -32,6 +32,9 @@ extern "C" int neon_wifi_scan_json(char* buf, int cap);
 // Provided by main/audio_service.cpp.
 extern "C" int neon_audio_channels_json(char* buf, int cap);
 extern "C" void neon_audio_request_stall_ms(uint32_t ms);
+// Provided by main/osc_service.cpp.
+void neon_osc_scene_next();
+void neon_osc_scene_prev();
 
 namespace {
 
@@ -339,6 +342,29 @@ esp_err_t handle_transport(httpd_req_t* req) {
     return ESP_OK;
   }
   return send_ok(req);
+}
+
+// POST /api/scene?op=next|prev — walk Ableton's Session grid over OSC.
+// Wi-Fi only; no MIDI jack. Ends of the set stop clips.
+esp_err_t handle_scene(httpd_req_t* req) {
+  if (!check_local_origin(req)) {
+    return ESP_OK;
+  }
+  char op[16] = {};
+  if (!query_param(req, "op", op, sizeof(op))) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "op required");
+    return ESP_OK;
+  }
+  if (std::strcmp(op, "next") == 0) {
+    neon_osc_scene_next();
+    return send_ok(req);
+  }
+  if (std::strcmp(op, "prev") == 0) {
+    neon_osc_scene_prev();
+    return send_ok(req);
+  }
+  httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "unknown op");
+  return ESP_OK;
 }
 
 // POST /api/tempo?bpm=124.5  or  ?op=tap|double|half|nudge&delta=-1
@@ -872,6 +898,10 @@ void webui_start() {
                                      .method = HTTP_POST,
                                      .handler = handle_transport,
                                      .user_ctx = nullptr};
+  const httpd_uri_t scene_uri = {.uri = "/api/scene",
+                                 .method = HTTP_POST,
+                                 .handler = handle_scene,
+                                 .user_ctx = nullptr};
   const httpd_uri_t tempo_uri = {.uri = "/api/tempo",
                                  .method = HTTP_POST,
                                  .handler = handle_tempo,
@@ -915,6 +945,7 @@ void webui_start() {
   httpd_register_uri_handler(server, &preset_uri);
   httpd_register_uri_handler(server, &reboot_uri);
   httpd_register_uri_handler(server, &transport_uri);
+  httpd_register_uri_handler(server, &scene_uri);
   httpd_register_uri_handler(server, &tempo_uri);
   httpd_register_uri_handler(server, &resync_uri);
   httpd_register_uri_handler(server, &scan_uri);

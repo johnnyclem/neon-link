@@ -30,6 +30,13 @@ Board reference: <https://docs.waveshare.com/ESP32-S3-RLCD-4.2>
 └──────────────────────────────────┘
    KEY tap = play/stop   KEY hold = menu
    BOOT tap = +1 BPM     BOOT hold = tempo screen
+   KEY+BOOT tap = next Live scene (OSC, Wi-Fi)
+   KEY+BOOT hold 3 s = standard <-> OSC mode
+
+   OSC mode (hold KEY+BOOT 3 s to enter):
+   KEY tap = next scene     KEY hold = menu
+   BOOT tap = prev scene    KEY+BOOT tap = play/pause
+   past last / before first = stop
 ```
 
 Tapping BOOT trims the tempo up by one. To go the other way — or to
@@ -75,16 +82,26 @@ rollback. Plus, unique to this face:
   inferred from the rail sitting near 4.2 V under load (a charger holds
   it there; an unplugged pack sags), with hysteresis to avoid flicker.
 - **Two-button front panel** (`neon::RlcdFrontPanel`, host-tested):
-  - Live: KEY tap = play/stop, KEY hold = settings, BOOT tap = +1 BPM,
-    BOOT hold = Tempo screen. Because the stop is quantized to the bar,
-    pressing STOP while playing shows **STOPPING** immediately until
-    the transport actually stops at the bar line, then STOPPED — so the
-    press registers at once instead of up to a bar later. Pressing KEY
-    again during STOPPING resumes. Start is quantized the same way, so
-    pressing PLAY starts a **count-in**: the selected metronome
-    animation begins immediately and a "STARTING IN N" banner counts
-    the beats down to the next downbeat, then the transport begins.
-    Press KEY again to cancel.
+  - Live (standard): KEY tap = play/stop, KEY hold = settings, BOOT tap
+    = +1 BPM, BOOT hold = Tempo screen. Short **KEY+BOOT** (under 0.7 s)
+    fires Ableton's selected Session scene over Wi-Fi OSC and selects
+    the next row — no MIDI cable. Hold KEY+BOOT 3 s switches this face
+    into **OSC mode** (and back). Scene fire needs OSC **Send target**
+    `LIVE_IP:11000` (AbletonOSC on the Mac).
+  - Live (OSC mode): KEY tap = next scene, KEY hold = settings (same
+    0.5 s as standard), BOOT tap = previous scene, KEY+BOOT tap =
+    quantized play/pause. Next past the last scene, or prev on scene 1,
+    stops clips. The glass reads `OSC n/m` while it knows Live's
+    selection. In standard, the same KEY+BOOT tap still fires the next
+    scene. Tempo stays on the standard face (BOOT hold).
+  - Play/stop is quantized to the bar in both modes. Pressing STOP while
+    playing shows **STOPPING** immediately until the transport actually
+    stops at the bar line, then STOPPED — so the press registers at once
+    instead of up to a bar later. Pressing play again during STOPPING
+    resumes. Start is quantized the same way, so pressing PLAY starts a
+    **count-in**: the selected metronome animation begins immediately
+    and a "STARTING IN N" banner counts the beats down to the next
+    downbeat, then the transport begins. Press play again to cancel.
   - Tempo: BOOT = up, KEY = down, hold either to auto-repeat
     (accelerating). Self-closes after a few idle seconds. This is the
     home for both directions, since only two front buttons are usable
@@ -110,17 +127,13 @@ rollback. Plus, unique to this face:
   edge). `config.display_portrait` picks a genuine portrait layout
   (300×400, the status face reflowed tall) oriented so the buttons sit
   on the **left** — the way the panel turns into a portrait stand. There
-  is no accelerometer, so it is a stored preference toggled three ways:
+  is no accelerometer, so it is a stored preference toggled two ways:
   - **Menu:** THEME includes a tall and a wide variant of each face.
     The everyday path.
-  - **Blind chord:** hold **KEY + BOOT together for 3 s**. After ~0.7 s
-    a "ROTATING TO …" countdown appears in the orientation it is about
-    to switch to (so it reads upright in the stand you are turning
-    toward); release early to cancel. This is the recovery path when the
-    screen is already in the wrong orientation and the menu is hard to
-    read. The individual KEY/BOOT gestures are suppressed for the
-    duration, so the flip never also opens the menu or Tempo screen.
   - **Web editor:** the `display_portrait` field.
+  The old KEY+BOOT 3 s rotate gesture now switches **standard / OSC**
+  panel mode (see the live-face bullets). Orientation stays a THEME
+  pick so a 3 s chord on stage cannot spin the glass.
   The rotation lives entirely in `RlcdCanvas` (host-tested): portrait
   draw ops take logical 300×400 coordinates that map into the physical
   400×300 buffer, so the packer and ST7305 driver are untouched.

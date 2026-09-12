@@ -25,13 +25,14 @@ boot is SoftAP and the password is on the glass.
 
 | Function | GPIO | Notes |
 |----------|------|-------|
-| OLED SDA | **5** | SSD1306-compatible @ 0x3C |
+| OLED SDA | **5** | SSD1306-compatible @ 0x3C. Shared with Grove I2C units |
 | OLED SCL | **6** | 400 kHz |
 | Blue LED | **8** | Inverted: HIGH = off. Boot strap — firmware PWM is fine |
 | BOOT     | **9** | Active-low. Short click = next page, long press = play/stop |
 | MIDI TX  | **20** | UART1 @ 31250. Default; crossed vs silk TX. `--tx-pin` |
 | MIDI RX  | **21** | UART1 @ 31250. Default; crossed vs silk RX. `--rx-pin` |
 | USB D−/D+ | 18/19 | Native Serial/JTAG. Do not reuse |
+| 5V / 3V3 / GND | rails | Grove red prefers **5V** (ByteButton LDO). MIDI can run on 3V3 |
 
 Pulse channels are virtual. There are no Eurorack jacks on the stamp.
 
@@ -45,10 +46,11 @@ window 28..99, 5 pages). Visible area is 72×40.
 
 - Joins an Ableton Link session over WiFi
 - MIDI clock, Start / Stop / Continue, song position out GPIO20; MIDI IN on GPIO21 (crossed vs the silk TX/RX labels on this stamp)
-- Three OLED pages, cycled with BOOT:
+- Four OLED pages, cycled with BOOT or ByteButton B6:
   1. **LIVE** — tempo, beat dots, PLAY/STOP, peer count, net state
   2. **NET** — STA SSID, IP, RSSI
   3. **SETUP** — SoftAP SSID, password, `192.168.4.1`
+  4. **CTRL** — MIDI CLK, clock source, quantum (caret = B4/B5, edit = B2/B3)
 - Blue LED uses the same patterns as the XIAO dongle (breathe /
   blink / downbeat flash)
 
@@ -83,12 +85,50 @@ USB extension, keep metal and the computer a few inches away, retry.
 A 31 mm wire soldered to the antenna pad (the “one-wire” mod) is the
 actual hardware fix. Reducing TX is what we can do in software.
 
+## Grove accessories (M5Stack)
+
+The two jacks on Unit ByteButton (U192) are **both Port A I2C**
+(GND / 5V / SDA / SCL). They pass the I2C bus through. They are **not**
+UART. Daisy-chaining the SAM2695 / Unit MIDI off the second jack puts
+MIDI TX/RX onto SDA/SCL and neither device works.
+
+UART is point-to-point. I2C is a shared bus. Split them:
+
+```
+C3 GPIO20 TX / GPIO21 RX + 3V3/GND  ── UART 31250 ──  SAM2695 Unit MIDI
+C3 GPIO5  SDA / GPIO6  SCL + 5V/GND ── I2C 400 kHz ──  ByteButton @ 0x47
+                                                       (OLED is already @ 0x3C)
+```
+
+Wire two 4-pin leads off the stamp (it has no Grove jack). ByteButton
+Grove red is 5V into an LDO — use the stamp **5V** pin when you can;
+3V3 often browns out the STM32. The second ByteButton jack is for
+another I2C unit (8Encoder @ 0x41, Unit Encoder @ 0x40, a second pad
+with a readdressed 0x47), not for MIDI.
+
+### ByteButton map (left → right, bit0 → bit7)
+
+| Key | Short | Hold / repeat | Combo |
+|-----|-------|---------------|-------|
+| B0 | play / stop | stop now | B0+B1 stop now; B0+B6 play now |
+| B1 | tap tempo | — | |
+| B2 | −1 BPM (CTRL: edit −) | auto-repeat | |
+| B3 | +1 BPM (CTRL: edit +) | auto-repeat | |
+| B4 | −10 BPM (CTRL: row up) | auto-repeat | |
+| B5 | +10 BPM (CTRL: row down) | auto-repeat | |
+| B6 | next page | cycle quantum 1/2/4/8 | |
+| B7 | MIDI CLK OUT on/off | cycle clock source AUTO/LINK/MIDI | |
+
+LEDs: B0 play, B6 page colour, B7 MIDI CLK, centre LED8 follows the beat
+(magenta on 1). BOOT still works if the pad is unplugged.
+
 ## Out of scope
 
 - BLE MIDI / BLE provisioning (RAM)
-- Audio / Ethernet / encoder
+- Audio / Ethernet
 - Dual-core pulse isolation — everything shares the one RISC-V core.
-  GPTimer still owns the MIDI edges; the UI task is priority 3.
+  GPTimer still owns the MIDI edges; the UI task is priority 3. The
+  ByteButton poll is a 5 ms task on the same core.
 
 ## Build & flash
 

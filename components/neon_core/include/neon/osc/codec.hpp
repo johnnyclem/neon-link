@@ -51,6 +51,8 @@ bool parse_packet(const uint8_t* pkt, size_t len, Sink sink, void* ctx,
 bool address_valid(const char* address);
 size_t encode_float(const char* address, float v, uint8_t* out, size_t cap);
 size_t encode_int(const char* address, int32_t v, uint8_t* out, size_t cap);
+// No-argument bang (typetag ","). AbletonOSC scene fire uses this shape.
+size_t encode_bang(const char* address, uint8_t* out, size_t cap);
 
 }  // namespace osc
 }  // namespace neon

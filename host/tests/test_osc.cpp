@@ -149,6 +149,25 @@ TEST_CASE("address validation matches the OSC pattern rules") {
   CHECK_FALSE(osc::address_valid("/"));
 }
 
+TEST_CASE("encode_bang is a padded address plus empty typetag") {
+  uint8_t buf[64];
+  const size_t n =
+      osc::encode_bang("/live/scene/fire_selected", buf, sizeof(buf));
+  CHECK(n == 32);  // 26-char path -> 28 pad, plus 4 for ",\0\0\0"
+  CHECK(std::memcmp(buf, "/live/scene/fire_selected", 26) == 0);
+  CHECK(buf[26] == 0);
+  CHECK(buf[27] == 0);
+  CHECK(buf[28] == ',');
+  CHECK(buf[29] == 0);
+  CHECK(buf[30] == 0);
+  CHECK(buf[31] == 0);
+}
+
+TEST_CASE("encode_bang rejects a bad address") {
+  uint8_t buf[16];
+  CHECK(osc::encode_bang("no-slash", buf, sizeof(buf)) == 0);
+}
+
 TEST_CASE("scalar bindings gate on delta against the last SENT value") {
   osc::OutBinding b;
   b.configure(osc::OutBinding::Kind::kScalar, 100, 0.5f);

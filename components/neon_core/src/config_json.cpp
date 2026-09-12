@@ -369,6 +369,8 @@ size_t config_to_json(const Config& cfg, char* buf, size_t cap) {
   cJSON_AddBoolToObject(osc, "enabled", cfg.osc_enabled != 0);
   cJSON_AddNumberToObject(osc, "listen_port", cfg.osc_port);
   cJSON_AddStringToObject(osc, "target", cfg.osc_target);
+  cJSON_AddStringToObject(osc, "panel_mode",
+                          cfg.osc_panel_mode ? "osc" : "standard");
 
   cJSON* ble = cJSON_AddObjectToObject(root, "ble");
   cJSON_AddBoolToObject(ble, "enabled", cfg.ble_enabled != 0);
@@ -623,6 +625,11 @@ bool config_from_json(const char* json, size_t len, Config* cfg) {
     get_bool_u8(osc, "enabled", &cfg->osc_enabled);
     get_u16(osc, "listen_port", &cfg->osc_port);
     get_str(osc, "target", cfg->osc_target, sizeof(cfg->osc_target));
+    const cJSON* mode = cJSON_GetObjectItemCaseSensitive(osc, "panel_mode");
+    if (cJSON_IsString(mode) && mode->valuestring != nullptr) {
+      cfg->osc_panel_mode =
+          std::strcmp(mode->valuestring, "osc") == 0 ? 1 : 0;
+    }
   }
 
   const cJSON* ble = cJSON_GetObjectItemCaseSensitive(root, "ble");

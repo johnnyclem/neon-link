@@ -14,6 +14,7 @@
 #include "neon/config/model.hpp"
 #include "neon/fixed_math.hpp"
 #include "neon/gfx/font5x7.hpp"
+#include "neon/input/bytebutton.hpp"
 #include "neon/timeline.hpp"
 #include "neon/transport.hpp"
 #include "neon/ui/idle_dimmer.hpp"
@@ -22,6 +23,7 @@
 
 #include "driver/gpio.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 
@@ -29,8 +31,10 @@
 
 // Uber-minimal 72×40 status for the ACEIRMC / Super Mini ESP32-C3 stamp.
 // SSD1306-compatible 0.42" panel over I2C (SDA=5 SCL=6). BOOT (GPIO9)
-// is the only input: short click cycles pages, long press toggles
-// transport. First-boot SoftAP credentials live on the SETUP page.
+// still cycles pages / long-press toggles transport. Optional M5 Unit
+// ByteButton (U192) @ 0x47 shares that I2C bus for BPM, transport, and
+// settings. MIDI stays on UART GPIO20/21 — do not daisy-chain the
+// SAM2695 off the ByteButton's second Grove (that jack is I2C too).
 
 namespace {
 
@@ -46,9 +50,27 @@ uint8_t g_fb[kFb];
 uint8_t g_addr = 0x3C;
 bool g_ok = false;
 
-enum class Page : uint8_t { Live = 0, Net = 1, Setup = 2 };
-constexpr int kPageCount = 3;
-Page g_page = Page::Live;
+enum class Page : uint8_t { Live = 0, Net = 1, Setup = 2, Ctrl = 3 };
+constexpr int kPageCount = 4;
+std::atomic<uint8_t> g_page_u8{static_cast<uint8_t>(Page::Live)};
+std::atomic<uint8_t> g_ctrl_row{0};
+std::atomic<bool> g_bb_activity{false};
+std::atomic<bool> g_bb_ok{false};
+
+Page current_page() {
+  return static_cast<Page>(g_page_u8.load(std::memory_order_relaxed));
+}
+
+void set_page(Page p) {
+  g_page_u8.store(static_cast<uint8_t>(p), std::memory_order_relaxed);
+}
+
+void cycle_page() {
+  const int next =
+      (static_cast<int>(current_page()) + 1) % kPageCount;
+  set_page(static_cast<Page>(next));
+  ESP_LOGI(kTag, "page %d", next);
+}
 
 // ---- I2C SSD1306 -------------------------------------------------------
 
@@ -354,6 +376,37 @@ void paint_setup(const Snap& s) {
   text(0, 29, rf, 1);
 }
 
+const char* clock_src_label(neon::ClockSource s) {
+  switch (s) {
+    case neon::ClockSource::kLinkMaster:
+      return "LINK";
+    case neon::ClockSource::kMidiMaster:
+      return "MIDI";
+    case neon::ClockSource::kExternalMaster:
+      return "EXT";
+    default:
+      return "AUTO";
+  }
+}
+
+void paint_ctrl(const Snap& s) {
+  (void)s;
+  const neon::Config& cfg = neon_config();
+  const int row = static_cast<int>(g_ctrl_row.load(std::memory_order_relaxed));
+  char line[13] = {};
+  std::snprintf(line, sizeof(line), "%sCLK %s", row == 0 ? ">" : " ",
+                cfg.midi_clock_out ? "ON" : "OFF");
+  text(0, 0, line, 1);
+  std::snprintf(line, sizeof(line), "%sSRC %s", row == 1 ? ">" : " ",
+                clock_src_label(cfg.clock_source));
+  text(0, 10, line, 1);
+  std::snprintf(line, sizeof(line), "%sQ   %u", row == 2 ? ">" : " ",
+                static_cast<unsigned>(cfg.quantum_beats));
+  text(0, 20, line, 1);
+  text(0, 31, g_bb_ok.load(std::memory_order_relaxed) ? "B0-7 pad" : "no pad",
+       1);
+}
+
 void paint_splash() {
   fb_clear();
   text_cx(kW / 2, 6, "NEON", 2);
@@ -367,7 +420,7 @@ void paint_splash() {
 
 void paint(const Snap& s) {
   fb_clear();
-  switch (g_page) {
+  switch (current_page()) {
     case Page::Live:
       paint_live(s);
       break;
@@ -377,8 +430,333 @@ void paint(const Snap& s) {
     case Page::Setup:
       paint_setup(s);
       break;
+    case Page::Ctrl:
+      paint_ctrl(s);
+      break;
   }
   flush();
+}
+
+// ---- M5 Unit ByteButton (U192) @ 0x47 ----------------------------------
+//
+// Port A Grove is GND/5V/SDA/SCL. Same I2C bus as the OLED. STM32 wants
+// write-STOP-read (same as Unit Encoder). LED RGB888 is BGR.
+
+constexpr uint8_t kBbAddr = 0x47;
+constexpr uint8_t kBbRegStatus = 0x00;
+constexpr uint8_t kBbRegBright = 0x10;
+constexpr uint8_t kBbRegMode = 0x19;
+constexpr uint8_t kBbRegRgb = 0x20;
+constexpr int kBbTimeoutMs = 15;
+
+std::atomic<uint8_t> g_bb_down{0};
+uint8_t g_bb_invert = 0;  // 0xFF if idle reads as all-ones
+
+void push_ctrl(ControlCommand::Kind kind, int32_t arg = 0) {
+  ControlCommand cmd{};
+  cmd.kind = kind;
+  cmd.arg = arg;
+  control_queue_push(cmd);
+}
+
+void apply_cfg(const neon::Config& cfg) {
+  neon_config_apply(cfg);
+}
+
+void toggle_midi_clk() {
+  neon::Config cfg = neon_config();
+  cfg.midi_clock_out = cfg.midi_clock_out ? 0 : 1;
+  apply_cfg(cfg);
+  ESP_LOGI(kTag, "midi clk out %s", cfg.midi_clock_out ? "ON" : "OFF");
+}
+
+void cycle_clock_src() {
+  neon::Config cfg = neon_config();
+  switch (cfg.clock_source) {
+    case neon::ClockSource::kAuto:
+      cfg.clock_source = neon::ClockSource::kLinkMaster;
+      break;
+    case neon::ClockSource::kLinkMaster:
+      cfg.clock_source = neon::ClockSource::kMidiMaster;
+      break;
+    default:
+      cfg.clock_source = neon::ClockSource::kAuto;
+      break;
+  }
+  apply_cfg(cfg);
+  ESP_LOGI(kTag, "clock src %s", clock_src_label(cfg.clock_source));
+}
+
+void cycle_quantum(int delta) {
+  neon::Config cfg = neon_config();
+  static constexpr uint32_t kQs[] = {1, 2, 4, 8};
+  int idx = 2;
+  for (int i = 0; i < 4; ++i) {
+    if (cfg.quantum_beats == kQs[i]) {
+      idx = i;
+      break;
+    }
+  }
+  idx = (idx + delta + 4) % 4;
+  cfg.quantum_beats = kQs[idx];
+  apply_cfg(cfg);
+  ESP_LOGI(kTag, "quantum %u", static_cast<unsigned>(cfg.quantum_beats));
+}
+
+void nudge_ctrl_row(int delta) {
+  const int row = static_cast<int>(g_ctrl_row.load(std::memory_order_relaxed));
+  if (row == 0) {
+    toggle_midi_clk();
+  } else if (row == 1) {
+    cycle_clock_src();
+  } else {
+    cycle_quantum(delta >= 0 ? 1 : -1);
+  }
+}
+
+void move_ctrl_row(int delta) {
+  int row = static_cast<int>(g_ctrl_row.load(std::memory_order_relaxed));
+  row = (row + delta + 3) % 3;
+  g_ctrl_row.store(static_cast<uint8_t>(row), std::memory_order_relaxed);
+}
+
+bool bb_read_mask(uint8_t* mask) {
+  const uint8_t reg = kBbRegStatus;
+  uint8_t v = 0;
+  if (!halesp::i2c_write_stop_read(kBbAddr, &reg, 1, &v, 1, kBbTimeoutMs)) {
+    return false;
+  }
+  *mask = static_cast<uint8_t>(v ^ g_bb_invert);
+  return true;
+}
+
+bool bb_write(uint8_t reg, const uint8_t* data, size_t n) {
+  uint8_t buf[32];
+  if (n + 1 > sizeof(buf)) {
+    return false;
+  }
+  buf[0] = reg;
+  if (n > 0 && data != nullptr) {
+    std::memcpy(buf + 1, data, n);
+  }
+  return halesp::i2c_write(kBbAddr, buf, n + 1, kBbTimeoutMs);
+}
+
+void bb_led_bgr(uint8_t* p, uint8_t r, uint8_t g, uint8_t b) {
+  p[0] = b;
+  p[1] = g;
+  p[2] = r;
+}
+
+void bb_paint_leds(bool playing, uint32_t beat, bool clk_out, uint8_t down) {
+  uint8_t rgb[27] = {};
+  auto lit = [&](int i, uint8_t r, uint8_t g, uint8_t b) {
+    if (down & static_cast<uint8_t>(1u << i)) {
+      r = static_cast<uint8_t>(r < 200 ? r + 40 : 255);
+      g = static_cast<uint8_t>(g < 200 ? g + 24 : 255);
+      b = static_cast<uint8_t>(b < 200 ? b + 16 : 255);
+    }
+    bb_led_bgr(rgb + i * 3, r, g, b);
+  };
+  // B0 play: orange running, dim graphite stopped.
+  if (playing) {
+    lit(0, 64, 38, 12);
+  } else {
+    lit(0, 8, 8, 8);
+  }
+  lit(1, 12, 10, 4);   // B1 tap
+  lit(2, 20, 8, 4);    // B2 -1
+  lit(3, 20, 8, 4);    // B3 +1
+  lit(4, 28, 10, 4);   // B4 -10
+  lit(5, 28, 10, 4);   // B5 +10
+  switch (current_page()) {
+    case Page::Live:
+      lit(6, 48, 32, 6);
+      break;
+    case Page::Net:
+      lit(6, 6, 28, 28);
+      break;
+    case Page::Setup:
+      lit(6, 48, 40, 8);
+      break;
+    case Page::Ctrl:
+      lit(6, 48, 8, 28);
+      break;
+  }
+  if (clk_out) {
+    lit(7, 6, 36, 36);
+  } else {
+    lit(7, 6, 6, 6);
+  }
+  // LED8 (centre): magenta on 1, orange on other beats, off if stopped.
+  if (playing && beat == 1) {
+    bb_led_bgr(rgb + 24, 48, 8, 28);
+  } else if (playing) {
+    bb_led_bgr(rgb + 24, 40, 24, 6);
+  }
+  (void)bb_write(kBbRegRgb, rgb, sizeof(rgb));
+}
+
+bool bb_probe() {
+  if (!halesp::i2c_probe(kBbAddr, 20)) {
+    return false;
+  }
+  uint8_t raw = 0;
+  const uint8_t reg = kBbRegStatus;
+  if (!halesp::i2c_write_stop_read(kBbAddr, &reg, 1, &raw, 1, kBbTimeoutMs)) {
+    ESP_LOGW(kTag, "ByteButton ACK 0x47 but status read failed");
+    return false;
+  }
+  // Resting mask is 0x00 (1=pressed). If the pad comes up all-ones, invert.
+  if (raw == 0xFF) {
+    g_bb_invert = 0xFF;
+  }
+  uint8_t bright[9];
+  std::memset(bright, 48, sizeof(bright));
+  (void)bb_write(kBbRegBright, bright, sizeof(bright));
+  const uint8_t mode = 0;  // user-defined RGB
+  (void)bb_write(kBbRegMode, &mode, 1);
+  g_bb_ok.store(true, std::memory_order_relaxed);
+  ESP_LOGI(kTag, "ByteButton U192 @ 0x47 invert=0x%02x", g_bb_invert);
+  bb_paint_leds(false, 1, neon_config().midi_clock_out != 0, 0);
+  return true;
+}
+
+void bb_dispatch(const neon::ByteButtonDecoder::Event& ev) {
+  using Kind = neon::ByteButtonDecoder::Event::Kind;
+  if (ev.kind == Kind::kNone) {
+    return;
+  }
+  g_bb_activity.store(true, std::memory_order_relaxed);
+  const bool ctrl = current_page() == Page::Ctrl;
+
+  if (ev.kind == Kind::kCombo) {
+    if (ev.a == 0 && ev.b == 1) {
+      push_ctrl(ControlCommand::Kind::kStopNow);
+      ESP_LOGI(kTag, "combo B0+B1 stop now");
+    } else if (ev.a == 0 && ev.b == 6) {
+      push_ctrl(ControlCommand::Kind::kPlayNow);
+      ESP_LOGI(kTag, "combo B0+B6 play now");
+    }
+    return;
+  }
+
+  const bool bpm = ev.kind == Kind::kPress || ev.kind == Kind::kRepeat;
+  if (bpm && !ctrl) {
+    int32_t n = 0;
+    if (ev.a == 2) {
+      n = -1;
+    } else if (ev.a == 3) {
+      n = 1;
+    } else if (ev.a == 4) {
+      n = -10;
+    } else if (ev.a == 5) {
+      n = 10;
+    }
+    if (n != 0) {
+      push_ctrl(ControlCommand::Kind::kNudgeTempo, n);
+      return;
+    }
+  }
+
+  if (ctrl && (ev.kind == Kind::kPress || ev.kind == Kind::kRepeat)) {
+    if (ev.a == 2) {
+      nudge_ctrl_row(-1);
+      return;
+    }
+    if (ev.a == 3) {
+      nudge_ctrl_row(1);
+      return;
+    }
+    if (ev.a == 4) {
+      move_ctrl_row(-1);
+      return;
+    }
+    if (ev.a == 5) {
+      move_ctrl_row(1);
+      return;
+    }
+  }
+
+  if (ev.kind == Kind::kShort) {
+    switch (ev.a) {
+      case 0:
+        push_ctrl(ControlCommand::Kind::kToggle);
+        break;
+      case 1:
+        push_ctrl(ControlCommand::Kind::kTapTempo);
+        break;
+      case 6:
+        cycle_page();
+        break;
+      case 7:
+        toggle_midi_clk();
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  if (ev.kind == Kind::kHold) {
+    switch (ev.a) {
+      case 0:
+        push_ctrl(ControlCommand::Kind::kStopNow);
+        break;
+      case 6:
+        cycle_quantum(1);
+        break;
+      case 7:
+        cycle_clock_src();
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+void bb_task(void*) {
+  neon::ByteButtonDecoder dec;
+  bool last_playing = false;
+  uint32_t last_beat = 0;
+  uint8_t last_clk = 0xFF;
+  uint8_t last_page = 0xFF;
+  uint8_t last_down = 0xFF;
+  TickType_t wake = xTaskGetTickCount();
+  for (;;) {
+    uint8_t mask = 0;
+    if (bb_read_mask(&mask)) {
+      g_bb_down.store(mask, std::memory_order_relaxed);
+      dec.feed(mask, esp_timer_get_time());
+      for (;;) {
+        const auto ev = dec.take();
+        if (ev.kind == neon::ByteButtonDecoder::Event::Kind::kNone) {
+          break;
+        }
+        bb_dispatch(ev);
+      }
+    }
+
+    neon::TimelineSnapshot tl{};
+    timeline_bus().read(tl);
+    const bool playing = tl.playing != 0;
+    const uint32_t beat = neon::beat_number(
+        neon::phase_milli_beats(tl, esp_timer_get_time()),
+        tl.quantum_beats != 0 ? tl.quantum_beats : 4);
+    const uint8_t clk = neon_config().midi_clock_out;
+    const uint8_t page = g_page_u8.load(std::memory_order_relaxed);
+    const uint8_t down = g_bb_down.load(std::memory_order_relaxed);
+    if (playing != last_playing || beat != last_beat || clk != last_clk ||
+        page != last_page || down != last_down) {
+      last_playing = playing;
+      last_beat = beat;
+      last_clk = clk;
+      last_page = page;
+      last_down = down;
+      bb_paint_leds(playing, beat, clk != 0, down);
+    }
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(5));
+  }
 }
 
 // ---- BOOT button -------------------------------------------------------
@@ -403,6 +781,12 @@ void oled_task(void*) {
     paint_splash();
     vTaskDelay(pdMS_TO_TICKS(700));
   }
+  if (bb_probe()) {
+    xTaskCreatePinnedToCore(bb_task, "c3bb", 2560, nullptr, 4, nullptr,
+                            kNeonCoreApp);
+  } else {
+    ESP_LOGI(kTag, "no ByteButton @ 0x47 (OLED bus GPIO5/6)");
+  }
 
   bool held = false;
   int64_t down_us = 0;
@@ -413,7 +797,7 @@ void oled_task(void*) {
   // Land on SETUP until WiFi is stored so the password is the first thing
   // a first-boot user sees.
   if (!neon_wifi_has_credentials()) {
-    g_page = Page::Setup;
+    set_page(Page::Setup);
   }
 
   neon::ui::IdleDimmer dimmer;
@@ -429,7 +813,7 @@ void oled_task(void*) {
       dimmer.configure(live.display_dim_s, live.display_dim_level);
     }
     const bool down = button_down();
-    if (down) {
+    if (down || g_bb_activity.exchange(false, std::memory_order_relaxed)) {
       dimmer.note_activity(now);
     }
     if (swallow_press) {
@@ -465,8 +849,7 @@ void oled_task(void*) {
       const int64_t dt = now - down_us;
       held = false;
       if (!long_fired && dt >= kDebounceUs) {
-        g_page = static_cast<Page>((static_cast<int>(g_page) + 1) % kPageCount);
-        ESP_LOGI(kTag, "page %d", static_cast<int>(g_page));
+        cycle_page();
       }
     }
 
@@ -489,6 +872,7 @@ void oled_task(void*) {
     if (display_on) {
       paint(snap);
     }
+    neon_config_flush(now);
     vTaskDelay(pdMS_TO_TICKS(80 + dimmer.frame_interval_hint_ms(now)));
   }
 }

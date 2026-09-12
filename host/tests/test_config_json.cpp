@@ -455,3 +455,21 @@ TEST_CASE("an out-of-range jitter figure is clamped on the way in") {
   CHECK(cfg.audio.la_jitter_ms == 800);
   CHECK(cfg.audio.amy_patch == 1);
 }
+
+TEST_CASE("osc panel_mode round-trips as standard/osc") {
+  neon::Config a;
+  CHECK(a.osc_panel_mode == 0);
+  const std::string json = encode(a);
+  CHECK(json.find("\"panel_mode\":\"standard\"") != std::string::npos);
+
+  a.osc_panel_mode = 1;
+  neon::Config b;
+  const std::string osc_json = encode(a);
+  CHECK(osc_json.find("\"panel_mode\":\"osc\"") != std::string::npos);
+  REQUIRE(neon::config_from_json(osc_json.c_str(), osc_json.size(), &b));
+  CHECK(b.osc_panel_mode == 1);
+
+  const char* std_mode = R"({"osc":{"panel_mode":"standard"}})";
+  REQUIRE(neon::config_from_json(std_mode, std::strlen(std_mode), &b));
+  CHECK(b.osc_panel_mode == 0);
+}

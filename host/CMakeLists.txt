@@ -53,6 +53,7 @@ add_executable(neon_tests
   tests/test_rlcd_canvas.cpp
   tests/test_idle_dimmer.cpp
   tests/test_osc.cpp
+  tests/test_osc_scene.cpp
   tests/test_config_json.cpp
   tests/test_rhythm.cpp
   tests/test_transport.cpp
@@ -66,6 +67,7 @@ add_executable(neon_tests
   tests/test_jitter_buffer.cpp
   tests/test_synth_voice.cpp
   tests/test_quadrature.cpp
+  tests/test_bytebutton.cpp
   tests/test_telemetry_csv.cpp
   tests/test_telemetry_emitter.cpp
   tests/test_midi_pll_telemetry.cpp

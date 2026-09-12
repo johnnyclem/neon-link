@@ -302,19 +302,23 @@ struct Config {
 
   // Appended in v12. Panel orientation for the RLCD face: 0 = landscape
   // (the 400×300 default), 1 = portrait (300×400, upright in a portrait
-  // stand). There is no accelerometer, so this is a stored preference,
-  // toggled blind by holding KEY+BOOT together (see main/rlcd_service).
-  // Ignored on boards whose panel is not rotatable.
+  // stand). There is no accelerometer, so this is a stored preference
+  // (THEME menu / web editor). Ignored on boards that do not rotate.
   uint8_t display_portrait = 0;
 
   // Appended in v13. Live-face theme for the 1-bit panels (see MonoTheme).
   // Editable from the RLCD's own settings menu; a v12 blob decodes with
   // this back at kClassic — see config_decode.
   MonoTheme mono_theme = MonoTheme::kClassic;
+
+  // Appended in v15. RLCD live-face control layout. 0 = standard
+  // (tempo / quantized play-stop), 1 = OSC session grid. KEY+BOOT hold
+  // 3 s toggles; persisted so a reboot keeps the stage layout.
+  uint8_t osc_panel_mode = 0;
 };
 
 inline constexpr uint32_t kConfigMagic = 0x4e4c4346;  // "NLCF"
-inline constexpr uint16_t kConfigVersion = 14;
+inline constexpr uint16_t kConfigVersion = 15;
 
 // Tempo limits shared by the tap estimator, the editor, and the encoder.
 inline constexpr uint32_t kMinMilliBpm = 20000;
